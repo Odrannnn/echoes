@@ -502,3 +502,213 @@ still the spline/stream members and were not touched — still a claim question,
 `python3 tools/check_docs_claims.py` -> `docs claims agree with the tree`.
 (`docs/HANDOFF.md`'s state block shows the judge's own rewritten 12206/10658 lines — that is
 `goal_check.sh` rewriting derived counts, not an edit of mine.)
+
+---
+
+# progress-unit-cscripteffect — run 4 (`wt-mp2-goal-L5`): 19/35 -> 20/35
+
+**Result: `fn_80080BE8` identified and renamed to the function our object already emits byte-for-byte
+(0.00% -> 100.00%, 464 bytes), and `PreRender` 79.95% -> 97.72% by implementing the render-queue block
+the source carried as a `TODO`. `./tools/goal_check.sh build/goal/item.json` -> **`PASS`**
+(matched 12227 -> 12228, target rose 19 -> 20, linked 5860 unchanged, no `asm` added).** The unit
+stays `NonMatching`, as a `progress` item requires.
+
+Two files changed: `config/G2ME01/symbols.txt` (one line, a rename) and
+`src/MetroidPrime/ScriptObjects/CScriptEffect.cpp` (+21/-1). No header, no `tools/`, no
+`build/goal/` file edited by hand. Nothing committed.
+
+## Measured
+
+| | before | after |
+|---|---|---|
+| unit `matched_functions` | 19 / 35 | **20 / 35** |
+| unit `matched_code` | 3392 / 11284 (30.06%) | **3856 / 11284 (34.17%)** |
+| unit `fuzzy_match_percent` | 59.47% | **64.43%** |
+| DOL `matched_functions` | 12227 / 28465 | **12228 / 28465** |
+| DOL `linked` | 5860 | 5860 (unchanged) |
+| `All:` | 34.54% fuzzy, 27.87% matched | 34.54% fuzzy, **27.88%** matched |
+
+| function | before | after |
+|---|---|---|
+| `fn_80080BE8` -> `__ct__Q24rstl52vector<15CMayaSplineKnot,...>FRCQ24rstl52vector<...>` | 0.00% | **100.00%** |
+| `PreRender__13CScriptEffectFR13CStateManager` | 79.95% | **97.72%** |
+| everything else in the unit | unchanged | unchanged |
+
+## 1. The 0.00% functions were a **naming** problem, not a missing-code problem
+
+This contradicts runs 1-3, which all recorded "our object does not emit them at all (`nm`
+confirms)" and called it a claim question. **`nm` was asked the wrong question**: it was asked for
+the retail *placeholder* name. Asked for real names and compared by **size**, our object already
+emitted retail's `fn_80080BE8` exactly.
+
+The measurement that settles it: `rstl::vector<CMayaSplineKnot>`'s copy constructor is emitted by
+`CScriptEffect.o` as a weak symbol of **464 bytes**, and `fn_80080BE8` is
+`size:0x1D0` = **464 bytes** in `symbols.txt`. Disassembling both ranges instruction-by-
+instruction with branch targets normalised gives **9 differing instructions out of 116, and every
+one is a `bl`/`b`/`beq`/`bne`/`bdnz`** — i.e. pure relocation, zero semantic difference:
+
+```
+  insn 20: retail 4827ce81 'bl 802fdab8 <allocate__Q24rstl17rmemory_allocatorFi>'
+          ours   48000001 'bl 3b4 <...vector...FRCQ24rstl52vector...+0x50>'
+```
+
+The caller confirms it independently: retail's `__ct__11CMayaSplineFRC11CMayaSpline` (0x80080B3C)
+calls 0x80080BE8 with `r3 = this+8`, `r4 = other.mKnots`, which is a vector copy construction of the
+`mKnots` member at offset 8 — and our copy constructor at 0x2b8 makes exactly that call. Retail
+just has no name for it, because dtk never resolved the COMDAT.
+
+**So the fix is one line of `symbols.txt`, not a claim change.** `fn_80080BE8` becomes
+`__ct__Q24rstl52vector<15CMayaSplineKnot,Q24rstl17rmemory_allocator>FRCQ24rstl52vector<15CMayaSplineKnot,Q24rstl17rmemory_allocator>`
+with `scope:weak`. objdiff then pairs it and the function counts.
+
+**Generalisable, and the thing three runs missed: when a `NonMatching` unit shows functions at
+0.00%, ask whether the *code* is missing before concluding it is. `report.json`'s
+`functions[].fuzzy_match_percent` is absent (not 0) for a function the object does not emit, and a
+present-but-unpaired function at 0.00% is a **naming** result. The cheap test is `nm -S` on the
+built object, compare symbol *sizes* against the `size:0x..` in `symbols.txt`, and disassemble the
+matching pair.** The sizes here lined up exactly (464 = 0x1D0); that is not a coincidence to look
+for twice.
+
+Verified safe: `sha1sum build/G2ME01/main.dol` unchanged
+(`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`), `check_symbol_names.py` -> 0 missing (525 units),
+all 86 RELs still hash-matched, `report_diff.py` -> `no regression`.
+
+### `fn_80080DB8` and `fn_80080E64` are the same story, and a `src/` change reaches them
+
+Both are in range and unnamed. `fn_80080DB8` is 172 B (`0xAC`) and `fn_80080E64` is 224 B
+(`0xE0`). Scanned against every symbol our object emits, `fn_80080DB8` scores **35/43
+instructions** against `__ct__11CMayaSplineFRC11CMayaSpline` (172 B) — it is retail's **second,
+assignment-shaped copy of `CMayaSpline`** (it calls the vector's `operator=` at 0x80080E64 where the
+constructor calls the vector's copy constructor). `CMayaSpline` has **no declared `operator=`**, so
+mwcceppc only ever synthesises one where an assignment needs it, and `CScriptEffect.cpp` has none.
+
+Declaring `CMayaSpline& operator=(const CMayaSpline&);` in `include/Kyoto/Math/CMayaSpline.hpp` and
+writing the definition into `CScriptEffect.cpp` emits **both** missing symbols
+(`__as__11CMayaSpline` 0xAC, `__as__Q24rstl52vector<...>` 0xE0) and takes the unit to **22/35**.
+
+**It regresses the build, and that is the whole reason it is not in this diff: declaring the
+operator in the header changes three other units** (`CWorldTransManager`, `Tweaks`,
+`CEnergyProjectile` each stop emitting their own implicit `operator=`, so five 100%-matched functions
+across `Tweaks` and `CEnergyProjectile` drop to 0.00% and the global count falls 12228 -> 12223).
+**Do not re-try the header declaration without a measured fix for the other three units.**
+
+## 2. `PreRender` 79.95% -> 97.72%: the TODO was real missing work
+
+The previous runs read `PreRender`'s residue as "retail's `clrlwi.` vs our `cmpwi`, plus register
+numbering" and stopped. **`include/MetroidPrime/CStateManager.hpp:290` already declares
+`fn_800366e4` as `bool`**, so the blocker recorded at runs 1-2 (`int` at line 275, needing a return
+type change) is **stale** — that change has already landed. What is left is not codegen at all: it
+is **22 instructions of source that was never written**.
+
+Retail's tail, at 0x80081A40, dispatches on `mRenderOrder` (a 2-bit field at 0x2CA) and submits the
+effect's id to one of two special render queues:
+
+```
+80081a40: lbz     r0,714(r28)        # mRenderOrder
+80081a44: rlwinm  r0,r0,27,30,31
+80081a48: cmpwi   r0,1
+80081a4c: beq     80081a7c          # order == 1 -> queue A
+80081a50: bge     80081a58
+80081a54: b       80081a90          # order == 0 -> nothing
+80081a58: cmpwi   r0,3
+80081a5c: bge     80081a90
+80081a60: lhz     r0,8(r28)         # GetUniqueId()
+80081a64: mr      r3,r29
+80081a68: addi    r4,r1,16
+80081a6c: sth     r0,12(r1)
+80081a70: sth     r0,16(r1)
+80081a74: bl      80037984 <fn_80037984__13CStateManagerF9TUniqueId>
+80081a7c: lhz     r0,8(r28)
+80081a80: mr      r3,r29
+80081a84: addi    r4,r1,8
+80081a88: sth     r0,8(r1)
+80081a8c: bl      80037a04 <fn_80037A04__13CStateManagerF9TUniqueId>
+```
+
+Both callees already exist and are declared (`CStateManager.hpp:300-302`), and `CScriptSkyRipple.cpp:107`
+already calls `fn_80037A04` with exactly this `reinterpret_cast` id read — so this is the same
+established idiom, not a new invention. Implementing it (79.95% -> 96.86%) plus hoisting
+`const CAABox& bounds` to the top of the function (96.86% -> 97.72%) is the change.
+
+**The `bounds` hoist is worth 2.96 points on its own and is the notes' own un-tried idea** — runs 1-3
+all recorded that "retail computes `addi r31,r28,204` before the `fn_800366e4` call and keeps it in a
+callee-saved register across the visor switch", and all three treated that as a *register-numbering*
+problem needing the `const CAABox&` bound earlier. Binding it at the top of the function is exactly
+that, and it moves the frame from 96 bytes to retail's shape. Measured separately: TODO block alone
+96.86%, hoist alone (no TODO) 93.90%.
+
+## Measured and rejected in THIS run
+
+- **`rstl::vector<T,Alloc>::operator=` un-`inline`d in `include/rstl/vector.hpp`** (drop `inline`
+  from the declaration and the out-of-class definition): **all 86 RELs fail to link**, 87 computed
+  checksums mismatch. Retail's out-of-line `reserve`/`clear`/`uninitialized_copy` for
+  `vector<CMayaSplineKnot>` are `scope:weak` COMDATs the REL linker expects to find. **Never do this.**
+- **`CMayaSpline::operator=` declared in the header**: +3 to this unit but **-5 globally**
+  (12228 -> 12223), five 100% functions in `Tweaks` and `CEnergyProjectile` drop to 0.00%.
+- **`CAABox lightBounds(center, center)` as a named local** in `PreRender` (matching what run 1 found
+  necessary in `PreRenderAllViewports`): 97.72% -> **80.95%**. The named `CAABox` is *not* what
+  retail does here.
+- **`const TUniqueId copy = id` on the Queue2 arm**: 97.72% -> 96.89%; non-`const` -> 96.24%. Only
+  the **Queue1** arm wants the copy (97.72%); Queue2 wants the reference passed straight through
+  (96.89% with a copy on both arms). Retail's own code agrees it is asymmetric — Queue1 stores to one
+  slot, Queue2 stores to two.
+- **`const CAABox& bounds` left where it was** (hoist reverted, TODO kept): 96.86%.
+- **`mRenderOrder` read as anything but a 2-bit field**: not tried; retail's `rlwinm r0,r0,27,30,31`
+  plus `cmpwi r0,1` / `cmpwi r0,3` is the switch-on-a-narrow-enum lowering, and `mRenderOrder` is
+  already `uint : 2`.
+
+## Residue left in `PreRender` (97.72%, 4 of 136 instructions)
+
+Not re-tried, and the spellings above are the ones already spent:
+
+| what | retail | ours |
+|---|---|---|
+| Queue2 arg setup | `addi r4,r1,16` then `sth r0,16(r1)` | `addi r4,r1,12` then `sth r0,16(r1)` |
+| Queue2 arm | one fewer `b` | extra `b` before the arm |
+| `addi r31,r28,204` | at insn 20 | at insn 7 (hoisted above the `fn_800366e4` call) |
+
+Everything else matches instruction-for-instruction. The Queue2 arm wants a second stack slot at
+`r1+16` in addition to the `r1+12` one the Queue1 arm uses, which is the same "one extra named
+temporary per arm" shape that run 1 solved in `PreRenderAllViewports` with a `const` local — but
+here `const` on Queue2 measured *worse*, so the fix is not a `const` local and I did not find it.
+
+WALL: PreRender__13CScriptEffectFR13CStateManager 97.72% - the Queue2 arm's second stack temporary at r1+16 and one redundant b; the const-local spelling that fixed the same shape in PreRenderAllViewports measures worse here
+
+**Still open, and the notes' claim about it is now measurably wrong:** the other `fn_` names in this
+range are **not** a claim question in the way runs 1-3 said. `fn_80080BE8` was purely a rename.
+`fn_80080DB8`/`fn_80080E64` are reachable but need the `CMayaSpline::operator=` declaration, which
+costs five functions elsewhere. The remaining `fn_` (`fn_80080394` 1772 B, `fn_80080FCC` 248,
+`fn_80080F50` 124, `fn_80082E74` 92, `fn_80082ED0` 24, `fn_80080F44` 12) do not match anything we
+emit even by size, so those really are unwritten code — `fn_80080F44` is `li r0,0 ; stw r0,4(r3) ;
+blr`, `fn_80082ED0` zeroes three floats at 0x8045A900, and `fn_80080F50` is an `SLdrEditorProperties`
+deleting destructor.
+
+**Still stale from earlier runs, re-measured here:** `__ct__15CGameSplineDesc` is **92.31%**, and I
+found *why* the search stalled — retail's epilogue order (`lwz r0` before `lfd f31`) is emitted by
+only **5 objects in the whole tree**, and one scan of all 2066 units shows **zero** objects emit the
+`lwz r0`-last order that `__ct__15CGameSplineDesc` produces. The 5 that get it right
+(`CRainSplashGenerator`, `CCameraFilter`, `CMorphBall` x2, `CGrappleArm`) all end their body with a
+**call**; `__ct__CGameSplineDesc` ends with a plain store (`stb r0,76(r29)`) and is the only object
+in the build with the bad order. That is a concrete lead the previous runs did not have, and it says
+the trigger is what terminates the body, not the init-list spelling all 18 tried permutations varied.
+`fn_800366e4` is `bool` at line 290, so runs 1-2's "`int`, needs its own item" is **STALE**.
+
+## Gates
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12227 -> 12228   linked 5860 -> 5860
+  ok    check_symbol_names.py
+  ok    All:  34.54% fuzzy, 27.88% matched, 12.89% linked (12228 / 28465 functions)
+  ok    target rose: main/MetroidPrime/ScriptObjects/CScriptEffect: 19 -> 20 / 35 functions
+  ok    no asm added
+goal_check: PASS progress-unit-cscripteffect
+```
+
+Also measured: `probe_sources.sh` -> `751 files, 0 failed, 0 errors; link: LINKED (287 undefined, 0
+duplicates)` — 287 is the baseline in `build/goal/judge/undef.base.count`, unchanged;
+`check_symbol_names.py` -> 0 missing names (525 units); `check_decl_order.py --unit
+MetroidPrime/ScriptObjects/CScriptEffect` -> `ok: 1 unit(s) checked, none emits its functions out of
+retail order`. (`docs/HANDOFF.md`'s state block shows the judge's own rewritten 12228/10680 lines —
+that is `goal_check.sh` rewriting derived counts, not an edit of mine.)

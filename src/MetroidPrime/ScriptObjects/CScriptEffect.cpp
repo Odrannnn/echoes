@@ -347,6 +347,7 @@ void CScriptEffect::UpdateGeneratorRate(CStateManager& mgr) {
 }
 
 void CScriptEffect::PreRender(CStateManager& mgr) {
+  const CAABox& bounds = GetOtherBounds();
   bool visible = false;
   if (!mCanRender) {
     mRemTime = rstl::max_val(mDurationResetWhileVisible, mRemTime);
@@ -368,7 +369,6 @@ void CScriptEffect::PreRender(CStateManager& mgr) {
       }
     }
     if (visible && !mEffectLights.null()) {
-      const CAABox& bounds = GetOtherBounds();
       const CVector3f center = bounds.GetCenterPoint();
       mEffectLights->BuildAreaLightList(mgr, mgr.GetWorld()->GetAreaAlways(GetCurrentAreaId()),
                                         CAABox(center, center));
@@ -376,7 +376,25 @@ void CScriptEffect::PreRender(CStateManager& mgr) {
     }
   }
   SetPreRenderClipped(!visible);
-  // TODO: submit visible effects to the two special render queues for non-normal order.
+  if (visible) {
+    // Retail 0x80081A40: the two special render queues, keyed on mRenderOrder (a 2-bit field
+    // at 0x2CA). Read through a reference rather than GetUniqueId(), which is the same
+    // by-value-argument temporary CScriptSkyRipple's fn_70_78C builds.
+    const TUniqueId& id = *reinterpret_cast< const TUniqueId* >(
+        reinterpret_cast< const uint* >(this) + 2);
+    switch (mRenderOrder) {
+    case kRO_Normal:
+      break;
+    case kRO_Queue1: {
+      const TUniqueId copy = id;
+      mgr.fn_80037A04(copy);
+      break;
+    }
+    case kRO_Queue2:
+      mgr.fn_80037984(id);
+      break;
+    }
+  }
 }
 
 void CScriptEffect::ResetParticleCounts() {
