@@ -17,6 +17,7 @@
 #include "MetroidPrime/Player/CFrontEndGameMode.hpp"
 #include "MetroidPrime/Player/CGMSinglePlayer.hpp"
 #include "MetroidPrime/Player/CGameStateBlocks.hpp"
+#include "MetroidPrime/Player/CPersistentOptionsMap.hpp"
 #include "MetroidPrime/Player/CGameMode.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/Player/CWorldTransManager.hpp"
@@ -26,6 +27,7 @@
 #include "dolphin/os.h"
 #include "rstl/algorithm.hpp"
 #include "rstl/math.hpp"
+#include "rstl/red_black_tree.hpp"
 
 #include <stdio.h>
 #include <string.h>
@@ -159,6 +161,73 @@ extern "C" void* fn_801465A8(void* const* begin, void* const* end, void* dst) {
   }
   return out;
 }
+
+// Retail 0x80146338, 0x1B8 = 440 bytes: the option map's rbtree node insert (see
+// `CPersistentOptionsMapInsert.cpp`, its only caller). `fn_80008CE0` is the node constructor.
+//
+// The three results are file statics, not literals: retail loads `true`, `false`, `true` from
+// three consecutive `.sdata` bytes (`-31135/-31134/-31133(r13)`), which a literal `true` would
+// turn into `li r0,1` (93.82% measured). Guest layout throughout (`SMap` is the DOL's tree), so
+// the port, which keeps the option map in a host `rstl::map` (`PortCPersistentOptionsMap.cpp`),
+// does not compile it and does not need `fn_80008CE0` / `fn_800273B4` defined.
+#ifndef TARGET_PC
+extern "C" SMapNode* fn_80008CE0(SMap* tree, SMapNode* left, SMapNode* right, SMapNode* parent,
+                                 u32 colour, const SMapEntry* entry);
+
+static bool sInsertedFirst = true;
+static bool sFound = false;
+static bool sInserted = true;
+
+extern "C" void fn_80146338(SMapInsert* out, SMap* tree, SMapNode* root, const SMapEntry* entry) {
+  if (root == nullptr) {
+    tree->x10_root = fn_80008CE0(tree, nullptr, nullptr, nullptr, 0, entry);
+    ++tree->x04_count;
+    tree->x08_header = tree->x10_root;
+    tree->x0c_rightmost = tree->x10_root;
+    out->x0_iter.x00_node = tree->x10_root;
+    out->x0_iter.x04_end = reinterpret_cast< SMapNode* >(&tree->x08_header);
+    out->x8_inserted = sInsertedFirst;
+    return;
+  }
+  SMapNode* cur = root;
+  SMapNode* created = nullptr;
+  while (created == nullptr) {
+    bool less = fn_800273B4(&tree->x01_compare_this, entry->key, cur->x10_key);
+    if (!less && !fn_800273B4(&tree->x01_compare_this, cur->x10_key, entry->key)) {
+      out->x0_iter.x00_node = cur;
+      out->x0_iter.x04_end = reinterpret_cast< SMapNode* >(&tree->x08_header);
+      out->x8_inserted = sFound;
+      return;
+    }
+    if (less) {
+      if (cur->x00_left == nullptr) {
+        created = fn_80008CE0(tree, nullptr, nullptr, cur, 1, entry);
+        cur->x00_left = created;
+        if (cur == tree->x08_header) {
+          tree->x08_header = created;
+        }
+      } else {
+        cur = cur->x00_left;
+      }
+    } else {
+      if (cur->x04_right == nullptr) {
+        created = fn_80008CE0(tree, nullptr, nullptr, cur, 1, entry);
+        cur->x04_right = created;
+        if (cur == tree->x0c_rightmost) {
+          tree->x0c_rightmost = created;
+        }
+      } else {
+        cur = cur->x04_right;
+      }
+    }
+  }
+  ++tree->x04_count;
+  rstl::rbtree_rebalance(&tree->x08_header, created);
+  out->x0_iter.x00_node = created;
+  out->x0_iter.x04_end = reinterpret_cast< SMapNode* >(&tree->x08_header);
+  out->x8_inserted = sInserted;
+}
+#endif // TARGET_PC
 
 uint CEnvironmentVariable::GetBitCount(uint value) {
   uint count = 0;
