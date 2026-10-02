@@ -19,6 +19,17 @@ struct is_trivially_destructible< pair< TUniqueId, CTransform4f > > {
 };
 } // namespace rstl
 
+// Retail's five max-of-splines steps in the constructor (0x8010B168: `lfs f0,36(r31) / fcmpo
+// cr0,f1,f0 / bge / b / fmr f0,f1 / stfs f0,36(r31)`) are not conditional stores but selects that
+// store unconditionally, and this is the only spelling measured that emits that phi. In an `if`
+// MWCC folds the store to the taken arm (`ble` + `stfs f1`), and a ternary whose arms both call
+// `GetMaxTime` calls it twice. Taking `t` by value rather than by reference is what stops the fold;
+// the test is `t < duration` because retail's `bge` is `fcmpo cr0,f1,f0` read as
+// `maxTime >= duration`.
+static inline float MaxDuration(float duration, float t) {
+  return t < duration ? duration : t;
+}
+
 CScriptActorRotate::~CScriptActorRotate() {}
 
 void CScriptActorRotate::StopRotation() { mPlaying = false; }
@@ -89,21 +100,35 @@ void CScriptActorRotate::UpdateActors(bool next, CStateManager& mgr) {
 
   mActors.clear();
   const rstl::vector< TUniqueId > ids = FindConnectedObjects(mgr, kSS_Play, kSM_Play);
-  mActors.reserve(ids.size());
-  for (int i = 0; i < ids.size(); ++i) {
-    if (CActor* act = TCastToPtr< CActor >(mgr.ObjectById(ids[i]))) {
-      mActors.push_back(
-          rstl::pair< TUniqueId, CTransform4f >(act->GetUniqueId(), act->GetTransform().GetRotation()));
-    }
-    if (CScriptPlatform* plat = TCastToPtr< CScriptPlatform >(mgr.ObjectById(ids[i]))) {
-      plat->SetRotateController(GetUniqueId());
+  // `ids.size() > 0` and not `!ids.empty()`: retail's guard is `cmpwi r4,0 / ble` (0x8010A4E4) and
+  // jumps to the loop's own condition test, so it covers the reserve and the loop together.
+  if (ids.size() > 0) {
+    mActors.reserve(ids.size());
+    for (int i = 0; i < ids.size(); ++i) {
+      if (CActor* act = TCastToPtr< CActor >(mgr.ObjectById(ids[i]))) {
+        // `push_back_unsafe`, not `push_back`: the reserve above is for every id, so retail has no
+        // capacity test and no growth path at the push (0x8010A548 reads `mCount`, bumps it, and
+        // stores straight into `mItems + mCount * 52`).
+        mActors.push_back_unsafe(rstl::pair< TUniqueId, CTransform4f >(
+            act->GetUniqueId(), act->GetTransform().GetRotation()));
+      }
+      if (CScriptPlatform* plat = TCastToPtr< CScriptPlatform >(mgr.ObjectById(ids[i]))) {
+        plat->SetRotateController(GetUniqueId());
+      }
     }
   }
 
   SendScriptMsgs(kSS_Play, mgr, kInvalidUniqueId, kSM_None);
   if (!mActors.empty()) {
     StartRotation();
-    mCurrentTime = next ? mDuration : 0.f;
+    // The two-armed `if`, not `next ? mDuration : 0.f`: retail stores in both arms
+    // (`lfs f0,36(r26) / stfs f0,452(r26) / b` then `lfs f0,0(0) / stfs f0,452(r26)`, 0x8010A5FC),
+    // and the ternary sinks the second store into the merge block instead.
+    if (next) {
+      mCurrentTime = mDuration;
+    } else {
+      mCurrentTime = 0.f;
+    }
   }
 }
 
@@ -125,20 +150,22 @@ void CScriptActorRotate::Think(float dt, CStateManager& mgr) {
 
 void CScriptActorRotate::UpdateTargetRotation(CStateManager& mgr) {
   CheckEnd(mgr);
-  CEntity* entity = mgr.GetObjectByIdFromListAll(mTargetId);
-  if (entity == nullptr) {
-    return;
-  }
-  CScriptActorRotate* target =
-      static_cast< CScriptActorRotate* >(entity->TypesMatch(kET_ScriptActorRotate));
+  CScriptActorRotate* target = TCastToPtr< CScriptActorRotate >(mgr.ObjectById(mTargetId));
   if (target == nullptr) {
     return;
   }
 
+  // Retail's three angles go through `CMath::ClampRadians`, not `CRelAngle::FromDegrees`: each has
+  // the `FastFmod` shape at 0x8010A75C-0x8010A7A4 (`fmuls / fctiwz / stfd / xoris 32768 / lfd /
+  // fsubs / fnmsubs / fcmpo / bge / fadds`), which is a modulo into [0, 2pi) and then one
+  // conditional add, not the bare `fmuls` a degrees-to-radians conversion emits.
   const CTransform4f rotation =
-      CTransform4f::RotateZ(CRelAngle::FromDegrees(mZRotation.EvaluateAt(mCurrentTime))) *
-      CTransform4f::RotateY(CRelAngle::FromDegrees(mYRotation.EvaluateAt(mCurrentTime))) *
-      CTransform4f::RotateX(CRelAngle::FromDegrees(mXRotation.EvaluateAt(mCurrentTime)));
+      CTransform4f::RotateZ(CRelAngle::FromRadians(
+          CMath::ClampRadians(mZRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f)))) *
+      CTransform4f::RotateY(CRelAngle::FromRadians(
+          CMath::ClampRadians(mYRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f)))) *
+      CTransform4f::RotateX(CRelAngle::FromRadians(
+          CMath::ClampRadians(mXRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f))));
   target->SetActorTransforms(rotation);
 }
 
@@ -189,25 +216,10 @@ CScriptActorRotate::CScriptActorRotate(TUniqueId uid, const rstl::string& name,
 , mPlaying(false) {
   if ((mFlags & kF_DurationFromSplines) != 0) {
     mDuration = mXRotation.GetMaxTime();
-    float maxTime = mYRotation.GetMaxTime();
-    if (maxTime > mDuration) {
-      mDuration = maxTime;
-    }
-    maxTime = mZRotation.GetMaxTime();
-    if (maxTime > mDuration) {
-      mDuration = maxTime;
-    }
-    maxTime = mXScale.GetMaxTime();
-    if (maxTime > mDuration) {
-      mDuration = maxTime;
-    }
-    maxTime = mYScale.GetMaxTime();
-    if (maxTime > mDuration) {
-      mDuration = maxTime;
-    }
-    maxTime = mZScale.GetMaxTime();
-    if (maxTime > mDuration) {
-      mDuration = maxTime;
-    }
+    mDuration = MaxDuration(mDuration, mYRotation.GetMaxTime());
+    mDuration = MaxDuration(mDuration, mZRotation.GetMaxTime());
+    mDuration = MaxDuration(mDuration, mXScale.GetMaxTime());
+    mDuration = MaxDuration(mDuration, mYScale.GetMaxTime());
+    mDuration = MaxDuration(mDuration, mZScale.GetMaxTime());
   }
 }

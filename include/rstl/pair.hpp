@@ -106,13 +106,21 @@ inline void construct_impl(void* dest, const pair< float, float >& src) {
 }
 
 // `CScriptActorRotate` is the only user of `pair<TUniqueId, CTransform4f>`, and retail copies it
-// as one 52-byte block: the out-of-line `CTransform4f` copy (`fn_800E88FC`, 48 bytes) plus the
-// trailing word (`CScriptActorRotate::UpdateActors`, 0x8010A568). A placement `new` of the pair's
-// copy constructor emits the same 48 bytes member-wise instead, so this pair goes through
-// assignment, like the two pairs above.
+// as one 52-byte block, split at 48: `rstl::vector<pair<TUniqueId, CTransform4f>>::reserve`'s loop
+// (0x8010B278) is `mr r3,dst / mr r4,src / bl fn_800E88FC` - the out-of-line `CTransform4f` copy,
+// called on the *pair's* base - followed by `lwz r0,48(src) / stw r0,48(dst)`, and
+// `UpdateActors` (0x8010A568) builds the pair the same way. Neither a placement `new` of the pair's
+// copy constructor nor its implicit `operator=` emits that: the first outlines the whole loop and
+// the second calls `__as__12CTransform4fFRC12CTransform4f` at the member's own offset 4. So the
+// block copy is spelled out here, in the two pieces retail uses, and the two together are the
+// pair's whole object representation - no member is dropped. `fn_800E88FC` is declared in
+// `Kyoto/Math/CTransform4f.hpp` and redeclared here only so this header needs not include it.
+extern "C" void fn_800E88FC(CTransform4f* self, const CTransform4f& other);
+
 template < typename T >
 inline void construct_impl(void* dest, const pair< T, CTransform4f >& src) {
-  *static_cast< pair< T, CTransform4f >* >(dest) = src;
+  fn_800E88FC(static_cast< CTransform4f* >(dest), *reinterpret_cast< const CTransform4f* >(&src));
+  reinterpret_cast< uint* >(dest)[12] = reinterpret_cast< const uint* >(&src)[12];
 }
 
 

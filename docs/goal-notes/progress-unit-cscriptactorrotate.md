@@ -119,3 +119,141 @@ The `CScriptPlatform.hpp` addition is a single inline setter,
 `// TODO: record this controller on any connected script platform.` where the store belongs, so
 this fills in the TODO with retail's behaviour rather than adding new behaviour. No class layout
 changed (`CHECK_SIZEOF(CScriptPlatform, 0x490)` still holds and the DOL sha1 gate passes).
+
+---
+
+# Run 2 (lane 4, 2026-10-02) - `10/16 -> 13/16`
+
+The previous run's work is in HEAD (`1379b9b4`); this run re-measured the clean tree first and got
+the same numbers the notes recorded, then took the three functions closest to done.
+
+**`10/16 -> 13/16`**, `12265 -> 12268` matched functions overall, linked unchanged at 5863.
+`./tools/goal_check.sh build/goal/item.json` -> **PASS**, with no `WORSE` line in
+`build/gate-diff.log` (checked by grep).
+
+## Files touched
+
+- `src/MetroidPrime/ScriptObjects/CScriptActorRotate.cpp` (the four hunks below)
+- `include/rstl/pair.hpp` (one `construct_impl` body + comment)
+
+No `asm`, no judge-owned path, no `configure.py`/`config/` change, unit not promoted.
+
+## Per function (before -> after), all re-measured on this tree
+
+| function | before | after | what changed |
+| --- | --- | --- | --- |
+| `reserve(int)` | 87.0% | **100%** | the pair's `construct_impl` now *is* the 52-byte block copy (see below) |
+| ctor (460 B) | 90.7% | **100%** | `MaxDuration` helper: `t < duration ? duration : t`, by value |
+| `UpdateActors(bool, CStateManager&)` | 83.7% | **100%** | `push_back_unsafe`, `ids.size() > 0` guard, two-armed `if` for `mCurrentTime` |
+| `UpdateTargetRotation` | 45.6% | **87.1%** | `ObjectById` + `TCastToPtr`, and `ClampRadians` + `FromRadians` instead of `FromDegrees` |
+| `UpdateActorRotations` | 1.9% | 1.9% | not attempted (still a stub) |
+| `LoadActorRotate` | absent | absent | not attempted (still not in our source) |
+
+## The three that reached 100%, and the mechanism
+
+The common cause of two of the three is a codegen fact worth having in general:
+
+**MWCC folds `x = cond ? t : x` into a conditional store; retail's MWCC did not.** Retail wants
+`cmp / b<cc> / b / fmr / stfs` - a phi and one unconditional store. Every spelling in the previous
+run's list folded to `ble + stfs f1` (4 instructions) instead. Two spellings stop the fold, and both
+were needed here:
+
+- **Passing the running value through a by-value helper** (`static inline float MaxDuration(float
+  duration, float t) { return t < duration ? duration : t; }`, then `mDuration =
+  MaxDuration(mDuration, spline.GetMaxTime());`). By *reference* the fold still happens; by value
+  with both arms spelled out it does not. `t < duration`, not `t >= duration`: retail's `bge` is
+  `fcmpo cr0,f1,f0` read as `maxTime >= duration`, so the source test has to be written as the
+  mirror image to get the same branch.
+- **Writing the two arms as two statements** (`if (next) { mCurrentTime = mDuration; } else
+  { mCurrentTime = 0.f; }`). The ternary sinks the second store into the merge block; retail stores
+  in both arms (0x8010A5FC).
+
+Measured, ctor (460 B, before 90.7%): `t >= d ? t : d` **86.1**; `t > d ? t : d` **90.4**;
+`@T < mDuration ? mDuration : @T` (unhoisted) **91.3** but calls `GetMaxTime` twice; hoisted
+`{ const float t = @T; mDuration = t >= mDuration ? t : mDuration; }` **94.8**; hoisted
+`{ const float t = @T; mDuration = t < mDuration ? mDuration : t; }` **100**; `<=` variant **95.4**;
+hoisted `if (t >= mDuration)` **86.3**; `CMath::Max` either order **80.8**/**81.0**; `FastMax`
+**76.7**; `if/else` with a self-assigning else **77.6**. So the previous run's list was right that
+everything folds and wrong that nothing can: the missing ingredient is the by-value call.
+
+Measured, `UpdateActors` (436 B, before 83.7%; the new `construct_impl` alone moved it to 83.1):
+`push_back_unsafe` only **97.2**; `push_back_unsafe` + `!ids.empty()` **99.0**; + `ids.size() > 0` +
+ternary tail **99.0**; + `ids.size() > 0` + two-armed `if` tail **100**; `push_back` + guard +
+two-armed `if` **84.9**. Two details that are retail's and not arbitrary: the guard is `size() > 0`
+(`cmpwi r4,0 / ble`, 0x8010A4E4 - `!empty()` gives `beq`), and there is no capacity test at the push
+at all, because the reserve covers every id.
+
+**The pair's copy is a 52-byte block copy split at 48, and neither `operator=` nor a placement
+`new` emits it.** The previous run's `construct_impl` assigned the pair, which gave
+`lhz / addi r3,r30,4 / addi r4,r29,4 / sth / bl __as__12CTransform4fFRC12CTransform4f`; retail
+(0x8010B278) is `mr r3,dst / mr r4,src / bl fn_800E88FC` - the *copy constructor*, called on the
+pair's own base - then `lwz r0,48(src) / stw r0,48(dst)`. The two halves together are the whole
+52-byte object representation, so the body now spells them out. Also measured: the generic
+placement-`new` path (specialization deleted) drops `reserve` to 51.4% and `UpdateActors` to 81.9%,
+because it outlines the whole copy loop.
+
+## `UpdateTargetRotation`: 45.6% -> 87.1%, and where it stops
+
+Two of the three things the previous run left as "settled logic" were not in the source at all, and
+putting them in took the function from 45.6% to 87.1%:
+
+- the cast is `TCastToPtr<CScriptActorRotate>(mgr.ObjectById(mTargetId))`, not
+  `GetObjectByIdFromListAll` + `TypesMatch` (retail calls the out-of-line
+  `TCastToPtr<18CScriptActorRotate>__FP7CEntity` and has no vtable dispatch). This is the same
+  spelling `Think` already used, and the previous run's own reviewer flagged the mismatch.
+- the angles are `CRelAngle::FromRadians(CMath::ClampRadians(deg * (M_PIF / 180.f)))`. The evidence
+  is retail's per-angle block at 0x8010A75C-0x8010A7A4: `fmuls f4,f2,f1 / stw r0,320(r1) / lfd f3 /
+  fmuls f2,f4,f0 / fctiwz / stfd / lwz / xoris 32768 / stw / lfd / fsubs / fnmsubs / fcmpo / bge /
+  fadds`, and the two SDA21 constants it loads are `lbl_8041BB7C` = 0x3e22f983 = 1/(2pi) and
+  `lbl_8041BB74` = 0.0f (read out of the DOL with `tools/dol_read.py 0x8041BB74 0x1c`). That is
+  `FastFmod`'s shape; `FromDegrees` emits one `fmuls` and cannot produce it. The previous run had
+  identified this shape but did not land the spelling.
+
+What is left is only the order MWCC evaluates the three `EvaluateAt` calls in, and where it puts the
+two live angles. Retail calls `mXRotation` first, then `mYRotation`, then `mZRotation`; ours calls
+Z, Y, X, because a left-associated `RotateZ * RotateY * RotateX` evaluates its leaves in source
+order. And retail keeps the first two angles in `f31`/`f30` across the calls
+(`stfd f31,384(r1) / xsmsubadp / stfd f30,368(r1) / xxsel`), giving a 400-byte frame; ours keeps
+`f2` and allocates 368. Seven spellings measured **in this run**, all worse than the one kept:
+three named `CTransform4f` multiplied `z * y * x` **34.96**; three named `CRelAngle` then the
+expression **39.52**; one expression `RotateX * RotateY * RotateZ` **36.53**; `RotateZ * (RotateY *
+RotateX)` **34.81**; three named degree floats then the expression **78.12**. (The previous run's
+five were measured against the old body, so they are not comparable to these and are not repeated.)
+
+WALL: CScriptActorRotate::UpdateTargetRotation 87.1% - every call and the whole arithmetic now match
+retail, and what is left is MWCC's evaluation order for the three EvaluateAt calls plus its choice of
+f31/f30 over f2 (a 400- vs 368-byte frame); seven spellings measured this run, none closer.
+
+## Still open, with the evidence
+
+- **`UpdateActorRotations` (1640 B, 1.9%) is still a stub** calling only `CheckEnd`. Retail
+  0x8010A960 is 1640 bytes. Not attempted this run: it is a from-scratch function and nothing
+  measured here is a prerequisite for it. Prime 1's donor has the shape at
+  `prime-ref/src/MetroidPrime/ScriptObjects/CScriptActorRotate.cpp:89-103` (`timeOffset *
+  mRotation.GetX/Y/Z` into `RotateX * RotateY * RotateZ`, then `it->second * xf`, then the
+  translation add, then `UpdatePlatformRiders`), and Echoes' version additionally reuses
+  `ClampRadians` for six splines and branches on `mFlags` bits 25 and 29 - the same six-spline
+  max-of-`GetMaxTime` block the constructor now matches, which is worth reusing.
+- **`LoadActorRotate` (540 B) is not in our source.** Retail 0x80109F88: a 512-byte frame, three
+  `CMayaSpline` constructions, an `SLdrSpline`-shaped property block, and a binary search over
+  property tags (`lwz r3,8(r25) / lhz r30,0(r3)` then `cmpw r4,r31 / beq / bge` against four
+  `lis`/`addi` tag constants) inside a loop. The report lists it with no `fuzzy_match_percent`
+  because our object does not define it. Writing it is the same kind of work as
+  `UpdateActorRotations`.
+- **This unit cannot be flipped as it stands, and that is pre-existing, not from this run.** On a
+  clean HEAD (measured by checking the two files out and re-running both) `check_decl_order.py`
+  already says "would break on a flip" and `unit_fit.sh` already reports "6 function(s) present in
+  ours but not in the retail unit object, 1148 bytes total". Both are unchanged by this run: no
+  function was added or moved, and the 6 extras are the same 6. Fixing either is its own item.
+
+## Note for the reviewer
+
+Three hunks in the `.cpp` look like deliberate contortions, so the evidence is in the comment at
+each one: `MaxDuration` reproduces retail's unconditional store of a select in the ctor;
+`push_back_unsafe` and `ids.size() > 0` reproduce retail's absent capacity test and its `ble` guard;
+the two-armed `if` reproduces retail's duplicated store. None of them drops work - the pair's
+`construct_impl` copies all 52 bytes in retail's two pieces, and no initialisation was removed to
+buy a percentage. The `pair.hpp` addition is a redeclaration of `fn_800E88FC` (already declared in
+`Kyoto/Math/CTransform4f.hpp`) plus a two-line body for one pair type that only this unit
+instantiates; no class layout changed, and the DOL sha1 and all 86 REL hashes still hold
+(`gate.sh` inside `goal_check.sh`).
