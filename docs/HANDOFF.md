@@ -389,6 +389,17 @@ to 0 in the queue (`carve-8000447C`, `carve-80032674`, `carve-802188e4`,
 `fails=1` (backups `*.bak-dberr-*` in the goal dir). A lane runs the script it started with, so
 the change takes effect at each lane's next restart.
 
+**The loop started opencode's background service, 2026-10-02 - fixed in the script, live at each
+lane's next restart.** `prune_sessions()` ran `opencode session delete` without `--standalone`; that
+is a client of `opencode serve --service` and starts it when it is not running. Lane 9 did so at
+19:34:55 (the process sits in the `mp2-goal` cgroup with lane 9's `TMPDIR`), and the service then
+resumed unfinished sessions from the shared `~/.local/share/opencode/opencode.db`: a session of
+another project that OpenChamber's own server was also running, and at 19:55 a `goal_check.sh` in
+`wt-mp2-goal-L1` while lane 1's own agent was on `progress-twin-rel-digitalguardian` - so that
+trial item may have had two agents in its tree. Both deletes are now `--standalone` (checked:
+it runs and answers "Session not found" for a bogus id). Until every lane is restarted the old
+script can start the service again; `opencode service status` shows whether it is up.
+
 **Two loop improvements, measured 2026-10-02.** (1) *Judged-PASS work was thrown away at publish -
 built, live at each lane's next restart.* Of 464 agent runs that day, 316 passed the judge and 225
 landed; 97 were released by `rebase_onto_tip()` in `tools/run_goal.sh` ("does not apply on H") for a
