@@ -1627,6 +1627,9 @@ MetroidPrime/ScriptLoader/MysteryFlyer.cpp:
 	.text       start:0x8023283C end:0x80232868
 	.sbss       start:0x80419640 end:0x80419648
 
+MetroidPrime/ScriptLoader/Carve80232868.c:
+	.text       start:0x80232868 end:0x80232870
+
 MetroidPrime/ScriptLoader/AtomicBeta.cpp:
 	.text       start:0x80232870 end:0x8023289C
 	.sbss       start:0x80419648 end:0x80419650
