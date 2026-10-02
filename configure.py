@@ -2141,6 +2141,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsHooks.cpp"),
             Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsOrbitPosition.cpp"),
             Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsCanRender.cpp"),
+            Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsLeafCache.cpp", mw_version="GC/2.7"),
         ],
     ),
     # SafeZone (module 66), four units. `CScriptSafeZone.cpp` is RELExit/RELMain, .text

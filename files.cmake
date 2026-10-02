@@ -1446,6 +1446,7 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/Enemies/CSwarmBasicsHooks.cpp
     src/MetroidPrime/Enemies/CSwarmBasicsOrbitPosition.cpp
     src/MetroidPrime/Enemies/CSwarmBasicsCanRender.cpp
+    src/MetroidPrime/Enemies/CSwarmBasicsLeafCache.cpp
     src/MetroidPrime/ScriptObjects/CFlyerSwarm.cpp
     src/MetroidPrime/ScriptObjects/ScriptFrontEndDataNetwork.cpp
     src/MetroidPrime/ScriptObjects/CScriptScriptStreamedMovie.cpp
