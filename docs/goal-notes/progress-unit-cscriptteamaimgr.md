@@ -342,3 +342,157 @@ python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
 for the whole tree in about a second, which is fast enough to sweep spellings. The `lanediff.sh`
 mnemonics are not the score - `cmplw` vs `cmpw` and `bdnz bb0` vs `bdnz adc` are the same bytes,
 while a real `cmp`/`cmpl` difference is one byte in the XO field - so read the scores, not the diff.
+## Run 3 (2026-10-02, lane L2 again): 33 -> 42 of 71. `goal_check.sh` -> `PASS`.
+
+Measured on the clean tree first (run 2's result was already committed): `build/report.json` had
+`main/MetroidPrime/ScriptObjects/CScriptTeamAiMgr` at **33/71**, unit fuzzy 70.59%, global `matched`
+12357 / `linked` 5863. It now reads **42/71**, unit fuzzy **70.97%**, matched code 60.23%, global
+`matched` **12366**, `linked` held at 5863 (the unit stays `NonMatching`; `configure.py` was not
+touched and `flip_test.sh` was not run). `tools/report_diff.py` prints `no regression`; no `asm`
+added; the change is confined to `src/MetroidPrime/ScriptObjects/CScriptTeamAiMgr.cpp`.
+
+Judge output, verbatim:
+
+    ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+    ok    counts: matched 12357 -> 12366   linked 5863 -> 5863
+    ok    target rose: main/MetroidPrime/ScriptObjects/CScriptTeamAiMgr: 33 -> 42 / 71 functions
+    ok    no asm added
+    goal_check: PASS progress-unit-cscriptteamaimgr
+
+### The nine functions that reached 100% this run
+
+| function | before | after | the change that did it |
+|---|---|---|---|
+| `JoinTeam` | 94.84% | **100%** | `if (size < capacity) {insert} else {return false}` + a named `pos` local |
+| `IsPartOfTeam` | 99.24% | **100%** | named `found` local, `end()` on its right |
+| `IsMeleeAttacking` | 99.12% | **100%** | same |
+| `CanStartMeleeAttack` | 99.21% | **100%** | same |
+| `CanStartProjectileAttack` | 99.21% | **100%** | same |
+| `StartMeleeAttack` | 98.73% | **100%** | named `found` + named `pos` locals |
+| `StartProjectileAttack` | 98.73% | **100%** | same |
+| `QuitTeam` | 99.88% | **100%** | named `found` local before `erase` |
+| `PositionTeam` | 97.98% | **100%** | `switch` with `case 0:` stacked on `default:` |
+
+Raised and kept: `FindBestIndividualAttackTarget` 97.30% -> 99.69% (rule 3 below).
+Unchanged: `EndTeamAction` 95.14%, `GetTeamActionCount` 99.33%, `IsPerformingTeamAction` 99.47%,
+`SetMemberTargetId` 98.06%, `StartTeamAction` 86.93%, `TouchingAnyTeammates` 88.88%.
+
+## The codegen rules this run established
+
+All four are source-level. The first **supersedes run 2's rule 1** ("put `end()` on the left"), which
+was the best spelling available then; the superseded text is annotated in the .cpp, not deleted.
+
+1. **Put the search result in a named local and compare that local against `end()`.**
+   `found = rstl::binary_find(begin, end, x); return found != mRoles.end();` - not
+   `return end != binary_find(...)` inline. This is not cosmetic: with the call inline mwcceppc
+   evaluates `end()` first, keeps it live across the call in a callee-saved register, and the tail
+   compares against that stale copy; with a named local the `end()` is necessarily evaluated *after*
+   the call, so the tail re-reads `mCount`/`mItems` and rebuilds the pointer - which is what retail
+   does - and the two values then land in the registers retail puts them in.
+   Measured: `IsPartOfTeam` 99.24 -> 100, `IsMeleeAttacking` 99.12 -> 100,
+   `CanStartMeleeAttack`/`CanStartProjectileAttack` 99.21 -> 100,
+   `StartMeleeAttack`/`StartProjectileAttack` 98.73 -> 100, `QuitTeam` 99.88 -> 100.
+   Control: `end()` on the right but *no* named local falls back to 92.27%, so it is the local, not
+   the operand order.
+2. **The same applies to the insertion point.** `mRoles.insert(pos, role)` with
+   `pos = rstl::lower_bound(...)` in a local, not `insert(lower_bound(...), role)`. Retail's extra
+   `stw r0,72(r1)` - a second copy of the result into the argument slot - only appears with the
+   local. `JoinTeam` 94.84 -> 100; the block-order fix alone was 98.79, the `pos` local the rest.
+3. **Do not bind across a call retail re-reads** (run 2's rule 6, confirmed on a second function).
+   `const CPlayer& player = *mgr.GetPlayer(i);` in `FindBestIndividualAttackTarget` costs a
+   callee-saved register and turns retail's `stmw r25,52(r1)` into our `stmw r24,48(r1)`; writing
+   `mgr.GetPlayer(i)->` out at both use sites fixes the register set. 97.30 -> 99.69.
+4. **`if (C) {A} else {B}`, `if (!C) {B} else {A}` and a `switch` with a redundant second label do
+   not produce the same layout.** Retail's `PositionTeam` dispatch is
+   `cmpwi r0,1 / beq SpacingSort / bge loop / b loop`: all three outcomes branch and both arms sit
+   out of line. `if (mode == 1) {SpacingSort} else {loop}` emits `bne` + `SpacingSort` inline
+   (97.98%). `switch (mode) { case 1: ...; default: ...; }` emits `beq / b` (99.04%). Stacking
+   `case 0:` immediately above `default:` makes mwcceppc build the three-way dispatch and it matches
+   byte for byte (100%). The routing is unchanged - `case 0:` and `default:` are the same code, so
+   only mode 1 reaches `SpacingSort`. The comment in the file says so and warns against `>= 1`,
+   which is the real semantic trap (a reviewer rejected that on 2026-10-01).
+
+## Spellings measured and rejected this run (do not retry these)
+
+- **The `cmpw` operand-order wall is confirmed on a third function, and it is not the operand order
+  in the source.** On `EndTeamAction`, all of `action == it->mAction`,
+  `static_cast<int>(it->mAction) == action`, `it->mAction == static_cast<int>(action)`,
+  `!(it->mAction != action)` and `(it->mAction == action) == true` emit the identical `cmpw r5,r0`
+  where retail has `cmpw r0,r5` (95.14% every time); `it->mAction - action == 0` is worse (93.71%).
+  Retail consistently puts the just-`lwz`ed operand on the left and mwcceppc consistently puts it on
+  the right, and swapping the source does not change that.
+- **`PositionTeam`:** `if (mode != 1) {loop} else {SpacingSort}` 88.41%; `switch` with `default:` first
+  88.41%; `case 2:` stacked on `default:` 98.02% (mwcceppc then emits `cmpwi r0,2 / bge / cmpwi r0,1
+  / ...`, two compares). Only `case 0:` gives retail's single compare.
+- **`FindBestIndividualAttackTarget`, six spellings, all 99.69%:** the whole remaining 0.31% is one
+  thing - `bestScore` lives in `f30` in retail and `f31` for us, the loop's `penalty` temp taking the
+  other. Swapping the declaration order of `target`/`bestScore` (96.16%), a named `kPenaltyScale`,
+  `float(1000.f)`, swapping the two assignments inside the `if`, a named `delta` for the vector
+  difference, and dropping `const` from `penalty` all leave it at 99.69%. Six bytes, one fp register
+  choice.
+- **`SetMemberTargetId`, two more spellings:** an explicit `const TUniqueId ownerId(memberId);`
+  feeding the role ctor is 96.86%; run 2's `const TUniqueId newTarget(targetId);` is still exactly
+  98.06%. Retail's frame has one dword more than ours (ten slots against nine) and the extra one, at
+  8(r1), is written only by the dead `sth r0,8(r1)` just before the member store.
+- **`StartTeamAction`:** a named `const STeamAction sa(id, action);` is 86.93% (no change) and
+  `push_back` instead of `push_back_unsafe` is 48.49%.
+
+## The 22 `fn_*` functions are not reachable - measured, so no lane should try them
+
+The item's `reason` lists six of them at 0.0%. They are not missing code: our object already emits
+every one of them as an `rstl` template instantiation, and retail has no map symbol for any of them,
+so objdiff names the target region `fn_<addr>` and pairs it with nothing. The size match is exact
+and one-to-one - retail `fn_8017631C` (320 B) = our `__sort3<CTeamAiRole, CRoleSorter>` (0x140),
+`fn_8017622C` (240) = `swap<CTeamAiRole>` (0xf0), `fn_801759A0` (580) = `sort<...>` (0x244),
+`fn_80174C44` (32) = `construct<CTeamAiRole>` (0x20), `fn_80174C8C` (92) =
+`CTeamAiRole::CTeamAiRole(const CTeamAiRole&)` (0x5c), and so on for all 22. Our object has 81 text
+symbols against retail's 71 functions. Matching them would need a symbol literally called
+`fn_80174C44`, i.e. an `extern "C"` duplicate of a function the build already emits - duplicating
+code to move a counter, not decompiling. Not attempted, and recommended against.
+
+## Correction to the NEW filed by run 1
+
+Run 1 filed `NEW: ... this unit needs a codegen experiment (register-allocation or `cmpw` ordering),
+not another spelling pass`, on the grounds that `lanediff` showed the short functions differing only
+in register numbers and stack offsets. **That is superseded.** Nine functions reached 100% this run
+and seven in run 2, all from source-level differences that `lanediff` showed as pure register
+allocation. The residue really is small: 7 functions - 3 behind the `cmpw` wall, 2 behind a dead
+store or dead initialisation, 1 an fp register choice, 1 a frame size. No new NEW line is filed: it
+would re-queue this same item for the same work.
+
+## What is left, and why (all seven measured this run)
+
+- **`cmpw` operand order** (1 byte): `GetTeamActionCount` 99.33%, `IsPerformingTeamAction` 99.47%,
+  and `EndTeamAction` 95.14% - which additionally needs retail's reload of the loop iterator before
+  the argument copy (`lwz r0,16(r1)` / three `addi` / `stw r0,8(r1)` / `bl`, against our
+  `stw r3,8(r1)` / three `addi` / `bl`).
+- **A dead store / dead initialisation.** `SetMemberTargetId` needs the extra dword and its `sth`;
+  `StartTeamAction` needs `li r0,-1 / stw r0,16(r1)` before `stw r31,16(r1)`, i.e. retail
+  materialises a by-value `ETeamAction` argument slot and pre-fills it with -1. Two named
+  temporaries produce neither.
+- **`TouchingAnyTeammates` 88.88%:** retail's frame is 256 bytes against our 224, and its prologue
+  spills `f31` with `xxsel vs31,vs1,vs0,vs35` where mwcceppc gives us `psq_st f31,216(r1)`. That is a
+  prologue decision, not a source shape, and every slot in the function is then displaced by
+  28-32 bytes.
+- **`FindBestIndividualAttackTarget` 99.69%:** the `f30`/`f31` allocation above.
+
+## WALL
+
+WALL: EndTeamAction 95.14% - `cmpw` operand order plus the argument-copy reload; five compare spellings tried this run, none moves it.
+WALL: GetTeamActionCount 99.33% - same `cmpw` operand order, re-measured on a third function this run.
+
+## Reproducing
+
+```sh
+export MP_TOOLCHAIN_DIR=/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort
+./tools/decomp_build.sh MetroidPrime/ScriptObjects/CScriptTeamAiMgr.cpp   # per-unit, ~30 s
+./tools/fast_try.sh MetroidPrime/ScriptObjects/CScriptTeamAiMgr            # per-function scores, ~1 s
+./tools/lanediff.sh MetroidPrime/ScriptObjects/CScriptTeamAiMgr <symbol>   # the per-function diff
+python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+./tools/goal_check.sh build/goal/item.json
+```
+
+`fast_try.sh` is the loop to use and is what made this run's sweep cheap: nine functions moved and
+about forty variants measured, each build about one second. `check_decl_order.py --unit
+MetroidPrime/ScriptObjects/CScriptTeamAiMgr` still reports `none emits its functions out of retail
+order`.

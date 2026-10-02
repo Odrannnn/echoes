@@ -172,10 +172,13 @@ bool CScriptTeamAiMgr::JoinTeam(const CAi& ai, CTeamAiRole::ETeamAiRole roleA,
   rstl::vector< CTeamAiRole >::iterator found =
       rstl::binary_find(mRoles.begin(), mRoles.end(), role);
   if (found == mRoles.end()) {
-    if (mRoles.size() >= mRoles.capacity()) {
+    if (mRoles.size() < mRoles.capacity()) {
+      rstl::vector< CTeamAiRole >::iterator pos =
+          rstl::lower_bound(mRoles.begin(), mRoles.end(), role);
+      mRoles.insert(pos, role);
+    } else {
       return false;
     }
-    mRoles.insert(rstl::lower_bound(mRoles.begin(), mRoles.end(), role), role);
   } else {
     *found = role;
   }
@@ -188,7 +191,11 @@ void CScriptTeamAiMgr::QuitTeam(TUniqueId id) {
   EndMeleeAttack(id);
   EndProjectileAttack(id);
   const CTeamAiRole role(id);
-  mRoles.erase(rstl::binary_find(mRoles.begin(), mRoles.end(), role));
+  // Named local, as in `IsPartOfTeam` and `JoinTeam`: the search result in a local is what puts
+  // the three argument slots in retail's order. 99.88% -> 100%.
+  rstl::vector< CTeamAiRole >::iterator found =
+      rstl::binary_find(mRoles.begin(), mRoles.end(), role);
+  mRoles.erase(found);
   UpdateTeamCaptain();
 }
 
@@ -222,22 +229,31 @@ bool CScriptTeamAiMgr::HasTeamAiRole(TUniqueId id) const {
   return false;
 }
 
-// `end()` is the LEFT operand of the final `!=` on purpose, in this function and in every other
-// one below. mwcceppc evaluates a binary operator's operands right to left, so with the call on
-// the left it evaluates `end()` first, keeps it live in a callee-saved register across the
-// `lower_bound` call, and the tail compares against that stale register. Retail instead re-reads
-// `mCount`/`mItems` after the call and rebuilds the end pointer
-// (`lwz r0,76(r31) / lwz r3,84(r31) / mulli r0,r0,44 / add r0,r3,r0`), which is only correct -
-// and only reachable - if the expression is evaluated after the call. Swapping the operands is
-// what makes it: 92.27% -> 99.24% here, 79.78% -> 99.12% in `IsMeleeAttacking`.
+// Superseded 2026-10-02: the rule below ("`end()` is the LEFT operand") was the best available
+// spelling then and is superseded by the named-local form used in every function below - putting
+// the search result in a local makes the `end()` be evaluated after the call, which is what
+// actually forces mwcceppc to re-read `mCount`/`mItems` and rebuild the end pointer
+// (`lwz r0,76(r31) / lwz r3,84(r31) / mulli r0,r0,44 / add r0,r3,r0`). Kept for the reasoning,
+// not as guidance: with the named local the operand order is `found != mRoles.end()`.
+// Written inline as `end() != binary_find(...)` the old spelling measured 92.27% here and 79.78%
+// in `IsMeleeAttacking`; the named local reaches 100% in both.
 bool CScriptTeamAiMgr::IsPartOfTeam(TUniqueId id) const {
   const CTeamAiRole role(id);
-  return mRoles.end() != rstl::binary_find(mRoles.begin(), mRoles.end(), role);
+  // A *named* local, and `end()` on its right. Written inline as `end() != binary_find(...)` the
+  // tail's two values land in the opposite registers (99.24%); with the result in a local the
+  // `end()` is evaluated after the call - which is what makes mwcceppc re-read
+  // `mCount`/`mItems` and rebuild the pointer instead of reusing the stored copy - and the
+  // registers fall the right way round.
+  rstl::vector< CTeamAiRole >::const_iterator found =
+      rstl::binary_find(mRoles.begin(), mRoles.end(), role);
+  return found != mRoles.end();
 }
 
 bool CScriptTeamAiMgr::IsMeleeAttacking(TUniqueId id) const {
-  return mMeleeAttackers.end() !=
-         rstl::binary_find(mMeleeAttackers.begin(), mMeleeAttackers.end(), id);
+  // The named-local spelling of `IsPartOfTeam`: 99.12% -> 100%.
+  rstl::vector< TUniqueId >::const_iterator found =
+      rstl::binary_find(mMeleeAttackers.begin(), mMeleeAttackers.end(), id);
+  return found != mMeleeAttackers.end();
 }
 
 bool CScriptTeamAiMgr::CanStartMeleeAttack(TUniqueId id) const {
@@ -245,12 +261,12 @@ bool CScriptTeamAiMgr::CanStartMeleeAttack(TUniqueId id) const {
       mMeleeAttackers.size() < mData.mMaxMeleeAttackerCount) {
     return true;
   }
-  // `end()` first (see `IsPartOfTeam`), and the `true` arm positive with the `false` arm last:
-  // retail's tail is `cmplw r4,r0 / beq -> li r3,0 / li r3,1 / b`, i.e. the "not found" block sits
-  // after the found one. A single `return end != binary_find(...)` puts them the other way round
-  // (81.65% -> 99.10%).
-  if (mMeleeAttackers.end() !=
-      rstl::binary_find(mMeleeAttackers.begin(), mMeleeAttackers.end(), id)) {
+  // A named local for the search result, `end()` on its right: see `IsPartOfTeam`. It is what
+  // makes the `end()` be evaluated after the call, so the tail re-reads `mCount`/`mItems` and
+  // rebuilds the pointer. 99.21% -> 100%.
+  rstl::vector< TUniqueId >::const_iterator found =
+      rstl::binary_find(mMeleeAttackers.begin(), mMeleeAttackers.end(), id);
+  if (found != mMeleeAttackers.end()) {
     return true;
   }
   return false;
@@ -259,15 +275,13 @@ bool CScriptTeamAiMgr::CanStartMeleeAttack(TUniqueId id) const {
 bool CScriptTeamAiMgr::StartMeleeAttack(TUniqueId id) {
   if (mTimeSinceMelee >= mData.mMeleeTimeInterval &&
       mMeleeAttackers.size() < mData.mMaxMeleeAttackerCount && HasTeamAiRole(id)) {
-    // `end()` on the left, for the evaluation-order reason in `IsPartOfTeam`; here it is what
-    // makes the tail re-read `mCount`/`mItems` instead of reusing the stored end copy
-    // (92.91% -> 98.73%). Still 1.27% short: the tail compare is retail's `cmplw r0,r3` where we
-    // emit `cmplw r3,r0` - see the `cmpw` operand-order wall in the notes.
-    if (mMeleeAttackers.end() ==
-        rstl::binary_find(mMeleeAttackers.begin(), mMeleeAttackers.end(), id)) {
+    rstl::vector< TUniqueId >::const_iterator found =
+        rstl::binary_find(mMeleeAttackers.begin(), mMeleeAttackers.end(), id);
+    if (found == mMeleeAttackers.end()) {
       mMeleeAttackers.reserve(mMeleeAttackers.size() + 1);
-      mMeleeAttackers.insert(rstl::lower_bound(mMeleeAttackers.begin(), mMeleeAttackers.end(), id),
-                             id);
+      rstl::vector< TUniqueId >::iterator pos =
+          rstl::lower_bound(mMeleeAttackers.begin(), mMeleeAttackers.end(), id);
+      mMeleeAttackers.insert(pos, id);
       mTimeSinceMelee = 0.f;
     }
     return true;
@@ -288,8 +302,9 @@ bool CScriptTeamAiMgr::CanStartProjectileAttack(TUniqueId id) const {
       mProjectileAttackers.size() < mData.mMaxProjectileAttackerCount) {
     return true;
   }
-  if (mProjectileAttackers.end() !=
-      rstl::binary_find(mProjectileAttackers.begin(), mProjectileAttackers.end(), id)) {
+  rstl::vector< TUniqueId >::const_iterator found =
+      rstl::binary_find(mProjectileAttackers.begin(), mProjectileAttackers.end(), id);
+  if (found != mProjectileAttackers.end()) {
     return true;
   }
   return false;
@@ -298,11 +313,13 @@ bool CScriptTeamAiMgr::CanStartProjectileAttack(TUniqueId id) const {
 bool CScriptTeamAiMgr::StartProjectileAttack(TUniqueId id) {
   if (mTimeSinceProjectile >= mData.mProjectileTimeInterval &&
       mProjectileAttackers.size() < mData.mMaxProjectileAttackerCount && HasTeamAiRole(id)) {
-    if (mProjectileAttackers.end() ==
-        rstl::binary_find(mProjectileAttackers.begin(), mProjectileAttackers.end(), id)) {
+    rstl::vector< TUniqueId >::const_iterator found =
+        rstl::binary_find(mProjectileAttackers.begin(), mProjectileAttackers.end(), id);
+    if (found == mProjectileAttackers.end()) {
       mProjectileAttackers.reserve(mProjectileAttackers.size() + 1);
-      mProjectileAttackers.insert(
-          rstl::lower_bound(mProjectileAttackers.begin(), mProjectileAttackers.end(), id), id);
+      rstl::vector< TUniqueId >::iterator pos =
+          rstl::lower_bound(mProjectileAttackers.begin(), mProjectileAttackers.end(), id);
+      mProjectileAttackers.insert(pos, id);
       mTimeSinceProjectile = 0.f;
     }
     return true;
@@ -394,17 +411,23 @@ void CScriptTeamAiMgr::PositionTeam(CStateManager& mgr) {
   const CVector3f aim = mgr.GetPlayer(0)->GetAimPosition(mgr, 0.f);
   const CVector3f position = aim + mPlayerForwardProjectionDistance *
                                   mgr.GetPlayer(0)->GetTransform().GetForward().AsNormalized();
-  // Retail tests `cmpwi r0,1 / beq SpacingSort / bge loop / b loop` (main.elf
-  // 0x801739F4-0x80173A04): only mode == 1 reaches SpacingSort, and mode >= 2 reaches the
-  // per-member GetOrigin loop. `>= 1` emits `cmplwi r0,1 / blt loop` and routes every mode >= 1 to
-  // SpacingSort, which is a different behaviour. The `static_cast<int>` is the signedness of the
-  // compare, not the predicate: `mPositionMode` is a `uint`, and a `uint` left operand makes
-  // mwcceppc emit the unsigned `cmplwi r0,1` where retail has the signed `cmpwi r0,1`
-  // (90.99% -> 97.98%). The last 2% is block order: retail emits the `SpacingSort` arm as the
-  // fall-through of `beq`, we emit the member loop.
-  if (static_cast<int>(mData.mPositionMode) == 1) {
+  // The routing is exactly `if (mode == 1) SpacingSort(...); else <member loop>` - `case 0:` and
+  // `default:` are the same code, so no value but 1 reaches `SpacingSort`. Retail tests
+  // `cmpwi r0,1 / beq SpacingSort / bge loop / b loop` (main.elf 0x801739F4-0x80173A04), i.e. all
+  // three outcomes branch and `SpacingSort` sits out of line; the extra `case 0:` label is what
+  // makes mwcceppc build that three-way dispatch instead of the two-branch `beq / b` that a bare
+  // `case 1:` + `default:` gives (97.98% -> 99.04% -> 100%). DO NOT "simplify" this back to
+  // `>= 1`: that emits `cmplwi r0,1 / blt loop` and sends every mode >= 1 to `SpacingSort`, which
+  // is a different behaviour (a reviewer rejected it on 2026-10-01). The `static_cast<int>` is the
+  // signedness of the compare, not the predicate: `mPositionMode` is a `uint`, and a `uint` left
+  // operand makes mwcceppc emit the unsigned `cmplwi r0,1` where retail has the signed `cmpwi r0,1`
+  // (90.99% -> 97.98%).
+  switch (static_cast<int>(mData.mPositionMode)) {
+  case 1:
     SpacingSort(mgr, position);
-  } else {
+    break;
+  case 0:
+  default:
     for (rstl::vector< CTeamAiRole >::iterator it = mRoles.begin(); it != mRoles.end(); ++it) {
       CTeamAiRole& role = *it;
       if (CPatterned* ai =
@@ -412,6 +435,7 @@ void CScriptTeamAiMgr::PositionTeam(CStateManager& mgr) {
         role.mPosition = ai->GetOrigin(mgr, role, position);
       }
     }
+    break;
   }
 }
 
@@ -514,10 +538,10 @@ TUniqueId CScriptTeamAiMgr::FindBestIndividualAttackTarget(CStateManager& mgr, c
     if (mgr.GetPlayerState(i)->IsPlayerAlive()) {
       const float penalty = 100.f * targetCounts[i];
       if (penalty < bestScore) {
-        const CPlayer& player = *mgr.GetPlayer(i);
-        const float score = penalty + (player.GetTranslation() - ai.GetTranslation()).Magnitude();
+        const float score =
+            penalty + (mgr.GetPlayer(i)->GetTranslation() - ai.GetTranslation()).Magnitude();
         if (score < bestScore) {
-          target = player.GetUniqueId();
+          target = mgr.GetPlayer(i)->GetUniqueId();
           bestScore = score;
         }
       }
