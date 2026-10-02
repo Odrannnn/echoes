@@ -32,11 +32,18 @@ public:
   CEntity* TypesMatch(int typeId) const override;
   void AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) override;
 
+  // Guessed names: retail reads the three splines directly out of the actor - `CSpindleCamera`
+  // computes on them through pointers into this object - so nothing in retail names them.
+  CMotionSpline& GetTargetSpline() const { return mTargetSpline; }
+  CMayaSpline& GetTargetControlSpline() const { return mTargetControlSpline; }
+  CMotionSpline& GetPlayerSpline() const { return mPlayerSpline; }
+
 private:
   CSpindleCameraParameters mParameters;
-  CMotionSpline mTargetSpline;
-  CMayaSpline mTargetControlSpline;
-  CMotionSpline mPlayerSpline;
+  // Evaluation updates spline caches, not the scripted settings.
+  mutable CMotionSpline mTargetSpline;
+  mutable CMayaSpline mTargetControlSpline;
+  mutable CMotionSpline mPlayerSpline;
   CTransform4f mOrigXf;
 };
 CHECK_SIZEOF(CScriptSpindleCamera, 0x6e0)

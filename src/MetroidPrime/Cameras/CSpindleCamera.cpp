@@ -1,6 +1,15 @@
 #include "MetroidPrime/Cameras/CSpindleCamera.hpp"
 
+#include "Kyoto/Math/CMath.hpp"
+#include "Kyoto/Math/CloseEnough.hpp"
 #include "MetroidPrime/CCameraManager.hpp"
+#include "MetroidPrime/CHintManager.hpp"
+#include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/Cameras/CBallCamera.hpp"
+#include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptCameraHint.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptSpindleCamera.hpp"
+#include "MetroidPrime/TCastTo.hpp"
 
 CSpindleCameraInterpolant::CSpindleCameraInterpolant(ESpindleInput input, const CMayaSpline& spline)
 : mInput(input), mSpline(spline) {}
@@ -63,13 +72,48 @@ CSpindleCamera::CSpindleCamera(TUniqueId uid, const CTransform4f& xf, bool activ
 CSpindleCamera::~CSpindleCamera() {}
 
 void CSpindleCamera::Reset(const CTransform4f& xf, CStateManager& mgr) {
-  // TODO: Resolve the active camera hint, refresh the ball camera's look position, and run reset
-  // Think.
+  // Retail resolves and casts the active hint before it tests the flag, and tests the two guards
+  // separately. See docs/goal-notes/progress-unit-cspindlecamera.md: this spelling reproduces
+  // retail's block layout exactly, but mwcc materialises the flag with `extrwi.` where retail
+  // tests the bit in place with `rlwinm.`.
+  CScriptCameraHint* hint =
+      TCastToPtr< CScriptCameraHint >(fn_801B9480(CameraManager(mgr).HintManager(), mgr));
+  if (GetActive()) {
+    if (hint) {
+      mInResetThink = true;
+      CameraManager(mgr).BallCamera()->UpdateLookAtPosition(0.01f, mgr, false);
+      Think(0.01f, mgr);
+      mInResetThink = false;
+      mFixedPositionInitialized = false;
+    }
+  }
 }
 
 float CSpindleCamera::CalculateTargetSplineDistance(CStateManager& mgr) const {
-  // TODO: Project the player onto the target spline, or map progress through the control spline.
-  return 0.f;
+  const CScriptSpindleCamera* camera =
+      TCastToConstPtr< CScriptSpindleCamera >(mgr.GetObjectById(mSpindleCameraId));
+  if (!camera) {
+    return 0.f;
+  }
+
+  CMotionSpline& targetSpline = camera->GetTargetSpline();
+  if (targetSpline.GetControlPointCount() == 0u) {
+    return 0.f;
+  }
+
+  if (camera->GetPlayerSpline().GetControlPointCount() == 0u) {
+    // The ball position is passed straight from the temporary `GetBallPosition` returns into;
+    // naming it makes mwcc copy it into a second stack slot first.
+    return targetSpline.FindClosestLengthOnSpline(mTargetSplineDistance,
+                                                  Player(mgr).GetBallPosition());
+  }
+
+  if (close_enough(camera->GetPlayerSpline().GetLength(), 0.f, 3.f)) {
+    return 0.f;
+  }
+  const float progress =
+      CMath::Clamp(0.f, mPlayerSplineDistance / camera->GetPlayerSpline().GetLength(), 1.f);
+  return camera->GetTargetControlSpline().EvaluateAt(progress) * targetSpline.GetLength();
 }
 
 float CSpindleCamera::GetInVar(const CSpindleCameraInterpolant& interpolant) const {

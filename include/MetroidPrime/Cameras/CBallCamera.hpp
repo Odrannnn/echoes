@@ -77,6 +77,8 @@ public:
   void InvalidateSpline();
 
 private:
+  // Retail's `CSpindleCamera::Reset` calls `UpdateLookAtPosition` on the ball camera directly.
+  friend class CSpindleCamera;
   // Guessed name
   struct SFromBallTransition {
     SFromBallTransition();
