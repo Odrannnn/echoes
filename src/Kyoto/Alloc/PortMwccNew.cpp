@@ -18,6 +18,7 @@
 #include <new>
 
 #include "Kyoto/Alloc/CMemory.hpp"
+#include "Kyoto/CToken.hpp"
 
 extern "C" void* __nw__FUlPCcPCc(unsigned long size, const char* /*fileAndLine*/,
                                  const char* /*type*/) {
@@ -32,6 +33,19 @@ extern "C" void* __nw__FUlPCcPCc(unsigned long size, const char* /*fileAndLine*/
 // unclaimed by any unit (`symbols.txt:12992`, 0x802CE388, 0x64 bytes), so `dtk`'s own object
 // supplies the bytes in the DOL link and this is only what a host link binds to.
 extern "C" void Free__7CMemoryFPCv(const void* ptr) { CMemory::Free(ptr); }
+
+// Retail's own mangled name for `CToken::~CToken()`, reached the same way.  `src/MetroidPrime/
+// Carve80024B70.c` (retail 0x80024B70..0x80024C18) is the unit that needs it: that is
+// `rstl::vector<TToken<CCharLayoutInfo>>::~vector()`, whose element loop calls
+// `bl __dt__6CTokenFv` with `li r4,0` once per token.  Like `Free__7CMemoryFPCv` above, retail
+// defines it (`symbols.txt:13922`, 0x8030154C, 0x68 bytes, claimed by `Kyoto/CToken.cpp`), so the
+// DOL link resolves it and this is only what a host link binds to.  The 16-bit second argument is
+// MWCC's deleting-destructor flag, which the host's C++ destructor does not take; the flag is
+// always 0 from this call site, so it is accepted and ignored and the work is `CToken`'s own
+// destructor above.
+extern "C" void __dt__6CTokenFv(void* self, short) {
+  static_cast< CToken* >(self)->~CToken();
+}
 
 // The other half of the same split. Retail's `operator delete` is `CMemory::Free`, and `Matching`
 // units rely on it: `CResLoader::AddGroupCache` takes its buffer from `CMemory::Alloc` and gives it
