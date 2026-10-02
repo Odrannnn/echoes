@@ -489,6 +489,15 @@ synthetic three-way only). Generating the `configure.py` / `splits.txt` / `files
 from the carve files is **not built** - wait for the resolver's kept/released counts before
 restructuring three files every lane and every prompt names. (6) Sonnet removed, above.
 
+**Vtable-name trial, seeded 2026-10-02 (open - read the verdicts).** `tools/rel_class_map.py` gives
+module virtuals the name of the DOL virtual they override. Ten items were put at the head of the
+queue to test whether that helps a lane: five `progress-vt-rel-*` (digitalguardian, splitter,
+ingboostballguardian, scriptsafezone, emperoringstage3) list 12 small unmatched virtuals with the
+overridden name; five `progress-vtctl-rel-*` (darkcommando, darksamus, ing, grenchler, gunturret)
+list 12 chosen the same way with the names withheld. Compare landed/failed and functions gained
+per group; only a clear gain justifies naming CPatterned's vtable (RUNNING_THE_DECOMP). Ten items
+is a small sample and the modules differ, so treat a narrow difference as no result.
+
 **Five more, 2026-10-02 late evening (what each came to).** (1) **Every module's `REL_Setup` tail is
 now claimed.** 22 modules had no `REL/REL_Setup.cpp` split; `tools/wire_rel_setup.py` claimed 20 of
 them with no agent run (the other two, `ScriptCoin` and `ScriptGui`, already link the tail from a
