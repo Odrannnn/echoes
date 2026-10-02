@@ -1829,6 +1829,9 @@ MetroidPrime/ScriptLoader/RubiksPuzzle.cpp:
 	.text       start:0x802399C8 end:0x802399F4
 	.sbss       start:0x804196C0 end:0x804196C8
 
+MetroidPrime/ScriptLoader/Carve8023B634.c:
+	.text       start:0x8023B634 end:0x8023B67C
+
 MetroidPrime/ScriptLoader/Carve8023C860.c:
 	.text       start:0x8023C860 end:0x8023C8A8
 
