@@ -30,17 +30,25 @@ static const char* const skPressStartTextureName = "TXTR_HealthWarningPressStart
 
 // Guessed name; converts splash artwork coordinates to framebuffer coordinates.
 static CVector2f SplashToScreen(const CVector2f& point, bool healthWarning) {
+  // The artwork is laid out in a 720-wide space on both video modes, so retail's first ternary
+  // loads 720 from the same constant slot in both arms. Spelling it with videoWidth stops MWCC
+  // folding `(videoWidth - 666.f) * 0.5f` and `(videoWidth - 660.f) * 0.5f` to 27 and 30 at
+  // compile time, which is what the old `(720.f - ...)` spelling did and retail does not do.
+  const float videoWidth = CGraphics::Is50Hz() ? 720.f : 720.f;
   const float videoHeight = CGraphics::Is50Hz() ? 574.f : 480.f;
-  const float imageHeight = CGraphics::Is50Hz() ? 528.f : 448.f;
-  const float borderX = (720.f - 666.f) * 0.5f;
+  const float artWidth = 666.f;
+  const float borderX = (videoWidth - artWidth) * 0.5f;
   const float borderY = (videoHeight - 448.f) * 0.5f;
-  const float healthWarningTop = -23.f;
-  const float y = healthWarning ? 448.f * (point.GetY() - healthWarningTop) / 471.f : point.GetY();
+  const float imageHeight = CGraphics::Is50Hz() ? 528.f : 448.f;
   const GXRenderModeObj& mode = CGraphics::GetRenderMode();
-  return CVector2f((borderX + 666.f * point.GetX() / 608.f - (720.f - 660.f) * 0.5f) *
-                       (float(mode.fbWidth) / 660.f),
-                   (borderY + 448.f * (448.f - y) / imageHeight - borderY) *
-                       (float(mode.xfbHeight) / 448.f));
+  const float screenX = (borderX + artWidth * point.GetX() / 608.f - (videoWidth - 660.f) * 0.5f) *
+                         (float(mode.fbWidth) / 660.f);
+  const float healthWarningTop = -23.f;
+  const float artY = healthWarning ? 448.f * (point.GetY() - healthWarningTop) / 471.f
+                                   : point.GetY();
+  const float screenY = (borderY + 448.f * (448.f - artY) / imageHeight - borderY) *
+                        (float(mode.xfbHeight) / 448.f);
+  return CVector2f(screenX, screenY);
 }
 
 // Guessed name; the progressive-check stage deliberately has no texture.
