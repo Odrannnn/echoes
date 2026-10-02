@@ -251,3 +251,160 @@ Measured:
 ## Still absent in this unit (measured 0%): `LoadGameFileState__10CGameStateFPCv` (488 B), `push_back` for
 `vector<CWorldState>` (56 B), `erase` for `vector<pair<uint,TEditorId>>` (76 B). Not attempted this run; the
 `LoadGameFileState` structure is in the earlier section above.
+
+---
+
+# Run on lane 5 (`wt-mp2-goal-L5`, head 47a515d9) - unit 108 -> 110 / 116, project 13133 -> 13135
+
+`goal_check.sh` **PASS**. Nothing committed. Both functions below are the item's own (its `reason`
+names them), so no `NEW:` line is filed.
+
+Overtaken upstream (not this item's verdict, which is PASS): `fn_801465EC` is now
+`reserve__Q24rstl37vector<Uc,...>Fi` and the `__dt__11CGMFrontEndFv` wall is now
+`__dt__17CFrontEndGameModeFv`; both are 100% on this tree (measured in `build/report.json`). Do not
+retry either. Same correction as lane 9's note.
+
+## A measurement that corrects this file's premise: a missing `fuzzy_match_percent` means
+## **paired at 0%**, not "absent"
+
+Earlier sections here (and lane 2's) read a function with no `fuzzy_match_percent` in
+`build/report.json` as one our object does not define. It is not. `build/tools/objdiff-cli diff -p .
+-u main/MetroidPrime/Player/CGameState -o f.json --format json` prints both symbol tables, and for
+`push_back__...vector<11CWorldState...>` it showed `left: size 56, match_percent 0.0` paired with
+`right: size 144, match_percent 0.0`. The report simply omits the key at 0.0, and
+`tools/fast_try.sh` prints those as `0.00%`. So "0.00%" means *defined but wrong*, which is a
+different and usually cheaper problem than "not defined". Run the `objdiff-cli diff` once before
+concluding a function is absent.
+
+## Landed: `reserve__Q24rstl48vector<11CWorldState,...>Fi` 71.37% -> **100%** (172 B)
+
+`src/MetroidPrime/Player/CGameState.cpp:120-155`. The `extern "C" fn_801466F4` carve was
+**byte-identical to retail** (measured with `tools/bytescmp.py`: 4 differing instructions of 43, all
+four `bl` relocations) and still scored nothing, because retail's symbol at 0x801466F4 is the
+mangled instantiation. The fix is the recipe in `docs/RUNNING_THE_DECOMP.md` (line ~959) for a
+non-inline template member: a **non-inline explicit specialization**, spelled where reverse source
+order puts it.
+
+    template <>
+    void rstl::vector< CWorldState >::reserve(int newSize) { ... }
+
+mwcceppc 2.7 accepts it (`reserve` is declared out of line in `rstl/vector.hpp`) and emits it
+**strong `T`** at the source position - `nm` puts it at 0x5e6c, between `fn_801465A8` (0x5e28) and
+`fn_801467A0` (0x5f18), which is retail's order. It also removes the weak 180-byte generic
+instantiation and its local `uninitialized_copy<pointer_iterator<CWorldState>,CWorldState*>` (104 B)
+from the object.
+
+**The one spelling detail that is load-bearing:** the body must re-read `mItems` at each use rather
+than hoisting it into a local. With `uchar* const first = reinterpret_cast<uchar*>(mItems);` the
+function is 176 bytes at 84.91%: the hoisted pointer takes a *callee-saved* register (`r30`) because
+it is live across the `fn_8014680C` call, retail keeps `this` in `r29` / the parameter in `r30` and
+uses volatile `r0`/`r6`, and ours needs a fifth register (`stw r28,32(r1)`). The generic `reserve`
+in `rstl/vector.hpp` re-reads its members, which is why the carve was exact and the first
+specialization was not.
+
+## Landed: the 56-byte append at 0x801426E0, 0% -> **100%**, by renaming the retail symbol
+
+The eighth upstream sync renamed 0x801426E0 in `config/G2ME01/symbols.txt` to
+`push_back__Q24rstl48vector<11CWorldState,...>FRC11CWorldState`. Our object emitted that name
+(weak, 144 bytes - the *growth-checking* `push_back` from `rstl/vector.hpp`, too big for
+`inline_max_size(125)` so both callers `bl` it) and could not pair. The carve `fn_801426E0` in the
+same file is byte-identical to retail's 56 bytes (`bytescmp.py`: 1 differing instruction of 14, the
+`bl`) and paired with nothing.
+
+One line in `config/G2ME01/symbols.txt` (reported as intended changes, per the brief):
+
+    - push_back__Q24rstl48vector<11CWorldState,Q24rstl17rmemory_allocator>FRC11CWorldState = .text:0x801426E0; // type:function size:0x38
+    + fn_801426E0 = .text:0x801426E0; // type:function size:0x38
+
+This is the mechanism `docs/RUNNING_THE_DECOMP.md` line 176 documents. It is safe here: nothing in
+`main.dol` or in any of the 86 `config/G2ME01/rels/*/symbols.txt` names the old symbol (`grep` over
+`config/` returns only that one line), `main.dol` still hashes `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`,
+and `python3 tools/check_symbol_names.py` reports 0 missing names.
+
+### The in-source route, measured, and why it is not the one to take
+
+The specialization **is** expressible - the earlier "mwcceppc cannot express one" wall is only half
+true. All of this measured this run:
+
+| spelling | result |
+|---|---|
+| `template<> void rstl::vector<CWorldState>::push_back(...)` with the member **in the class body** | `object '...push_back(...)' redefined` (reproduced) |
+| declare the specialization early, **define it after the first use** | same `object redefined`, so a declaration alone does not count - the definition must precede the first use |
+| same, with `push_back`'s body moved out of the class in `rstl/vector.hpp` (kept `inline`) | **compiles** |
+| ... with `#pragma dont_inline on` / `reset` around it | compiles; **no effect** - still inlined |
+| ... with `__declspec(noinline)` | `illegal type qualifier(s)` |
+| ... with no caller at all (call sites rewritten to `fn_801426E0`) | **not emitted** - mwcceppc drops an unreferenced explicit specialization |
+
+and the blocking fact: **the 56-byte body is always inlined.** Before the specialization this unit
+paired `StateForWorld` at 100% because both callers emit a `bl`; with the specialization, mwcceppc
+inlines 56 bytes into both (`StateForWorld` 100% -> 90.17%, and the stream constructor
+84.14% -> 83.80%), and no standalone `push_back__...` symbol exists to pair at all. There is no
+in-source spelling that emits it out of line, so renaming the retail symbol is the whole fix. The
+`rstl/vector.hpp` edit was reverted; the header is untouched in the final diff.
+
+## Measured after the change
+
+* unit `main/MetroidPrime/Player/CGameState`: **108 -> 110 / 116** functions,
+  fuzzy 93.03466% -> **93.611755%**, matched code 12816 -> 13044 B. `.rodata` / `.sdata` /
+  `.sdata2` / `.ctors` percentages unchanged.
+* project: 13133 -> **13135** matched functions, fuzzy 37.11898% -> 37.120586%, linked 6225
+  (unchanged), 844/2169 units.
+* `tools/goal_check.sh`: PASS, every line ok. `main.dol` sha1 unchanged, 86 REL hashes ok,
+  `probe_sources.sh` 840 files 0 failed / link LINKED (286 undefined), `unit_fit.sh` unchanged at
+  86 extras / 9364 B over, `check_decl_order.py` ok.
+* `tools/gate.sh` rewrote the two derived counts in `docs/HANDOFF.md` (13133 -> 13135 and
+  11488 -> 11490); that is the gate's own edit, not mine.
+
+## Not attempted, and the one measurement worth keeping
+
+Still unmatched in this unit (measured): `LoadGameFileState__10CGameStateFPCv` 488 B at **0%** (the
+structure is in lane 2's section above; 14 call sites, a 1712-byte frame, too big for one item),
+`StartGameFromFrontEnd__Fv` 784 B 60.11%, `__ct__10CGameStateFR16CBitStreamReader` 1668 B 84.14%,
+`PutTo__18CPersistentOptionsCFR16CBitStreamWriter` 600 B 94.35%,
+`__ct__18CPersistentOptionsFR16CBitStreamReader` 776 B 95.52%,
+`PutTo__10CGameStateFR16CBitStreamWriter` 876 B 96.47%.
+
+`PutTo__10CGameStateFR16CBitStreamWriter` is the only one close enough to be worth a look: its
+side-by-side (`.tmp/opencode/sbs.py`, retail 0x801431DC) is **one register out** for the whole
+body - retail uses r22/r24/r25 where ours uses r23/r25/r26 - with every other difference a `bl`
+relocation objdiff ignores. That is the callee-saved allocation, i.e. one live value too many
+somewhere in a 876-byte function, not a spelling difference. One spelling only, so this is **not** a
+`WALL:` - it is a lead.
+
+## Review rejected run 1 (2026-10-02 19:12:42Z, reviewer worker)
+
+The judge passed this attempt; the reviewer rejected it:
+
+`src/MetroidPrime/Player/CGameState.cpp:141-156` makes a guest-layout body the live `rstl::vector<CWorldState>::reserve` on the 64-bit PC port as well as in the matching build. It hardcodes 36-byte elements (`allocate(newSize * 36)`, `mCount * 36`, `fn_8014680C`'s 36-byte stride) while the host's `CWorldState` is 64 bytes (measured in the port's own object: `StateForWorld` strides `0x40`, `fn_80142760` writes to `+0x38`, the pre-change host `reserve` is `shl $0x6`/`add $0x40`); being a strong definition, it overrides the weak sizeof-based instantiation for every caller, and `CWorld.cpp`/`CMemoryCard.cpp` call `StateForWorld` (`PORT_NOTES.md:483`), so `mWorldStates.reserve()` overflows a 36·n buffer by 28 bytes per element. Acceptable change: keep the guest body that scores 100% but put it behind `#ifndef TARGET_PC` and give the host the sizeof-based body the header's template already has — the shape `src/MetroidPrime/CEntity.cpp:18` and `src/MetroidPrime/Player/CStaticInterference.cpp:13` use — so the matching gain survives.
+
+Rejected diff: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/review/progress-cgamestate-absent-functions-L5-1.patch
+Review transcript: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/agent/progress-cgamestate-absent-functions-L5-1-review1-20261002T190139.jsonl
+
+## Fix round 1 (2026-10-02)
+
+One correction, exactly the one the review asked for: the 36-byte guest body of
+`rstl::vector< CWorldState >::reserve` now lives under `#ifndef TARGET_PC`, and the `#else` arm is a
+second explicit specialization of the same member carrying `include/rstl/vector.hpp`'s own body
+verbatim (`mAllocator.allocate(newData, newSize)` / `uninitialized_copy(begin(), end(), newData)` /
+`destroy` / `mAllocator.deallocate`), i.e. the spelling `src/MetroidPrime/CEntity.cpp:17` and
+`src/MetroidPrime/Player/CStaticInterference.cpp:12` already use. `src/MetroidPrime/Player/CGameState.cpp:151-196`;
+the comment above it records why the two arms differ. Nothing else in the diff was touched.
+
+Measured after the fix (not asserted, measured):
+
+* **Host**: `build-port-link` object builds; `nm` shows `_ZN4rstl6vectorI11CWorldStateNS_17rmemory_allocatorEE7reserveEi`
+  as `T` (strong) and `objdump` shows the sizeof-based body — `shl $0x6,%edi` for
+  `newSize * sizeof(CWorldState)`, `add $0x40,%rax` in the copy loop, signed guard
+  `cmp %esi,0x8(%rdi); jl`. So `mWorldStates.reserve()` allocates 64·n on the host again instead of
+  36·n.
+* **No new link gap**: the host body references `CWorldState::~CWorldState()`, which is already on
+  the accepted list (`docs/research/port_link_gap_list.md:49`, `_ZN11CWorldStateD1Ev`) — it is the
+  generic template's own reference, present whenever the header body is instantiated.
+* **Guest unchanged**: `tools/decomp_build.sh` clean; unit `main/MetroidPrime/Player/CGameState`
+  110 / 116, fuzzy **93.611755%** — identical to the pre-fix figure — with
+  `reserve__Q24rstl48vector<11CWorldState,...>Fi` (172 B) at **100.0%**, `fn_801426E0` (56 B) and
+  `fn_80146338` (440 B) also 100.0. Project 13135 matched functions, 37.120586% fuzzy, `All:` line
+  `37.12% / 30.56% / 13.50% (13135 / 28465)` — unchanged.
+* `tools/goal_check.sh build/goal/item.json` **PASS**, every line ok. `main.dol`
+  `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, `check_symbol_names.py` 0 missing,
+  `check_decl_order.py` ok, `check_raw_offsets.py` ok (176 sites / 76 files). No commit.
