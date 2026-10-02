@@ -402,7 +402,11 @@ void CCompoundTargetReticle::UpdateTargetParameters(CTargetReticleRenderState& s
 
 float CCompoundTargetReticle::CalculateRadiusWorld(const CActor& actor,
                                                    const CStateManager& mgr) const {
-  // TODO: derive reticle radius from the actor's bounds.
+  // TODO: derive reticle radius from the actor's bounds. The body below is reached and
+  // scores 96.11% (see docs/goal-notes/progress-unit-ctargetreticles.md), but it needs a
+  // `TCastToPtr<CSandwormEye>` call for the Sandworm-eye special case, and the port has no
+  // `TCastToPtr<12CSandwormEye>__FR7CEntity` to resolve it to, so landing it would raise the
+  // port's undefined count and fail tools/link_check.sh --strict.
   return 1.f;
 }
 
@@ -412,13 +416,25 @@ CVector3f CCompoundTargetReticle::CalculatePositionWorld(const CActor& actor,
                                     : actor.GetAimPosition(mgr, 0.f);
 }
 
+// `CalculateOrbitZoneReticlePosition` (0x800ACCFC, 0x17C). The whole shape of the function is
+// the *order* MW evaluates in: retail calls `GetCurrentCamera`, then loads
+// `mgr.GetPlayer(mPlayerIndex)` into r31, then calls `GetFov`, and only then
+// `GetTweakPlayer`/`GetOrbitZoneHeight`. So the player pointer has to be a named local
+// evaluated *between* the camera and the fov term - inlined, or declared after the fov term,
+// MW moves the `GetFov` call and the score drops to 82% (measured). That one change took the
+// function 81.00% -> 99.68%; the four instructions still out are a float-register swap, f2
+// and f3 exchanged between the `0.5f` numerator of the `fdivs` and the `int`->`double`
+// temporary of the `(float)CCast::LtoF(...)` below, and 11 spellings did not move them
+// (see docs/goal-notes/progress-unit-ctargetreticles.md).
 CVector3f CCompoundTargetReticle::CalculateOrbitZoneReticlePosition(const CStateManager& mgr,
                                                                     bool lag) const {
   const CGameCamera* cam = mgr.GetCameraManager(mPlayerIndex)->GetCurrentCamera(mgr, true);
-  float halfExtY = CCast::LtoF(
-      mgr.GetPlayer(mPlayerIndex)->GetTweakPlayer()->GetOrbitZoneHeight(CPlayer::kZI_Targeting));
+  const CPlayer* player = mgr.GetPlayer(mPlayerIndex);
+  const float fovHalf = cam->GetFov() * 0.5f;
+  const float halfExtY =
+      CCast::LtoF(player->GetTweakPlayer()->GetOrbitZoneHeight(CPlayer::kZI_Targeting));
   float dist = 224.f / halfExtY;
-  dist /= static_cast< float >(tan(cam->GetFov() * 0.5f * (1.f / 360.f) * (2.f * M_PIF)));
+  dist /= static_cast< float >(tan(fovHalf * (1.f / 360.f) * (2.f * M_PIF)));
 
   CTransform4f camXf = mgr.GetCameraManager(mPlayerIndex)->GetCurrentCameraTransform(mgr, true);
   CVector3f fwd = camXf.GetForward();
@@ -494,9 +510,24 @@ void CTargetingManager::Update(float dt, const CStateManager& mgr) {
   mOrbitPointMarker.Update(dt, mgr);
 }
 
+// `CTargetingManager::Draw` (0x800AC744, 0x150). The two viewport locals are load-bearing in
+// this order: retail loads `CGraphics::GetViewport().mHeight` (+0x0C) before `mWidth` (+0x08)
+// and keeps them in f31/f30, which is the argument order `SetPerspective` then copies into
+// f3/f2. It is the same pair, in the same order, as `COrbitPointMarker::Draw` (which is at
+// 100%), so the two functions agree by construction rather than by coincidence. The
+// `int`->`float` conversions of the two viewport fields are MW's own `xoris/lis/lfd/fsubs`
+// sequence, not a reinterpret - `CCast::LtoF` is `static_cast<float>` here.
 void CTargetingManager::Draw(const CStateManager& mgr, bool hideLockOn) const {
-  // TODO: establish ambient lighting, view and perspective before drawing.
+  CGraphics::SetAmbientColor(CColor::White());
+  CGraphics::DisableAllLights();
   mOrbitPointMarker.Draw(mgr);
+  const CGameCamera* curCam = mgr.GetCameraManager(mPlayerIndex)->GetCurrentCamera(mgr, true);
+  const CTransform4f camXf = mgr.GetCameraManager(mPlayerIndex)->GetCurrentCameraTransform(mgr, true);
+  CGraphics::SetViewPointMatrix(camXf);
+  const float vpHeight = static_cast< float >(CGraphics::GetViewport().mHeight);
+  const float vpWidth = static_cast< float >(CGraphics::GetViewport().mWidth);
+  gpRender->SetPerspective(curCam->GetFov(), vpWidth, vpHeight, curCam->GetNearClipDistance(),
+                           curCam->GetFarClipDistance());
   mTargetReticle.Draw(mgr, hideLockOn);
 }
 
