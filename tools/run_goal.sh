@@ -897,7 +897,17 @@ is a failed attempt. Write WALL: or STALE: only for what THIS run measured."
     # An agent error still counts against the item. The 3-strikes rule has to cover agent
     # failures too, or an item the agent cannot even start on sits at fails=0 forever and the
     # loop re-selects it immediately - which is precisely the spin that happened.
-    Q fail "$ID"
+    #
+    # A usage limit is the exception: it is the account's, not the item's. On 2026-10-02 four
+    # lanes on an exhausted Go workspace died in 2-3 s per run and charged 14 items a fail, ten
+    # of which went to review on it. Release the item instead; consec_fail and the backoff below
+    # still apply, so the lane slows down and then stops rather than spinning.
+    if grep -q 'GoUsageLimitError' "$ALOG"; then
+      say "usage limit reached for $(model_for "$agent") - releasing $ID without a fail"
+      Q release "$ID" | tee -a "$LOG"
+    else
+      Q fail "$ID"
+    fi
     consec_fail=$((consec_fail+1))
     if [ "$agent" = worker ] && [ "$agent_errors" -ge 3 ]; then
       say "falling back to --agent spacebunny (the same model, a fresh session) after 3 agent errors"

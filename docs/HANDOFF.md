@@ -320,6 +320,15 @@ on their base and must be redone on the moved branch; and a lane may claim less 
 run when one function will not match (`carve-801fdb5c`), which leaves that function for a later
 item. Rstl template twins (`vector` dtors, `destroy_impl`) are the likely hard ones in plain C.
 
+**A Go usage limit is not an item's fail (2026-10-02).** Lanes 10-13 (`deepseek-v4.1-flash`) ran
+on an exhausted OpenCode Go workspace for about fifteen minutes: every run died in 2-3 s with
+`GoUsageLimitError` and was charged to its item, 14 items in all, ten of them sent to review on it.
+Those fails were taken back by hand (four reset in the queue, ten moved back from review at
+`fails=1`). `run_goal.sh` now releases an item whose transcript holds `GoUsageLimitError` instead of
+failing it; the backoff and the consecutive-failure stop still apply. The limit is counted per
+Console workspace of the `oc_sk_` credential opencode sends for `opencode-go/*` models, not per
+`sk-` Go key, so a lane dying that fast wants `grep GoUsageLimitError` on its transcript first.
+
 **Queue triage, 2026-10-01.** `goal_seed.py` has run dry ("nothing to seed"): its three kinds (REL
 heads, Prime 1 donors, near-done `match` units) do not cover a DOL unit that has source but is far
 from done. 94 such units (2,080 unmatched functions, 77 with a Prime 1 counterpart) were queued by
