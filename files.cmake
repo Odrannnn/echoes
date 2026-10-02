@@ -551,6 +551,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Weapons/Carve801D6920.c
     src/MetroidPrime/Weapons/Carve801D6930.c
     src/MetroidPrime/ScriptObjects/Carve801E2AE8.c
+    src/MetroidPrime/ScriptObjects/Carve801E3864.c
     src/MetroidPrime/ScriptObjects/Carve801E3E34.c
     src/MetroidPrime/ScriptObjects/Carve801E8AEC.c
     src/MetroidPrime/Carve801F3690.c
