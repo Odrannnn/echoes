@@ -3,6 +3,7 @@
 #include "Collision/CCollidableSphere.hpp"
 #include "Kyoto/Math/CRelAngle.hpp"
 #include "MetroidPrime/CCameraManager.hpp"
+#include "MetroidPrime/Cameras/CBallCamera.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CPlayerCameraBob.hpp"
 #include "MetroidPrime/Player/CPlayerGun.hpp"
@@ -13,6 +14,12 @@
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 
 #include "Kyoto/Alloc/CMemory.hpp"
+#include "Kyoto/Audio/CSfxManager.hpp"
+#include "Kyoto/Math/CQuaternion.hpp"
+#include "Kyoto/Math/CUnitVector3f.hpp"
+#include "Kyoto/Math/CVector3f.hpp"
+
+#include <float.h>
 
 // Retail's two unnamed control-tweak flag readers, hosted in
 // `src/MetroidPrime/PortCTweakPlayerControls.cpp` next to `fn_80215860`.
@@ -250,17 +257,25 @@ bool CPlayer::SidewaysDashAllowed(float strafeInput, float forwardInput,
   return false;
 }
 
-// Retail lbl_803A9FB0: 8 floats indexed by `CPlayer::ESurfaceRestraints`.
+// The four 8-float tables this unit indexes by `CPlayer::ESurfaceRestraints`, read out of retail's
+// image with `python3 tools/dol_read.py 0x803A9F70 0x80`:
+//
+//   0x803A9F70  skStrafeDistances        {11.8, 11.8, 11.8, 5, 6, 5, 5, 6}
+//   0x803A9F90  skDashStrafeDistances    {11.8, 30,   22.6, 10, 10, 10, 10, 10}
+//   0x803A9FB0  skStrafeDistancesEchoes  {11.8, 18,   15,   10, 10, 10, 10, 10}
+//   0x803A9FD0  skOrbitForwardDistances  {11.8, 11.8, 11.8, 5, 6, 5, 5, 6}
+//
+// **The declaration order *is* the link order.** This unit has a `.text` and a `.ctors` claim in
+// `config/G2ME01/splits.txt` and no `.rodata` claim, so the linker places the section by matching
+// its bytes against retail's image, whole: the concatenation of these four tables
+// (`ABCD`, 0x80 bytes) has exactly one byte-match in the DOL, at retail's 0x803A9F70, and the two
+// tables `ComputeDash` indexes by one shared base register - `lis r6,-32709; addi r31,r6,-24720`
+// then `lfsx` at `r31+0`, `r31+32` and `r31+96` - land on exactly the three addresses above.
+static const float skStrafeDistances[] = {11.8f, 11.8f, 11.8f, 5.f, 6.f, 5.f, 5.f, 6.f};
+static const float skDashStrafeDistances[] = {11.8f, 30.f, 22.6f, 10.f, 10.f, 10.f, 10.f, 10.f};
 static const float skStrafeDistancesEchoes[] = {11.8f, 18.f, 15.f, 10.f,
                                                 10.f,   10.f, 10.f, 10.f};
-
-// Retail `UpdateCameraBob` (0x80185fcc) indexes this one, not the table above: `lis r4,-32709;
-// addi r3,r4,-24720` is 0x803A9F70, and the eight floats there are this run. Declared after
-// `skStrafeDistancesEchoes` because this unit's `.rodata` is unclaimed in `splits.txt`, and the
-// linker places it by matching the section's bytes against retail's image - so the section has to
-// be the byte-run that starts at retail's 0x803A9FB0, i.e. this table second.
-static const float skOrbitBobStrafeDistances[] = {11.8f, 11.8f, 11.8f, 5.f,
-                                                   6.f,    5.f,    5.f,   6.f};
+static const float skOrbitForwardDistances[] = {11.8f, 11.8f, 11.8f, 5.f, 6.f, 5.f, 5.f, 6.f};
 
 void CPlayer::FinishSidewaysDash() {
   if (mSidewaysDashing) {
@@ -327,7 +342,99 @@ void CPlayer::fn_801892a0(float dt, CStateManager& mgr) {
 }
 
 void CPlayer::ComputeDash(const CFinalInput& input, float dt, CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  // Retail 0x80188D20. Prime 1's body with five measured differences, all visible in retail's
+  // code: the "start the dash" block is a call to `fn_801892a0` (0x801892A0) rather than inline
+  // assignments and sfx; the jump test is `CPlayer::JumpHeld` (0x8022B8F4) rather than
+  // `ControlMapper::GetDigitalInput(kC_JumpOrBoost, ...)`; `x1269_24_` (shift 25) and
+  // `mHitWallDuringMove` (shift 26) stand in for Prime 1's `mSlidingOnWall` / `mHitWall`; the sfx
+  // handle is `x1184_`; and the acceleration carries Echoes' 270.f factor (`lfs f2,-22968(r2)`,
+  // which `tools/sda.py` resolves to 0x8041CA08 = 270.f - resolve every pooled float with it).
+  //
+  // Two spellings below look redundant and are not: retail hoists one reciprocal and multiplies
+  // (`fdivs f5,f0,f26` then three `fmuls f4,f5,f4`), which this repo's `CVector3f::operator/`
+  // does not do - it divides three times - so the reciprocal is written out. And `restraint` is
+  // never read: retail calls `GetSurfaceRestraint` at 0x80188EFC, before the `mNoStrafeDashBlend`
+  // test, and calls it again inside that arm. The dead call is retail's, so it is kept.
+  //
+  // 98.11%, not 100%: four register-allocation differences remain (see the notes).
+  const float strafeInput = StrafeInput(input);
+  const float forwardInput = ForwardInput(input, TurnInput(input));
+  CVector3f orbitPoint = mOrbitPoint;
+  orbitPoint.SetZ(GetTranslation().GetZ());
+  const CVector3f orbitToPlayer = GetTranslation() - orbitPoint;
+  if (!orbitToPlayer.CanBeNormalized()) {
+    return;
+  }
+  CVector3f useOrbitToPlayer = orbitToPlayer;
+  float strafeVelocity = dt * skStrafeDistances[GetSurfaceRestraint()];
+  if (JumpHeld(input)) {
+    mDashButtonHoldTime += dt;
+  }
+  if (!mSidewaysDashing) {
+    if (SidewaysDashAllowed(strafeInput, forwardInput, input)) {
+      fn_801892a0(strafeInput, mgr);
+    }
+    strafeVelocity *= strafeInput;
+  } else {
+    mDashTimer += dt;
+    if (mMovementState == NPlayer::kMS_OnGround || mDashTimer >= mDashDuration || x1269_24_ ||
+        mHitWallDuringMove || mOrbitState != kOS_OrbitObject) {
+      FinishSidewaysDash();
+      strafeVelocity *= strafeInput;
+      CSfxManager::RemoveEmitter(x1184_);
+    } else {
+      const ESurfaceRestraints restraint = GetSurfaceRestraint();
+      if (mNoStrafeDashBlend) {
+        strafeVelocity =
+            dt * (mDashSpeedMultiplier * skDashStrafeDistances[GetSurfaceRestraint()]);
+      } else {
+        float blend = CMath::Limit(mDashTimer / mStrafeDashBlendDuration, 1.f);
+        blend = 1.f - blend;
+        const float dashDifference = skDashStrafeDistances[GetSurfaceRestraint()] -
+                                     skStrafeDistances[GetSurfaceRestraint()];
+        strafeVelocity = dt * (mDashSpeedMultiplier *
+                               (dashDifference * blend +
+                                skStrafeDistances[GetSurfaceRestraint()]));
+      }
+      if (mStrafeInputAtDash < 0.f) {
+        strafeVelocity = -strafeVelocity;
+      }
+    }
+  }
+
+  const float angle = strafeVelocity / orbitToPlayer.Magnitude();
+  float maxAngle = M_PIF * 2.f / 3.f;
+  if (mSidewaysDashing) {
+    maxAngle = M_PIF;
+  }
+  const float limitedAngle = CMath::Limit(angle, maxAngle * dt);
+  const CQuaternion rotation = CQuaternion::AxisAngle(
+      CUnitVector3f(0.f, 0.f, 1.f, CUnitVector3f::kN_Yes), CRelAngle::FromRadians(limitedAngle));
+  useOrbitToPlayer = rotation.Transform(orbitToPlayer);
+  orbitPoint += useOrbitToPlayer;
+  if (!JumpHeld(input)) {
+    mDashButtonHoldTime = 0.f;
+  }
+
+  strafeVelocity = dt * (forwardInput * skOrbitForwardDistances[GetSurfaceRestraint()]);
+  orbitPoint += strafeVelocity * -useOrbitToPlayer.AsNormalized();
+  const CVector2f flatVelocity(GetVelocityWR().GetX(), GetVelocityWR().GetY());
+  const float flatVelocityY = flatVelocity.GetY();
+  const float invDt = 1.f / dt;
+  CVector3f newVelocity = (orbitPoint - GetTranslation()) * invDt;
+  newVelocity.SetZ(GetVelocityWR().GetZ());
+  CVector3f velocityDelta = newVelocity - CVector3f(flatVelocity.GetX(), flatVelocityY, 0.f);
+  velocityDelta.SetZ(0.f);
+  const float deltaMagnitude = velocityDelta.Magnitude();
+  if (deltaMagnitude > FLT_EPSILON) {
+    const float acceleration = 270.f * GetAcceleration();
+    const float accelerationBlend = CMath::Limit(deltaMagnitude / (acceleration * dt), 1.f);
+    const CVector3f dir = (1.f / deltaMagnitude) * velocityDelta;
+    newVelocity = GetVelocityWR() + accelerationBlend * ((acceleration * dt) * dir);
+    if (!x1269_24_) {
+      SetVelocityWR(newVelocity);
+    }
+  }
 }
 
 void CPlayer::ComputeMovement(const CFinalInput& input, CStateManager& mgr, float dt) {
@@ -672,7 +779,7 @@ float CPlayer::UpdateCameraBob(float dt, CStateManager& mgr) {
     const float rightSpeed = CVector3f::Dot(velocity, GetTransform().GetRight());
     const float forwardSpeed = CVector3f::Dot(velocity, GetTransform().GetForward());
     const float maxSpeed = GetActualFirstPersonMaxVelocity(dt);
-    const float strafeSpeed = skOrbitBobStrafeDistances[GetSurfaceRestraint()];
+    const float strafeSpeed = skStrafeDistances[GetSurfaceRestraint()];
     const float maxMagnitude = CMath::SqrtF(strafeSpeed * strafeSpeed + maxSpeed * maxSpeed);
     magnitude = CMath::SqrtF(rightSpeed * rightSpeed + forwardSpeed * forwardSpeed) / maxMagnitude;
     magnitude *= CPlayerCameraBob::GetOrbitBobScale();
@@ -796,7 +903,14 @@ void CPlayer::fn_80184294(EPlayerMorphBallState state) {
 }
 
 void CPlayer::ActivateMorphBallCamera(CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  // Retail 0x80184240. Two calls and nothing else: `SetCameraState` with the literal 2
+  // (`li r4,2` - `kCS_Two`, the header's placeholder name for value 2) and then, off
+  // `mCameraManager` (0x1318) and its `mBallCamera` (+0x1C), `CBallCamera::SetState` with 0
+  // (`li r4,0` = `kBCS_Default`). `CBallCamera::SetState` is defined in
+  // `src/MetroidPrime/Cameras/CBallCamera.cpp:702`, so the second call resolves; this function
+  // only has to make the call.
+  SetCameraState(kCS_Two, mgr);
+  mCameraManager->BallCamera()->SetState(CBallCamera::kBCS_Default, mgr);
 }
 
 void CPlayer::EnterMorphBallState(CStateManager& mgr, EPlayerMorphBallState state) {

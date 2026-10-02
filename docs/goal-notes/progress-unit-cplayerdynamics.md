@@ -229,3 +229,202 @@ Gates after the fix, all in this worktree:
 - `./tools/probe_sources.sh` -> `752 files, 0 failed, 0 errors; LINKED (288 undefined, 0 dupes)`.
 - `python3 tools/check_symbol_names.py` -> `525 units; 0 declared names are missing`.
 - `python3 tools/check_raw_offsets.py` -> `ok: 167 raw-offset site(s) in 71 file(s)`.
+
+---
+
+# Tenth run (lane 3, 2026-10-02) - 36 -> 37 / 62: `ActivateMorphBallCamera`, plus `ComputeDash` to 98.11%
+
+Re-measured first on this tree: the unit carried the ninth run's 36/62, so nothing was `STALE:`.
+**One function is now an exact byte match, `ActivateMorphBallCamera`** - and it was 84 bytes of
+retail's code that no earlier run had read, because the ninth run's own `.tmp` ranking called it
+blocked on `CBallCamera::SetState` being unhosted. **That is no longer true**: the method is
+defined at `src/MetroidPrime/Cameras/CBallCamera.cpp:702`. The blocker had gone stale.
+
+`build/report.json`, `main/MetroidPrime/Player/CPlayerDynamics`:
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | 36 / 62 | **37 / 62** |
+| `fuzzy_match_percent` | 29.387861 | 34.781643 |
+| `matched_code` | 7332 / 27020 (27.14%) | 7416 / 27020 (27.45%) |
+
+Whole build, from `./tools/goal_check.sh build/goal/item.json` = **PASS**, all seven checks:
+`matched 12341 -> 12342`, `linked 5863 -> 5863` (unchanged, as a progress item must be),
+`All: 34.88% fuzzy, 28.46% matched, 12.90% linked (12342 / 28465 functions)`.
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` before and after.
+`check_symbol_names.py` = 0 missing; `check_raw_offsets.py` = ok, 167 sites;
+`check_files_cmake.py` = ok; `check_decl_order.py --unit MetroidPrime/Player/CPlayerDynamics` = ok.
+`unit_fit.sh`: the same 4 extra functions / 420 bytes the ninth run measured on both trees.
+Per-unit comparison against `build/goal/judge/report.base.json`: **no unit anywhere got worse**,
+and no unit appeared or disappeared.
+
+| function | retail | before | after | spellings tried |
+|---|---|---|---|---|
+| `ActivateMorphBallCamera` | 0x80184240, 84 B | 4.76% | **100%** | 1 |
+| `ComputeDash` | 0x80188D20, 1408 B | 0.28% | 98.11% | 8 |
+
+Files touched:
+- `src/MetroidPrime/Player/CPlayerDynamics.cpp` - two bodies, the four-table `.rodata` block,
+  five `#include`s.
+- `docs/research/port_link_gap_list.md` + `docs/research/port_link_gap.md` - one new missing
+  symbol (see "the one new gap" below). `docs/research/port_link_baseline.txt` untouched.
+- `docs/HANDOFF.md` is the **judge's** own rewrite of the derived counts (`goal_check.sh` did it),
+  not an edit of mine.
+
+## `ActivateMorphBallCamera` is 21 instructions, and all of it is call setup
+
+`./tools/dis.sh 0x80184240 0x54` in full:
+
+```
+mr r31,r4            ; mgr
+mr r5,r31 ; li r4,2  ; SetCameraState(kCS_Two, mgr)
+mr r30,r3 ; bl SetCameraState
+lwz r3,4888(r30)     ; mCameraManager (0x1318)
+mr r5,r31 ; li r4,0
+lwz r3,28(r3)        ; CCameraManager::mBallCamera (+0x1C)
+bl CBallCamera::SetState
+epilogue
+```
+
+so the body is two statements, and nothing else:
+
+```cpp
+SetCameraState(kCS_Two, mgr);
+mCameraManager->BallCamera()->SetState(CBallCamera::kBCS_Default, mgr);
+```
+
+Two facts measured, not guessed:
+
+- **`CCameraManager::mBallCamera` is at +0x1C.** Compiled with MWCC through
+  `.tmp/opencode/pc.sh`: `OFF(CCameraManager, mBallCamera)` = 0x1c. g++ would have been wrong here
+  again (the ninth run's lesson); the probe used `-i extern/musyx/include -DMUSY_*` and the decomp's
+  own flags.
+- **the first argument is the literal 2, which this repo calls `kCS_Two`.** `EPlayerCameraState`
+  (`include/MetroidPrime/Player/CPlayer.hpp:61`) is `kCS_FirstPerson, kCS_Ball, kCS_Two, ...`, so
+  `li r4,2` is `kCS_Two` - a placeholder name, not "ball". Retail's own `SetCameraState` is still
+  a stub in `src/MetroidPrime/Player/CPlayer.cpp:566`, so nothing here decides which name is right;
+  the *value* 2 is what the bytes say, and the note in the header flags `kCS_Two` as unconfirmed.
+  `CBallCamera::kBCS_Default` (0) needs the class qualifier - the enum is a nested type and
+  `kBCS_Default` alone does not resolve.
+
+`tools/unit_fit.sh` shows why the function is matchable at all: the unit's 4 extra symbols are the
+same 420 bytes of template/weak copies the ninth run measured, none of them new.
+
+## The one new gap: `CBallCamera::SetState`
+
+Writing the call makes the port link one symbol it did not reference before -
+`_ZN11CBallCamera8SetStateENS_16EBallCameraStateER13CStateManager` - and `tools/gate.sh`'s
+`link-gap` step failed on it (`gap grew: ... is not in port_link_gap_list.md`). It is missing only
+because **`src/MetroidPrime/Cameras/CBallCamera.cpp` is not in `files.cmake`**: the definition is
+in the tree, the TU is simply not compiled into the port link, so the port cannot see it. Adding
+that file is the real fix and it is not this item's to make - it would open every symbol its ~50
+bodies call, exactly the trap `docs/research/port_link_gap.md` already warns about. So the list
+was regenerated the way `link_gap.py` instructs (`--write-list`, 284 entries, the diff is one line
+and the group count 211 -> 212) and the growth is described in `port_link_gap.md`. The DOL is
+unaffected: the callee resolves at DOL link time out of the retail-derived
+`build/G2ME01/obj/MetroidPrime/Player/CPlayerDynamics.o`.
+
+NEW: port-cballcamera-in-files-cmake | port | MetroidPrime/Cameras/CBallCamera |
+  `CBallCamera::SetState` is implemented at `src/MetroidPrime/Cameras/CBallCamera.cpp:702` but
+  that TU is absent from `files.cmake`, so every `CBallCamera` method the port calls reads as a
+  missing symbol; adding the file is the only thing that closes them.
+
+## `ComputeDash`: Prime 1's body plus five measured Echoes differences, 0.28% -> 98.11%
+
+Prime 1's donor is nearly verbatim; what retail's code says differs, in this order:
+
+1. the "start the dash" block is a **call to `fn_801892a0`** (0x801892A0) - retail emits
+   `fmr f1,f28 ; mr r3,r29 ; mr r4,r28 ; bl fn_801892a0` where Prime 1 assigns five members and
+   starts sfx inline. `fn_801892a0` still needs its own body (0.73%), but `ComputeDash` only has
+   to *call* it.
+2. the jump test is `CPlayer::JumpHeld` (0x8022B8F4), not
+   `ControlMapper::GetDigitalInput(kC_JumpOrBoost, input)`.
+3. `x1269_24_` (shift 25) and `mHitWallDuringMove` (shift 26) stand in for Prime 1's
+   `mSlidingOnWall` / `mHitWall`. **Measured, not read off the notes:** compiling eight one-bit
+   accessors against the byte at 0x1269 shows `x1269_24_` -> `rlwinm r0,r0,25` and
+   `mHitWallDuringMove` -> `...,26`, and the *seventh* field of that byte already collides with the
+   sixth (both emit shift 31) while the eighth emits no mask at all - the header's eight `bool : 1`
+   fields do not fit in one byte. Retail's `rlwinm. r0,r0,25` is bit 0 of 0x1269, so the
+   ninth run's `x1269_24_` = sliding-on-wall is right, and the ninth run's reading of `rlwinm`'s
+   shift as "bit 25" was not.
+4. the sfx handle is `x1184_` (0x1184), not Prime 1's `mDashSfx`.
+5. the acceleration carries **Echoes' 270.f**: `lfs f2,-22968(r2)`, and `tools/sda.py` is the only
+   way to read it - `-22968` against `_SDA2_BASE_` = 0x804223C0 is 0x8041CA08 = **270.f**, while
+   the same displacement against `_SDA_BASE_` (sda.py's default) is 0x8041A3C8, the third word of
+   `.sdata2`. Nine more pooled floats, all confirmed the same way: `-22972` = M_PIF,
+   `-22976` = M_PIF*2/3, `-23080` = 0.01f, `-23096` = FLT_EPSILON, `-23100` = -1.f,
+   `-23112` = 1.f, `-23116` = 0.1f, `-23120` = 0.f.
+
+Two shapes in the source are deliberate and look like mistakes:
+
+- **`(1.f / dt) * (...)` and `1.f / deltaMagnitude`, written out.** Retail hoists one reciprocal
+  and multiplies three times (`fdivs f5,f0,f26` then three `fmuls`); this repo's
+  `CVector3f::operator/` (`include/Kyoto/Math/CVector3f.hpp:184`) divides each component, which
+  emits three `fdivs`. That alone was **93.20% -> 97.41%**. Hoisting the reciprocal into a named
+  `const float invDt` took it to 98.08% - the named local is what makes retail's instruction
+  *order* (load `trans.y`, divide, load `trans.z`) come out right.
+- **`const ESurfaceRestraints restraint = GetSurfaceRestraint();`, never read.** Retail calls
+  `GetSurfaceRestraint` at 0x80188EFC, *before* the `mNoStrafeDashBlend` test, and calls it again
+  inside that arm (0x80188F10). Prime 1's equivalent is a `mOutOfWaterTicks == 2 ? ... : kSR_Water`
+  ternary; Echoes left a dead call behind. mwcceppc keeps it, so the source has to have it.
+
+`acceleration` is written `270.f * GetAcceleration()` and `acceleration * dt` at the point of use
+rather than folded into one local: as one statement mwcceppc emits `fmuls f9,f26,f1` (dt on the
+left) where retail has `fmuls f8,f1,f26`, and as two it emits the operand order retail has.
+
+## The `.rodata`: this unit's section is unclaimed, so its declaration order is its link order
+
+`MetroidPrime/Player/CPlayerDynamics.cpp` has a `.text` and a `.ctors` claim in
+`config/G2ME01/splits.txt` and **no `.rodata` claim**, so the linker places the section by matching
+its bytes against retail's image as a whole. `ComputeDash` indexes three of retail's four tables
+off one base register - `lis r6,-32709 ; addi r31,r6,-24720` = 0x803A9F70, then `lfsx` at
+`r31+0`, `r31+32` and `r31+96` - so all four have to be declared in retail's order:
+
+| addr | name | floats |
+|---|---|---|
+| 0x803A9F70 | `skStrafeDistances` | 11.8, 11.8, 11.8, 5, 6, 5, 5, 6 |
+| 0x803A9F90 | `skDashStrafeDistances` | 11.8, 30, 22.6, 10, 10, 10, 10, 10 |
+| 0x803A9FB0 | `skStrafeDistancesEchoes` | 11.8, 18, 15, 10, 10, 10, 10, 10 |
+| 0x803A9FD0 | `skOrbitForwardDistances` | 11.8, 11.8, 11.8, 5, 6, 5, 5, 6 |
+
+Verified, not argued, and this is the check review round 28 asked for by hand:
+
+- the concatenation of the four is 0x80 bytes and `d.find()` over `orig/G2ME01/sys/main.dol` finds
+  **exactly one** match, at file offset 0x3A6F70 = VA 0x803A9F70. The ninth run's 0x40-byte pair
+  also matched uniquely, at 0x803A9FB0 - which is why the section used to start there.
+- `powerpc-eabi-objdump -s -j .rodata build/G2ME01/src/MetroidPrime/Player/CPlayerDynamics.o`
+  now prints 0x80 bytes whose first two rows are retail's 0x803A9F70 run exactly
+  (`413ccccd 413ccccd 413ccccd 40a00000 / 40c00000 40a00000 40a00000 40c00000`), matching
+  `python3 tools/dol_read.py 0x803A9F70 0x40`.
+- a side effect worth stating: the ninth run introduced `skOrbitBobStrafeDistances` as a *second
+  copy* of `skStrafeDistances` so that `UpdateCameraBob`'s reference would land on retail's
+  0x803A9FD0. With all four tables present there is no need for a duplicate name -
+  `UpdateCameraBob` reads `skStrafeDistances`, and its reference now lands on retail's real
+  0x803A9F70 instead of a copy of it. It is still 100% (objdiff compares the relocation, not the
+  displacement), and the *meaning* is now retail's.
+
+WALL: ComputeDash 98.11% - the last four differences are register allocation only (retail sets one
+argument register past each call's needs, `mr r5,r28` before `TurnInput` and
+`SidewaysDashAllowed` and `mr r4,r28` before `FinishSidewaysDash`, reloads the byte at 0x1269 twice
+instead of holding it in r3, and then numbers f5/f6 and f8/f9 differently); eight spellings this run
+(including the reciprocal and the two-statement acceleration, both of which helped) did not move it.
+
+## Re-measured and unchanged
+
+- `UpdateStepCameraZBias` is still **99.17969%**, one instruction: retail has
+  `rlwinm r31,r0,29,31,31` and we have `rlwinm r0,r0,29,31,31 ; mr r31,r0` - the copy-coalesced
+  form of the `CScriptPlatform` flag read at 0x48C. Six more spellings this run, all 99.17969%:
+  `if (platform)` for `if (platform != nullptr)`, a named `const bool active` temporary,
+  initialising `platformMotionOver` from the id test instead of `false`, `platform != nullptr &&
+  platform->IsMotionActive()`, `platformMotionOver |= platform->IsMotionActive()`, and an
+  if/else that assigns `true`/`false`. Reading the bitfield member directly instead of through
+  `IsMotionActive()` (made public for the test, then reverted) changes nothing either, so the
+  difference is not the accessor's inlining.
+- Everything the ninth run listed as blocked is blocked: `fn_801892a0` 0.73%, `fn_801842c8` and
+  `fn_80184a60` (musyx `dataCurveTab` in another unit's `.bss`), the three gravity-boost functions
+  and `EnterMorphBallState` / `StartGravityBoost` / `EndGravityBoost` (CSfxHandle, `.sdata2` pair),
+  `UpdateSubmerged`, `fn_801858cc`, `fn_80189EFC`, and the large `ComputeMovement` / `JumpInput` /
+  `SetMoveState` band. `ComputeDash` is still the only 0-unhosted candidate left, and it is now at
+  98.11% rather than 0.28%.
+- `CActor+0x110` is still `mFluidIds` (the ninth run's probe), so `UpdateSubmerged` and
+  `ApplyGravityBoost` remain blocked on other things only.
