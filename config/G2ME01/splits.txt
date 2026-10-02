@@ -46,6 +46,9 @@ MetroidPrime/Player/Carve80004C4C.c:
 MetroidPrime/Player/CGameStateBlockConstruct.cpp:
 	.text       start:0x80004D5C end:0x80004D84
 
+MetroidPrime/Player/Carve800052A0.c:
+	.text       start:0x800052A0 end:0x800053B8
+
 MetroidPrime/main.cpp:
 	.text       start:0x800053B8 end:0x80009880
 	.ctors      start:0x803A54A4 end:0x803A54A8

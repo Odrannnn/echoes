@@ -5,11 +5,12 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 167 of them: the ones referenced **only by
+ * file supplies 168 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   163 functions, 4 data objects (counted 2026-10-02, after `fn_8020D278` was added by hand
+ *   164 functions, 4 data objects (counted 2026-10-02, after `fn_80008C28` was added by hand
+ *   below for `Carve800052A0.c`; before that 163, after `fn_8020D278` was added by hand
  *   below for `Carve80213320.cpp`; before that 162, an exchange: `fn_80045014`'s stub was
  *   retired below because `Carve80045014.c` now defines that symbol for the port's link as well,
  *   and `fn_8004509C`'s was added in its place for the same unit, so the total did not move;
@@ -30,9 +31,15 @@
  *   `CDamageVulnerability.cpp` defines it and is listed in `files.cmake`; this line read
  *   154 for the 151-function file, which its own breakdown already contradicted by one).
  *
- * Breakdown: 86 REL loader, 46 game method, 31 unmangled fn_/lbl_, 1 CodeWarrior-mangled
- * `rstl::rmemory_allocator::allocate`, 4 vtable/typeinfo. (counted 2026-10-02, after `fn_8020D278`
- *   was added by hand below for `Carve80213320.cpp`; before that 30, an exchange:
+ * Breakdown: 86 REL loader, 45 game method, 32 unmangled fn_/lbl_, 1 CodeWarrior-mangled
+ * `rstl::rmemory_allocator::allocate`, 4 vtable/typeinfo. (counted 2026-10-02, after `fn_80008C28`
+ *   was added by hand below for `Carve800052A0.c`; the game-method term read 46 and was wrong by
+ *   one - it is the residual, `total - REL loaders - vtable/typeinfo - allocator`, which gives 45
+ *   both before and after this stub. Derive rather than carry the numeral: the total is
+ *   `grep -cE 'asm\("'`, the unmangled term is `grep -cE 'asm\("(fn_|lbl_)'`, the vtable/typeinfo
+ *   term is the file's `stub_data_*` count, and the game-method term is what is left; before that
+ *   31, after `fn_8020D278` was added by hand
+ *   below for `Carve80213320.cpp`; before that 30, an exchange:
  *   `fn_80045014`'s stub was retired below because `Carve80045014.c` now defines that symbol for
  *   the port's link as well, and `fn_8004509C`'s was added in its place for the same unit, so the
  *   30 did not move; before that, 30 after `fn_80044DD4`
@@ -856,6 +863,27 @@ extern "C" void stub_185() {}
 // above makes for the neighbouring `Carve800045A0.c`.
 extern "C" void stub_186() asm("fn_8000408C");
 extern "C" void stub_186() {}
+
+// fn_80008C28 - retail 0x80008C28, 0xB8 = 184 bytes (`config/G2ME01/symbols.txt:178`), the
+// post-order clone of the three-node tree. Asked for by the port because
+// `src/MetroidPrime/Player/Carve800052A0.c` (Matching, 0x800052A0..0x800053B8) reproduces
+// `fn_80005310` byte for byte, and that body's `bl fn_80008C28` at 0x80005350 is in retail's
+// bytes, so the carve cannot drop the call. It is the same callee `stub_186` above is asked for
+// by `Carve80004010.c`, and for the same reason: the symbol sits **above** each carve's claim, so
+// the carve can only declare it. For the DOL nothing is needed - dtk's own `main.o` defines it,
+// and this file is not in `configure.py`, so the stub cannot reach main.dol; its DOL half is real
+// and already `Matching` at `src/MetroidPrime/main.cpp:346`, whose comment derives the node. The
+// port link does not carry that object, which is why its gap would grow by this symbol: measured
+// in this tree without this block, `python3 tools/link_gap.py --rebuild` prints `286  MISSING`
+// and names this symbol; with the block in place the same command prints `285  MISSING`, all
+// accounted for.
+//
+// This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
+// claim that fn_80008C28 is decompiled for the port - it is not. Matching its 0xB8 bytes is a
+// spelling job of its own, which is why `Carve800052A0.c`'s claim stops at 0x800053B8 and calls
+// it instead. The same trade `stub_182` makes for the neighbouring `Carve800045A0.c`.
+extern "C" void stub_195() asm("fn_80008C28");
+extern "C" void stub_195() {}
 
 // fn_801B9C68 - retail 0x801B9C68, 0x148 = 328 bytes (`config/G2ME01/symbols.txt:7194`), the copy
 // constructor of the member at +0x4 of the 0x70-byte element `Carve801B9BE0.c` copy-constructs: a
