@@ -222,3 +222,21 @@ The unit is still not promotable - `__ct__` 72.54%, `REL_LoadSkyRipple` 90.18%, 
 `fn_70_330` / `fn_70_4D0` at 0% - and the decl-order warning in "Note for the next run" above
 still applies before any `flip_test.sh`.
 Review transcript: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/agent/progress-rel-head-skyripple-L3-10-review1-20260930T095012.jsonl
+
+## Run L9 (2026-10-02) - goal_check PASS, module 16 -> 17 / 20
+
+Changed `src/MetroidPrime/ScriptObjects/CScriptSkyRipple.cpp` (+ docs/research/port_link_gap.md, port_link_gap_list.md regenerated).
+- `fn_70_4D0` (retail 0x4D0) now 100%, matched on first write: DisableAllLights, gpRender->SetAmbientColor(CColor::White()),
+  GXSetColorUpdate(false), CGX::GetFog/SetFog(GX_FOG_NONE..), SetDepthRange(0.99999988f twice), view-matrix translation,
+  two `fn_70_330` calls on copies of x158_/x15a_ (TUniqueId copied to a local; passed by reference), SetDepthWriteMode(true,LEqual,true),
+  SetDepthRange(0.125f,1.f), restore fog, SetModelMatrix(Identity).
+- `REL_LoadSkyRipple` 90.18% -> 99.71%: `new CScriptSkyRipple(mgr.AllocateUniqueId(), LdrToEntityInfo(info, props), props)` (global CMemory operator new,
+  one null check) and `input.Get<uint>()` for the property id. Side effect: `lbl_70_rodata_C` is no longer referenced, link-gap entry removed (279).
+- `fn_70_330` written, 90.02%: structure right, residual is a third CModelFlags temp at r1+8 in retail (else branch reads its uninitialised x0 from 12(r1)), frame 128 vs 112,
+  and retail reloads `lfs f4` from the pool address (we fold to fmr). Tried: named const local, helper returning by value, ctor-direct, pointer indirection (all <= 90.02%).
+- Ctor 73.89% unchanged (analysed only).
+
+WALL: REL_LoadSkyRipple 99.71% - only diff is the new() result in r28 (retail) vs r29 (ours); measured against count-in-block, result local, id/entityinfo locals,
+  int/uint/u16/short count, while-loop, down-counting loop (worse, 95%). None moved it.
+WALL: fn_70_330 90.02% - third CModelFlags temp / f4 reload, see above.
+NOTE: source order is ascending by retail offset like the rest of the file; reverse before any flip_test.

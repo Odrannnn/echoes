@@ -223,7 +223,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK8CTexture4LoadE10GXTexMapIDNS_10EClampModeE`
 - `_ZNK9CMapWorld19IsMapAreasStreamingEv`
 
-## unmangled: fn_/lbl_/globals (54)
+## unmangled: fn_/lbl_/globals (53)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -275,7 +275,6 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_8033CDA0`
 - `fn_8033CEE8`
 - `gpDefaultFont`
-- `lbl_70_rodata_C`
 - `lbl_803A91C8`
 - `lbl_8041A3C0`
 - `lbl_8041C4F4`

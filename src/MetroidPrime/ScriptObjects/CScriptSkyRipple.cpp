@@ -10,6 +10,9 @@
 #include "MetroidPrime/ScriptLoader.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties.hpp"
 #include "Kyoto/Alloc/CMemory.hpp"
+#include "Kyoto/Graphics/CGraphics.hpp"
+#include "Kyoto/Graphics/CGX.hpp"
+#include "MetaRender/CCubeRenderer.hpp"
 
 class CScriptSkyRipple : public CActor {
 public:
@@ -32,7 +35,6 @@ extern "C" void fn_800E6AD0(CModelData* modelData);
 extern "C" CEntity* REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamR11CEntityInfo(
     CStateManager& mgr, CInputStream& input, CEntityInfo& info);
 extern "C" void* __nw__FUlPCcPCc(uint size, const char* file, const char* function);
-extern "C" const char lbl_70_rodata_C[];
 // The two connection states fn_70_658 passes to fn_70_6F0: retail holds them in .data as
 // the four bytes "IS00" and "IS01" and loads them with `lis`/`lwz`, so they are `EScriptObjectState`
 // objects read by value, not immediates. Defined here because the port links this file and an
@@ -137,6 +139,68 @@ extern "C" void fn_70_658(CScriptSkyRipple* self, CStateManager& mgr, const CScr
   }
 }
 
+static inline CModelFlags SkyFlags(const CModelFlags& base) {
+  return CModelFlags(base, (base.GetOtherFlags() & ~(CModelFlags::kF_DepthGreater |
+                                                      CModelFlags::kF_DepthNonInclusive)) |
+                               CModelFlags::kF_Unknown100 | CModelFlags::kF_Unknown200);
+}
+
+// Retail 0x330. Draws one of the two mirrored actors at `pos` with its own transform's
+// rotation, for the sky pass (1) or the other passes.
+extern "C" void fn_70_330(CScriptSkyRipple* self, CStateManager& mgr, const TUniqueId& id,
+                          const CVector3f& pos, int pass) {
+  if (self->GetActive()) {
+    CActor* actor = TCastToPtr< CActor >(mgr.ObjectById(id));
+    if (actor != nullptr && !actor->GetPreRenderClipped()) {
+      CModelFlags flags = CModelFlags::Normal();
+      if (pass == 1) {
+        if (self->x158_ == kInvalidUniqueId) {
+          flags = actor->GetModelFlags();
+        } else {
+          const CModelFlags& actorFlags = actor->GetModelFlags();
+          flags = SkyFlags(actorFlags);
+        }
+      }
+      if (pass != 1 || flags.GetTrans() != CModelFlags::kT_Blend ||
+          flags.GetColorRef().GetAlphau8() != 0) {
+        CModelData* modelData = actor->ModelData();
+        CTransform4f xf(actor->GetTransform());
+        xf.SetTranslation(pos);
+        modelData->Render(mgr, xf, nullptr, flags);
+      }
+    }
+  }
+}
+
+// Retail 0x4D0. The vtable entry that draws both mirrored actors at the camera, with the fog
+// and depth range of a sky layer and then restored.
+extern "C" void fn_70_4D0(CScriptSkyRipple* self, CStateManager& mgr) {
+  CGraphics::DisableAllLights();
+  gpRender->SetAmbientColor(CColor::White());
+  GXSetColorUpdate(false);
+  GXFogType fogType;
+  float fogStart;
+  float fogEnd;
+  float fogNear;
+  float fogFar;
+  GXColor fogColor;
+  CGX::GetFog(&fogType, &fogStart, &fogEnd, &fogNear, &fogFar, &fogColor);
+  CGX::SetFog(GX_FOG_NONE, fogStart, fogEnd, fogNear, fogFar, fogColor);
+  CGraphics::SetDepthRange(0.99999988f, 0.99999988f);
+  const CVector3f position = CGraphics::GetViewMatrix().GetTranslation();
+  if (self->x158_ != kInvalidUniqueId) {
+    const TUniqueId id = self->x158_;
+    fn_70_330(self, mgr, id, position, 0);
+  }
+  GXSetColorUpdate(true);
+  const TUniqueId id = self->x15a_;
+  fn_70_330(self, mgr, id, position, 1);
+  CGraphics::SetDepthWriteMode(true, kE_LEqual, true);
+  CGraphics::SetDepthRange(0.125f, 1.f);
+  CGX::SetFog(fogType, fogStart, fogEnd, fogNear, fogFar, fogColor);
+  gpRender->SetModelMatrix(CTransform4f::Identity());
+}
+
 extern "C" CHealthInfo* fn_70_60(CActor* self, CStateManager& mgr) {
   return self->HealthInfo();
 }
@@ -153,10 +217,10 @@ extern "C" void mp_relexit_skyripple() { fn_80232334(nullptr); }
 extern "C" CEntity* REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamR11CEntityInfo(
     CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   SLdrEditorProperties props;
-  u16 propertyCount = input.ReadUint16();
+  const int propertyCount = input.ReadUint16();
   for (int i = 0; i < propertyCount; ++i) {
-    uint propertyId = static_cast<uint>(input.ReadInt32());
-    u16 propertySize = input.ReadUint16();
+    const uint propertyId = input.Get< uint >();
+    const u16 propertySize = input.ReadUint16();
     switch (propertyId) {
     case 0x255a4580:
       LoadTypedefEditorProperties(props, input);
@@ -167,14 +231,7 @@ extern "C" CEntity* REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamR11CEntit
     }
   }
 
-  CScriptSkyRipple* object = static_cast< CScriptSkyRipple* >(
-      __nw__FUlPCcPCc(0x160, lbl_70_rodata_C, nullptr));
-  if (object != nullptr) {
-    TUniqueId uid = mgr.AllocateUniqueId();
-    object = new (object) CScriptSkyRipple(
-        uid, LdrToEntityInfo(info, props), props);
-  }
-  return object;
+  return new CScriptSkyRipple(mgr.AllocateUniqueId(), LdrToEntityInfo(info, props), props);
 }
 
 extern "C" void SetRelLoaderFunctionToLoader__Fv() {
