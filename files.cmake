@@ -392,6 +392,12 @@ src/MetroidPrime/PortLinkStubs.cpp
     # configure.py `Matching` object to be in this list, and only a RELMain/RELExit unit is
     # exempt.
     src/MetroidPrime/ScriptObjects/CSandBossRelTail.cpp
+    # Sandworm's (module 56) out-of-line template tail, `fn_56_13CBC`..`fn_56_13F38`: six deleting
+    # destructors, in two units because one unit cannot claim two discontiguous ranges. Their host
+    # branches are empty by design (the bodies are inside `#ifdef __MWERKS__`), for the reason the
+    # entry above gives.
+    src/MetroidPrime/ScriptObjects/CSandwormRelTail.cpp
+    src/MetroidPrime/ScriptObjects/CSandwormRelTail2.cpp
     # IngBoostBallGuardian's (module 30) five flag-byte accessors at 0xB788..0xB7E0. Its host
     # branch is empty by design (the bodies are inside `#ifdef __MWERKS__`), for the reason the
     # entry above gives: check_files_cmake.py requires every configure.py `Matching` object to be

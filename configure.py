@@ -2007,6 +2007,8 @@ config.libs = [
         "Sandworm",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CSandwormRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CSandwormRelTail.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CSandwormRelTail2.cpp"),
         ],
     ),
     # Added 2026-09-29. Splitter (module 75), two units. `CSplitterRel.cpp` is the head, .text

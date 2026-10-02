@@ -311,6 +311,14 @@ modules:
     hash: f818ae142461676bd2532a9efa6e7f7d0a15f7f3
     splits: config/G2ME01/rels/Sandworm/splits.txt
     symbols: config/G2ME01/rels/Sandworm/symbols.txt
+    # These unreferenced functions are present in the original REL.
+    force_active:
+      - fn_56_13CBC
+      - fn_56_13CF8
+      - fn_56_13D50
+      - fn_56_13EA4
+      - fn_56_13EFC
+      - fn_56_13F38
   # Module ID 57
   - object: files/RelProd/ScriptCannonBall.rel
     hash: 11be111b8501d4e62ecff72b5c30210fe6aa57eb
