@@ -822,3 +822,34 @@ restatement of the current item.
 
 No file under `tools/`, `docs/` (beyond the judge's own state-block rewrite) or `build/goal/`
 other than these notes was edited. No `asm` was added; no initialisation was removed.
+
+# Run 5 — `wt-mp2-goal-L9` (lane 9), branch `goal/lane-9`
+
+Re-measured on this tree: 45 / 53. After: **47 / 53**. `tools/goal_check.sh build/goal/item.json` -> PASS
+(project matched 12423 -> 12425). `configure.py` untouched; unit stays `NonMatching`. Not committed.
+
+## +2: `ReadFinished` 89.77 -> 100, `BuildExistingFileSlot` 90.87 -> 100
+
+The earlier "LICM hoist wall" is **not a wall**: `#pragma opt_loop_invariants off` stops mwcceppc from
+hoisting `lbl_803A9A94 + 459` into the loop preheader (run 4 named "stop the LICM hoist" as the open
+question; no earlier run tried the pragma - nothing in the repo used it). Measured:
+* pragma alone: ReadFinished 99.55, BuildExistingFileSlot 97.33 (only a swapped r30/r31 pointer-walk pair left).
+* `ReadFinished`: bind `rstl::auto_ptr<SGameFileSlot>& slot = mFileSlots[i];` in the loop body and assign through
+  it (`slot = rs_new ...` / `slot = nullptr`) -> **100**. This fixes the register order.
+* `BuildExistingFileSlot`: slot reference in the loop made it *worse* (96.9) - keep `mFileSlots[i]` there.
+  `rstl::auto_ptr<...>& idxSlot = mFileSlots[idx];` for the trailing null/InitializeFromGameState block (97.33 -> 97.14,
+  neutral-ish) and **moving `mSaveIdx = ...GetSaveIdx()` inside the `CMemoryStreamOut w` scope** (retail loads
+  gpGameState/stores before `__dt__16CMemoryStreamOutFv`) -> 99.59; then dropping the loop `slot` ref -> **100**.
+* Pragma is scoped per function (`off` before, `reset` after). Turning it off file-wide: `__dt__17CMemoryCardDriverFv`
+  fell 100 -> 85.38 and the ctor stayed 61.88, so it must stay scoped. No other function changed (report diff clean).
+
+Prime 1's source did not apply here (different member set); these are Echoes-shape edits.
+
+## Still sub-100 (unchanged this run, not re-attempted)
+`GetSaveSignature` 1.94, `__ct__17CMemoryCardDriver...` 61.88, `fn_8017BE84`, `fn_8017BED4`, `fn_8017C27C`, `fn_8017C2B4` (0).
+Run 4's notes on them still describe the blockers; I did not re-measure them.
+
+## Rule worth keeping
+* **`#pragma opt_loop_invariants off` / `reset` per function** is the answer to "retail keeps a constant (e.g. the
+  `rs_new` file string address) inside the loop, ours precomputes it into a callee-saved register". Try it before
+  any address-spelling search.

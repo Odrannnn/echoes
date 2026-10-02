@@ -517,6 +517,10 @@ rstl::auto_ptr< SGameFileSlot >* it = mFileSlots.data();
 // Retail 0x8017AE68. `SSaveHeader`'s stream constructor and the four `CInputStream::Get` calls are
 // the 0x1F8-byte save buffer: 192 bytes of system options, three 32-byte option buffers, one more
 // 32-byte global buffer, then one 0xA38 save per present slot.
+// Retail rebuilds `lbl_803A9A94 + 459` (`operator new`'s placement string) inside the loop, where
+// mwcceppc's default loop-invariant hoisting would precompute it into the preheader and cost one
+// callee-saved register. This pragma and the `slot` reference are what make the allocation match.
+#pragma opt_loop_invariants off
 void CMemoryCardDriver::ReadFinished() {
   CardStat stat;
   if (CMemoryCardSys::GetStatus(mCardPort, mFileInfo->GetFileNo(), stat) != kCR_READY) {
@@ -537,10 +541,11 @@ void CMemoryCardDriver::ReadFinished() {
   r.Get(mGlobalGameOptionsData.data(), mGlobalGameOptionsData.capacity());
 
   for (int i = 0; i < mFileSlots.capacity(); ++i) {
+    rstl::auto_ptr< SGameFileSlot >& slot = mFileSlots[i];
     if (header.mSavePresent[i]) {
-      mFileSlots[i] = rs_new SGameFileSlot(r);
+      slot = rs_new SGameFileSlot(r);
     } else {
-      mFileSlots[i] = nullptr;
+      slot = nullptr;
     }
   }
 
@@ -549,6 +554,7 @@ void CMemoryCardDriver::ReadFinished() {
     ImportGameOptions();
   }
 }
+#pragma opt_loop_invariants reset
 
 // Retail 0x8017AD28. `CGameOptions` declares a destructor, so a local of that type would make
 // mwcceppc call `__dt__12CGameOptionsFv` at scope exit - a name retail's symbol table does not
@@ -624,6 +630,7 @@ void CMemoryCardDriver::BuildNewFileSlot(int idx) {
 // Retail 0x8017A708. The loop reads each of `gpGameState`'s three compressed game-state buffers
 // (`+0x118 + i*16` is the element count, `+0x120 + i*16` the data pointer) and rebuilds the slot
 // from it, which is the mirror image of `BuildNewFileSlot`'s publish loop.
+#pragma opt_loop_invariants off
 void CMemoryCardDriver::BuildExistingFileSlot(int idx) {
   for (int i = 0; i < mFileSlots.capacity(); ++i) {
     if (gpGameState->CompressedGameStatesAt(i).size() != 0) {
@@ -637,18 +644,20 @@ void CMemoryCardDriver::BuildExistingFileSlot(int idx) {
   ExportGameOptions();
   gpGameState->SystemOptions().SetSaveIdx(idx);
 
-  if (mFileSlots[idx].null()) {
-    mFileSlots[idx] = rs_new SGameFileSlot();
+  rstl::auto_ptr< SGameFileSlot >& idxSlot = mFileSlots[idx];
+  if (idxSlot.null()) {
+    idxSlot = rs_new SGameFileSlot();
   } else {
-    mFileSlots[idx]->InitializeFromGameState();
+    idxSlot->InitializeFromGameState();
   }
 
   {
     CMemoryStreamOut w(mSystemData.data(), mSystemData.capacity());
     gpGameState->WriteSystemOptions(w);
+    mSaveIdx = gpGameState->SystemOptions().GetSaveIdx();
   }
-  mSaveIdx = gpGameState->SystemOptions().GetSaveIdx();
 }
+#pragma opt_loop_invariants reset
 
 void CMemoryCardDriver::ImportPersistentOptions() {
   CMemoryInStream r(mSystemData.data(), mSystemData.capacity());
