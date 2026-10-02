@@ -17,36 +17,36 @@
 static CVector2f sZeroVector(0.f, 0.f);
 
 static int GetStickDirection(float up, float down, float left, float right) {
-  uchar direction = 0;
+  uint flags = 0;
   if (up > 0.f) {
-    direction |= 1;
+    flags |= 1;
   }
   if (down > 0.f) {
-    direction |= 2;
+    flags |= 2;
   }
   if (left > 0.f) {
-    direction |= 4;
+    flags |= 4;
   }
   if (right > 0.f) {
-    direction |= 8;
+    flags |= 8;
   }
-  switch (direction) {
+  switch (flags) {
   case 1:
     return 1;
-  case 2:
-    return 5;
-  case 4:
-    return 3;
   case 5:
     return 2;
+  case 4:
+    return 3;
   case 6:
     return 4;
+  case 2:
+    return 5;
+  case 10:
+    return 6;
   case 8:
     return 7;
   case 9:
     return 8;
-  case 10:
-    return 6;
   default:
     return 0;
   }
@@ -93,11 +93,10 @@ CSlideShow::~CSlideShow() {
   // TODO: Unload the slideshow pak; owned members already perform their own cleanup.
 }
 
-uchar CSlideShow::GetGalleriesUnlocked() {
-  uchar flags = 0;
+uint CSlideShow::GetGalleriesUnlocked() {
+  uint flags = 0;
   if (gpGameState != nullptr) {
-    CPersistentOptions& options = gpGameState->SystemOptions();
-    const int percent = options.FindEnvironmentVariable("PercentScans")->GetValue();
+    const int percent = gpGameState->SystemOptions().FindEnvironmentVariable("PercentScans")->GetValue();
     if (percent >= 40) {
       flags |= 1;
     }
@@ -110,10 +109,12 @@ uchar CSlideShow::GetGalleriesUnlocked() {
     if (percent >= 100) {
       flags |= 8;
     }
-    if (options.FindEnvironmentVariable("NormalModeCompleted")->GetValue() != 0) {
+    if (gpGameState->SystemOptions().FindEnvironmentVariable("NormalModeCompleted")->GetValue() !=
+        0) {
       flags |= 16;
     }
-    if (options.FindEnvironmentVariable("HardModeCompleted")->GetValue() != 0) {
+    if (gpGameState->SystemOptions().FindEnvironmentVariable("HardModeCompleted")->GetValue() !=
+        0) {
       flags |= 32;
     }
   }
@@ -126,11 +127,14 @@ void CSlideShow::BuildGalleryLists(uint flags) {
 
 bool CSlideShow::LoadTXTRDep(const char* name) {
   const SObjectTag* tag = gpResourceFactory->GetResourceIdByName(name);
-  if (tag == nullptr || tag->type != 'DGRP') {
+  if (tag != nullptr && tag->type == 'DGRP') {
+    if (mGalleryTXTRDeps.size() + 1 > mGalleryTXTRDeps.capacity()) {
+      mGalleryTXTRDeps.reserve(mGalleryTXTRDeps.size() + 1);
+    }
+    mGalleryTXTRDeps.push_back_unsafe(TToken< CDependencyGroup >(gpSimplePool->GetObj(*tag)));
+  } else {
     return false;
   }
-  mGalleryTXTRDeps.reserve(mGalleryTXTRDeps.size() + 1);
-  mGalleryTXTRDeps.push_back(TToken< CDependencyGroup >(gpSimplePool->GetObj(*tag)));
   return true;
 }
 
@@ -164,7 +168,11 @@ CIOWin::EMessageReturn CSlideShow::ProcessUserInput(const CFinalInput& input) {
 CIOWin::EMessageReturn CSlideShow::AdvanceSlide(bool forward) {
   if (!mGalleries.empty()) {
     CSfxManager::SfxStart(0x5b6, 127, 64);
-    mSlide += forward ? 1 : -1;
+    if (forward) {
+      ++mSlide;
+    } else {
+      --mSlide;
+    }
     const int gallery = mGallery;
     if (mSlide < 0) {
       --mGallery;
@@ -248,29 +256,31 @@ void CSlideShow::UpdateMusicVolume(float time, float fadeTime) {
 }
 
 void CSlideShow::SetTexturesLocked(rstl::vector< CToken >& textures, bool locked) {
-  for (int i = 0; i < textures.size(); ++i) {
+  for (rstl::vector< CToken >::iterator it = textures.begin(); it != textures.end(); ++it) {
     if (locked) {
-      textures[i].Lock();
+      it->Lock();
     } else {
-      textures[i].Unlock();
+      it->Unlock();
     }
   }
 }
 
 void CSlideShow::SetDependenciesLocked(rstl::vector< TToken< CDependencyGroup > >& deps,
                                        bool locked) {
-  for (int i = 0; i < deps.size(); ++i) {
+  for (rstl::vector< TToken< CDependencyGroup > >::iterator it = deps.begin(); it != deps.end();
+       ++it) {
     if (locked) {
-      deps[i].Lock();
+      it->Lock();
     } else {
-      deps[i].Unlock();
+      it->Unlock();
     }
   }
 }
 
 bool CSlideShow::AreAllDepsLoaded(const rstl::vector< TToken< CDependencyGroup > >& deps) const {
-  for (int i = 0; i < deps.size(); ++i) {
-    if (!deps[i].IsLoaded()) {
+  for (rstl::vector< TToken< CDependencyGroup > >::const_iterator it = deps.begin();
+       it != deps.end(); ++it) {
+    if (!it->IsLoaded()) {
       return false;
     }
   }
@@ -327,7 +337,10 @@ const bool CSlideShow::SSlideData::IsLoaded() const {
   if (mTextures.empty()) {
     return false;
   }
-  const bool loaded = !mTextures.front().mToken.null() && mTextures.front().mToken->IsLoaded();
+  bool loaded = true;
+  if (mTextures.front().mToken.null() || !mTextures.front().mToken->IsLoaded()) {
+    loaded = false;
+  }
   if (!mStopLoading) {
     for (int i = 0; i < mTextures.size(); ++i) {
       if (!mTextures[i].mToken.null()) {
@@ -380,7 +393,8 @@ void CSlideShow::SSlideData::Reset() {
   mVpOffset = sZeroVector;
   mVpSize = sZeroVector;
   mCanvasSize = sZeroVector;
-  mMulColor = CColor::White().WithAlphaOf(0.f);
+  mMulColor = CColor::White();
+  mMulColor.SetAlpha(0.f);
 }
 
 bool CSlideShow::GetIsContinueDraw() const { return false; }
