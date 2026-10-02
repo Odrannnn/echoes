@@ -42,6 +42,22 @@ private:
 };
 CHECK_SIZEOF(CSimplePool, 0x24)
 
+// `CSimplePool`'s node value is the one pair in the tree that needs a *full* specialization
+// rather than an overload in `rstl/pair.hpp`: retail's `create_node` for it (`fn_80301360`,
+// 0x70 bytes) copies the 12-byte value straight to `this + 0x10` with the three source loads
+// hoisted between the four node stores and no `addic.`/`beq` guard, which is what assignment
+// emits and what the guarded placement new of the generic `construct_impl` does not. Spelled as
+// a specialization of the one instantiation because adding a candidate to `construct_impl`'s
+// overload set in that header moved three unrelated functions' out-of-line copies - one of them
+// `CGuiTextPane`'s `vector<SObjectTag>` ctor, from 100% to 45.53% - and this one is the only
+// instantiation in the tree that needs it.
+namespace rstl {
+template <>
+inline void construct_impl(void* dest, const pair< SObjectTag, CObjectReference* >& src) {
+  *static_cast< pair< SObjectTag, CObjectReference* >* >(dest) = src;
+}
+} // namespace rstl
+
 extern CSimplePool* gpSimplePool;
 
 #ifdef TARGET_PC
