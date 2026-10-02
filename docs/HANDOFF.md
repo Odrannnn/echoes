@@ -28,17 +28,19 @@ REL units   1601 / 11739 functions        (the 86 modules, counted as the comple
 How these numbers got here - the first seven upstream syncs and the unit flips, each with what it
 traded - is in `docs/history/handoff-to-2026-10-01.md`.
 
-**OPEN BLOCKER, 2026-10-02: `master` cannot be pushed until the history is repaired.** The goal
-loop's docs carry (`tools/union_docs_conflicts.sh`) used `git merge-file --union`, which doubles a
-line both sides rewrote; from `55be8668` (12:29) to `1eccea81` (16:39) two probe-count lines doubled
-on carry after carry until `docs/HANDOFF.md` was 935,562,435 bytes and `docs/RUNNING_THE_DECOMP.md`
-362,809,814, each line repeated 2,155,590 times. Every gate stayed green. The merge that follows
-the ninth sync collapsed the repeats (both files are their normal size again) and the script now
-resolves a rewritten hunk to the tip's lines and caps every repeat at its input count. **What is
-not fixed:** the 61 commits between `origin/master` (`08ac570c`'s parent) and that merge still
-carry the bloated blobs, nine of them over GitHub's 100 MB limit (`5dd4446f` onwards), so
-`git push origin master` is rejected until those commits are rewritten or squashed - a decision
-for the user, since it rewrites `goal/decomp`. Measure a doc's size before trusting a green gate:
+**Docs bloat, 2026-10-02 - repaired, and how to notice it next time.** The goal loop's docs carry
+(`tools/union_docs_conflicts.sh`) used `git merge-file --union`, which doubles a line both sides
+rewrote; over four hours two probe-count lines doubled on carry after carry until
+`docs/HANDOFF.md` was 935,562,435 bytes and `docs/RUNNING_THE_DECOMP.md` 362,809,814, each line
+repeated 2,155,590 times. Every gate stayed green. The script now resolves a rewritten hunk to the
+tip's lines and caps every repeat at its input count. Nine of the commits were over GitHub's
+100 MB limit, so with the lanes stopped the 61 of ours since `origin/master` were rewritten
+(`git filter-branch --index-filter`, only these two files, repeats collapsed to the first copy;
+upstream's commits were left out of the range, because rewriting them strips their signatures
+and changes the merge base). Every rewritten commit differs from its original in those two paths
+only and the tip's tree is identical; the originals stay reachable locally as
+`backup/goal-decomp-pre-rewrite` - never push that branch. **Hashes quoted in notes written
+before this repair name the old commits.** Measure a doc's size before trusting a green gate:
 `git cat-file -s goal/decomp:docs/HANDOFF.md` should be tens of kilobytes.
 
 **The ninth sync (`PrimeDecomp/echoes` 5f97267f, 2026-10-02, merge base 8bb7bd0f)** took matched
