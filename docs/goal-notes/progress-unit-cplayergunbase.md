@@ -236,3 +236,209 @@ five no-op-group spellings), `var_holster.py` / `var_asm.py` / `var_a.py` / `var
 variant files). Note `tools/try_batch.py` matches built functions by *exact* symbol name, so it is
 useless for the two `fn_801DDF*` helpers (their built names carry a `__FUiUi` suffix); compare those
 two by disassembly instead.
+
+---
+
+# progress-unit-cplayergunbase — lane 8, second attempt
+
+Worktree `../wt-mp2-goal-L8`, branch `goal/lane-8`, HEAD `db86766b`. Unit stays `NonMatching`; no
+`flip_test.sh` was run. `MP_GOAL_BASE=$PWD/build/report.base.json ./tools/goal_check.sh
+build/goal/item.json`: **PASS**, `target rose: 17 -> 19 / 21 functions`.
+
+Lane 4's notes above are confirmed on this tree (17/21 at HEAD `db86766b`, not 12 as on their
+base), so nothing below re-does their work. The two functions they listed as "large and untouched"
+both went to 100% this run, and the one they called blocked was not — see (2).
+
+## Measured
+
+| | base (`build/report.base.json`) | now |
+|---|---|---|
+| unit `matched_functions` | 17 / 21 | **19 / 21** |
+| unit `matched_code` | 1912 | 3496 |
+| unit `fuzzy_match_percent` | 46.168583 | 83.90804 |
+| DOL `matched_functions` | 12360 | 12362 |
+| `All:` line | 34.92% / 28.54% / 12.90% | 34.94% / 28.56% / 12.90% |
+
+`linked` 5863 -> 5863 (correct for a unit that did not flip). `gate.sh`'s `report_diff.py` step is
+green, so no function anywhere got worse.
+
+| function | bytes | before | after |
+|---|---|---|---|
+| `UpdateGunHolster__14CPlayerGunBaseFRC11CFinalInputR13CStateManager` | 784 | 0.51 | **100.0** |
+| `UpdateTransform__14CPlayerGunBaseFR13CStateManagerRC9CVector3fRC12CTransform4fR12CTransform4f` | 800 | 0.50 | **100.0** |
+
+Both were verified instruction-by-instruction against retail's object (`.tmp/opencode/sbs.py`:
+`differing instrs: 0`, 196/196 and 200/200), not just on objdiff's percentage.
+
+Files touched: `src/MetroidPrime/Player/CPlayerGunBase.cpp` (both bodies) and
+`src/MetroidPrime/PortCTweakPlayerControls.cpp` (two new host-only readers). `docs/HANDOFF.md` is
+in the diff because `goal_check.sh` runs `gate.sh` with `MP_GATE_DOCS_WRITE=1`, which rewrote the
+derived state block; it was not hand-edited. Nothing in `tools/`, `docs/` or `build/goal/` was
+edited by me. No asm.
+
+`tools/unit_fit.sh` still reports the same six pre-existing COMDAT weak extras (568 bytes, nothing
+in this item emits them). `.text` claimed 4176 / ours 4072 — SHORT by 104, consistent with the two
+bodies still being empty: `powerpc-eabi-nm --print-size` on our object gives 4 bytes for
+`ProcessInput...R13CStateManager` (retail 0x194) and 4 for `CreateGunLight...` (retail 0x114). The
+104 does not equal 404 + 276 minus 8 because `ours` in that line is the claimed-range total, not
+the sum of the named functions; I did not chase the difference and neither should a reader.
+
+## 1. `fn_8021580C` / `fn_80215818` — the "blocker" lane 4 listed for `UpdateGunHolster` was not one
+
+Lane 4 named three missing symbols for `ProcessInput` and none for `UpdateGunHolster`. The unit's
+own target object lists six undefined `fn_*` that no source defines:
+
+```
+fn_800CEF2C  fn_8021580C  fn_80215818  fn_8022A5B4  fn_8022b7f4__...  fn_8022b974__...
+```
+
+`fn_8022b7f4`/`fn_8022b974` *are* defined — `src/MetroidPrime/Player/CPlayerVisor.cpp` spells them as
+`CPlayer::fn_8022b7f4`, and Itanium mangling of `CPlayer::fn_8022b7f4(CFinalInput const&)` is
+literally `fn_8022b7f4__7CPlayerCFRC11CFinalInput`. But **`fn_8021580C` and `fn_80215818` had no
+definition anywhere**, and `UpdateGunHolster` calls each of them twice. That is all that stood
+between an empty body and a matched function.
+
+`./tools/dis.sh 0x8021580C 0x20` — they are two more three-instruction readers in the same run as
+`fn_80215854`/`fn_80215860` (`lwz r3,0(r3)` / `lbz r3,<off>(r3)` / `blr`), at byte offsets **331**
+(0x14B) and **330** (0x14A). They have no `configure.py` unit: 0x8021580C is in an unclaimed
+`.text` gap (the neighbouring claim is `MetroidPrime/Tweaks/CTweakGuiColors.cpp`,
+`splits.txt:1198`, starting at 0x80215878). So they belong in
+`src/MetroidPrime/PortCTweakPlayerControls.cpp`, which is the repo's existing home for exactly
+this (`fn_8021583C`, `fn_80215854`, `fn_80215860`, `fn_8021586C`), for the same reason: not a unit,
+so it is `files.cmake`-only and the DOL still links retail's own bytes.
+
+They are spelled at their measured offsets rather than through a field, because
+`SLdrTweakPlayerControls::booleans` is at 0x130 and the generated header declares 21 members
+(0x130..0x144), so 0x14A/0x14B are past its end — same as the existing `fn_8021583C`. Adding two
+functions to that file cannot move any unit's `.text`: it is not compiled by the dtk build.
+
+**Generalisable: `powerpc-eabi-nm build/G2ME01/obj/<unit>.o | grep ' U '` lists every symbol a unit
+still has to borrow.** That is the complete blocker list for writing a body, and reading the
+caller's object is cheaper than reading the previous run's notes.
+
+## 2. `UpdateGunHolster` — 0.51% -> 100.0% (784 B)
+
+Fully decoded from `./tools/dis.sh 0x801DDAAC 0x310`. The parts that were not obvious:
+
+- **The two control ids are 18 and 28, and this header's names for them are already right — do not
+  change the header.** They come out of the `li r4,18` / `li r4,28` the four `CControlMapper` calls
+  pass. `CControlMapper::GetDescriptionForCommand` (0x80009E74) is a jump table at 0x803B1434
+  indexed by the command (`cmplwi r3,75` / `slwi r0,r3,2` / `lwzx` / `mtctr` / `bctr`) whose targets
+  are `lis r3,-32710; addi r3,r3,22656` = 0x803A5880 plus a per-entry offset, so the string blob
+  in `.rodata` gives the exact name for every value: 18 = "Missile/PowerBomb", 28 = "Toggle
+  Holster", i.e. `CControlMapper::kC_MissileOrPowerBomb` and `kC_ToggleHolster`. Reaching for
+  `kC_ChargeBeam`/`kC_PlasmaBeam` by play instinct compiles and is wrong by 2 and 1. Any future
+  enum-value argument in this tree can be settled the same way.
+- **Arm order in the source is 2, 1, 0, 3.** mwcceppc emits the arms in source order *here*, and
+  retail's `.text` runs `kGHS_Drawn` from +0x60, `kGHS_Drawing` +0x178, `kGHS_Holstered` +0x1AC,
+  `kGHS_Holstering` +0x2A4. All 24 permutations measured (`tools/try_batch.py`): the spread is
+  28..202 differing instructions and **2103 wins at 28**; the other 23 score 43..202.
+- **`GetControlMapper()` is passed by address (`addi r3,r31,5072`)**, i.e. the member, not an
+  out-of-line accessor call — `player->GetControlMapper().GetDigitalInput(...)` gives that.
+- **Two spellings of the same comparison, both 2-instruction swaps.** The countdown's "has it run
+  out" test is `cror eq,lt,eq` + `bne`, i.e. `if (mGunHolsterRemTime <= 0.f)` — *not* `>= 0.f`,
+  which emits `cror eq,gt,eq`. And in `kGHS_Drawing` / `kGHS_Holstering` the same `<=` has to be
+  written as the *negated* then-clause: `if (mGunHolsterRemTime > 0.f) { countdown } else { finish }`,
+  because that is the only form MWCC lowers to retail's plain `fcmpo` + `ble`. Writing
+  `if (<= 0) {finish} else {countdown}` gives `cror eq,lt,eq` + `bne` there and costs 6
+  differing instructions.
+- **`kGHS_Drawn`'s else-half is `else if (!(fire || missile)) { ... } else { ... }`**, not
+  `else if (fire || missile) { ... } else if (f0C) { ... }`. Identical program, 5 differing
+  instructions: only the first form puts the `GetGunNotFiringTime()` block where retail tail-merges
+  it, *after* the countdown block, with both tests branching to it (`bne 0x504` twice).
+- `kGHS_Holstered` calls `GetPlayer(mgr)` a second time for the morph test; retail does not CSE it,
+  so the second call is written out rather than reusing the `player` local.
+- The draw-suppression test reads `CPlayer+0x1314` = **`mPlayerState`** (`CPlayerState+0x30` and
+  `+0x34` are `mCurrentVisor` / `mTransitioningVisor`, compared against 2 = `kPV_Scan`), and
+  `player+0x5CC` is `mGrappleState`. Decoded by computing the offsets by hand after
+  `lwz r3,4884(r31)`: 4884 is 0x1314, not 0x131C — `SFrozenResources` is not involved.
+- The four flag words cleared on `kMS_Unmorphed` are stored **descending**
+  (920, 916, 912, 908 = pressed, released, last, current), which is what writing them in that order
+  produces.
+
+## 3. `UpdateTransform` — 0.50% -> 100.0% (800 B)
+
+`./tools/dis.sh 0x801DD78C 0x320`. Four arms, all the same quaternion -> transform chain.
+Three things were not guessable:
+
+- **`CMath::Limit(v, 1.f)` is retail's clamp, and the header already models it.**
+  `fabs/frsp/fcmpo/ble` + `lfs -1.0` + `fsel f1,f31,f0,f1` + `fmuls f31,f0,f1` is exactly
+  `include/Kyoto/Math/CMath.hpp:44-52`: `Limit(v,h) = AbsF(v) > h ? h * Sign(v) : v`, and
+  `Sign(v) = FastFSel(v, 1.f, -1.f)` where `FastFSel` is the header's existing `fsel out, v, h, l`.
+  With `h = 1.f` that is `fsel f1,f31,f0,f1` then `fmuls f31,f0,f1`, exactly. A hand-written
+  clamp costs the whole 6-instruction block. **Look for the header helper before writing the
+  arithmetic** — three of this repo's `CMath` helpers already lower to the exact instruction runs
+  retail uses.
+- **`CRelAngle`'s constructor is private** (`include/Kyoto/Math/CRelAngle.hpp:37`), so the angle
+  must go through `CRelAngle::FromRadians(angle)`; `CRelAngle(angle)` does not compile. Retail
+  materialises the 4-byte result and passes its address (`addi r5,r1,16`).
+- **Arm order in the source is 1, 0, 2, 3** — the *opposite* of `UpdateGunHolster`, and unlike the
+  reverse-source-order rule. Retail's `.text` has `kGHS_Drawing` at +0x7C, `kGHS_Holstered` at
+  +0x148 and `kGHS_Holstering` at +0x1D8, with `kGHS_Drawn` falling straight to the tail. Do not
+  generalise one function's arm order to its neighbour: measure, 24 permutations is cheap
+  (`tools/try_batch.py`, one run, about four minutes for the whole set).
+
+`rotation` is the 3rd argument and the axis is `rotation.GetRight()` = `CVector3f(m00, m10, m20)`,
+read at +0/+16/+32 before the switch and handed to an out-of-line
+`__ct__13CUnitVector3fFRC9CVector3f`. `result` is written by
+`quat.BuildTransform4f() * rotation.GetRotation()` and then `SetTranslation(position)`; every state
+including `default` ends at `mTransform = result`.
+
+## Still open, and why (for whoever takes these)
+
+**`ProcessInput` (404 B) — still blocked, now for exactly one symbol.** Lane 4's read of the
+blocker list was short by two: with `fn_8021580C`/`fn_80215818` defined this run, the only missing
+symbol left is **`fn_8022A5B4`** (0x8C = 140 bytes, retail 0x8022A5B4, also unclaimed by any
+`splits.txt` `.text` claim, so `Port*.cpp` is the home). Everything else in the function is decoded
+and cheap:
+
+```
+r26 = (player->mMorphBallState == 1)                       // subfic/cntlzw/srwi
+r28 = mInBigStrike && !r26                                 // rlwinm. bit 4 of the byte at 942
+r27 = player->GetFrozenState() && !r26
+if (r28 || r27) -> clear 920/916/912/908 and return
+if (!fn_8022A5B4(player->GetControlHintManager(), 1, mgr)) -> same clear and return
+mInputFlags  = player->FireBeamHeld(input) ? 1 : 0         // clrlwi/neg/or/srwi
+mInputFlags |= fn_8022b7f4(player, input)        ? 4 : 0
+mInputFlags |= GetDigitalInput(kC_MissileOrPowerBomb, input) ? 2 : 0
+mInputFlags |= fn_8022b974(player, input)        ? 8 : 0
+mReleasedInputFlags = fn_801DDF18(mLastInputFlags, mInputFlags)
+mPressedInputFlags  = fn_801DDF0C(mLastInputFlags, mInputFlags)
+mLastInputFlags = mInputFlags
+```
+
+`fn_8022A5B4` itself is a loop over a `CHintManager` table — `lwz 24(r3)` (count) x `mulli 112` vs
+`lwz 32(r3)` (data), per entry `lhz 4(entry)` -> a `TUniqueId` on the stack -> `GetObjectById` ->
+`TCastToPtr<CUnknown46>` -> `lwz 424(obj)` (0x1A8) `and.` with the mask. **It cannot be written
+against this tree's `CHintManager`:** `include/MetroidPrime/CHintManager.hpp` is a guessed layout
+(`rstl::vector<SHint> mHints` at 0x10, `CHECK_SIZEOF 0x44`) and retail reads a count at **0x18** and
+a data pointer at **0x20**, which that layout does not produce; the file says so itself. Landing
+this needs `CHintManager`'s real offsets pinned first, and `CUnknown46` does not exist in `include/`
+at all. That is a data-layout job on another unit's header, not a body.
+
+**`CreateGunLight` (276 B) — unchanged, and the blocker is still a data address.** Lane 4's
+finding stands: it needs the `CGameLight` entity-info global at 0x803BAC30 (and the
+`rstl::string_l` at 0x803BAC37), both inside `Kyoto/Particles/CVectorElement.cpp`'s claimed `.data`
+(`splits.txt`: `.data start:0x803babe8 end:0x803baeb8`). Re-measured this run and unchanged.
+
+## Verification run by this lane
+
+```
+./tools/decomp_build.sh                    # All: 34.94% fuzzy, 28.56% matched, 12.90% linked (12362 / 28465)
+python3 tools/check_decl_order.py          # ok: 981 unit(s) checked, 28 permuted, all 28 accounted for
+python3 tools/check_symbol_names.py        # checked 525 units; 0 declared names are missing
+./tools/unit_fit.sh MetroidPrime/Player/CPlayerGunBase.cpp
+./tools/probe_sources.sh                   # 752 files, 0 failed; link: LINKED (289 undefined, 0 duplicates)
+MP_GOAL_BASE=$PWD/build/report.base.json ./tools/goal_check.sh build/goal/item.json
+#   ok gate.sh / counts 12360 -> 12362, linked 5863 -> 5863 / target rose 17 -> 19 / no asm
+#   goal_check: PASS progress-unit-cplayergunbase
+```
+
+Instruction-level check used throughout (`.tmp/opencode/sbs.py`, gitignored): prints retail's and
+our object's disassembly of one function side by side and counts differing instructions with branch
+targets and relocation operands normalised. `tools/try_batch.py` reports the same number per
+variant but only prints a unified diff; `sbs.py` prints both columns, which is what identifies
+*which* arm is misplaced rather than just that something is.
+
+No `NEW:` lines: the remaining work is in this same unit or behind another unit's header layout,
+so filing either would be a restatement of this item.

@@ -53,3 +53,18 @@ extern "C" bool fn_80215854(const CTweakPlayerControls* self) {
 extern "C" bool fn_8021586C(const CTweakPlayerControls* self) {
   return self->GetData()->booleans.unknown_0x4fcf4b70;
 }
+
+// `fn_8021580C` (retail 0x8021580C) and `fn_80215818` (retail 0x80215818) are the next two readers
+// in the same run, three instructions each again, and they are what
+// `CPlayerGunBase::UpdateGunHolster` (retail 0x801DDAAC) calls - `fn_80215818` twice, at 0x801DDB14
+// and 0x801DDCD4, and `fn_8021580C` twice, at 0x801DDB78 and 0x801DDBE4 - always as
+// `CPlayer::GetTweakPlayerControls()`'s return value. Offsets are `lbz r3,331(r3)` and
+// `lbz r3,330(r3)`, i.e. `SLdrTweakPlayerControls::booleans` (at 0x130) members 28 and 27, which
+// is past the 21 the generated header declares, so - as with `fn_8021583C` above - the read is
+// spelled at its measured offset rather than through a field that does not exist.
+extern "C" bool fn_8021580C(const CTweakPlayerControls* self) {
+  return reinterpret_cast< const uchar* >(self->GetData())[0x14b] != 0;
+}
+extern "C" bool fn_80215818(const CTweakPlayerControls* self) {
+  return reinterpret_cast< const uchar* >(self->GetData())[0x14a] != 0;
+}
