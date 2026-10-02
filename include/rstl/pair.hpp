@@ -138,6 +138,16 @@ inline void construct_impl(void* dest, const pair< int, T* >& src) {
   *static_cast< pair< int, T* >* >(dest) = src;
 }
 
+// `rstl::map<TUniqueId, CGameModeListener*>` is `pair<uint, T*>` rather than `pair<int, T*>`, so
+// the overload above does not reach it, and its `create_node` (retail `fn_80197910`, 0x80197910,
+// 104 bytes) keeps the guard the one above removes: `addic. r5,r3,16` / `beq` around the value
+// copy, 112 bytes instead of 104. Same lever, same two-word copy, claimed for the unsigned first
+// member as well.
+template < typename T >
+inline void construct_impl(void* dest, const pair< uint, T* >& src) {
+  *static_cast< pair< uint, T* >* >(dest) = src;
+}
+
 template < typename P >
 struct select1st : unary_function< P, P > {
   const P& operator()(const P& it) const { return it; }

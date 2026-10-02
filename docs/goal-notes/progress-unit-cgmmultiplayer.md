@@ -373,3 +373,188 @@ No initialisation was dropped, no call removed, no stub introduced, no `asm` add
 header touched. The single edit replaces one spelling of a value with another spelling of the same
 value at one call site; `idx` is still computed and still used for the index. The function went
 from 712 bytes of near-retail to 712 bytes of *exactly* retail.
+
+---
+
+# Run 3 (lane 1, 2026-10-02) — `create_node` taken to 100%, `ChooseSpawnPoint` 85.29% -> 91.59%
+
+## Result
+
+**30 -> 31 of 34 functions matched.** Unit `main/MetroidPrime/Player/CGMMultiplayer`:
+fuzzy 91.15% -> **93.83%**, matched code 78.38% -> **80.38%**. Project-wide `matched`
+**12372 -> 12373** (+1 at 100%), `linked` **5863 -> 5863** (unchanged, as expected for a
+`progress` item). `./tools/goal_check.sh build/goal/item.json` -> **PASS**, all seven checks ok
+(`target rose: main/MetroidPrime/Player/CGMMultiplayer: 30 -> 31 / 34 functions`).
+
+## The matched function: `fn_80197910` (104 B) is `create_node`, and the fix was already half-written
+
+Runs 1 and 2 both stopped at "`fn_80197910` is `create_node`, our version has a null-ish guard
+retail does not (`addic. r5,r3,0x10 ; beq`), so it is `rstl/construct.hpp`'s `construct_impl` -
+a shared header, not a `CGMMultiplayer` change". That is right about the mechanism and wrong
+about where the fix belongs. `include/rstl/pair.hpp:136` **already** carries
+
+```cpp
+template < typename T >
+inline void construct_impl(void* dest, const pair< int, T* >& src) {
+  *static_cast< pair< int, T* >* >(dest) = src;
+}
+```
+
+with a comment naming retail's `map<int, CFactoryFnReturn (*)(...)>` `create_node` as the
+evidence. The trap is that `CGMMultiplayer`'s listener pair is `rstl::pair< **uint**,
+CGameModeListener* >`, so the `int` overload never instantiates. One eight-line overload for the
+unsigned first member - the same lever, the same two-word copy - removes the guard.
+
+## Files changed
+
+**`include/rstl/pair.hpp`** (+10, after the `pair<int, T*>` overload): a
+`construct_impl(void*, const pair< uint, T* >&)` overload that copies by assignment instead of
+through a placement `new`, with the evidence in the comment. This is the same idiom the file
+already uses for `pair<uint,uint>`, `pair<uint,bool>`, `pair<uint,int>`, `pair<int,float>`,
+`pair<float,float>` and `pair<int,T*>`; nothing is dropped - the copy is the same two words.
+
+**`config/G2ME01/symbols.txt`** (line 6772, one line): `fn_80197910` renamed to the mangled
+`create_node__Q24rstl234red_black_tree<pair<Ui,P17CGameModeListener>,...>` our object already
+emits, at the same address and size. Same treatment run 1 gave 11 other weak COMDATs.
+
+**`src/MetroidPrime/Player/CGMMultiplayer.cpp`** (3 lines, all spelling/order, all inside
+`ChooseSpawnPoint`): see the ladder below. No behaviour change: the hoisted
+`ObjectListById(kOL_All)` is a side-effect-free read of `mgr.mObjectLists[0]` that cannot be
+affected by `candidates.reserve(16)`'s allocation, and the loop counter change only compares
+values in `[0,4]` with a different signedness.
+
+`docs/HANDOFF.md` is the judge's rewrite (`MP_GATE_DOCS_WRITE=1`); I reverted my copy so the
+diff is the three files above.
+
+## Per-function, before -> after
+
+| function | before | after | what was tried |
+|---|---|---|---|
+| `fn_80197910` / `create_node` | 0.00% | **100.00%** | `construct_impl(pair<uint,T*>)` overload + `symbols.txt` rename. |
+| `ChooseSpawnPoint` | 85.29% | **91.59%** | ladder below. Still short of 100% - see the blocker. |
+| `NotifyListeners` | 95.00% | 95.00% | **not attempted** - run 2 measured 20 spellings against a register-allocation difference. |
+| `fn_801968D4` | 0.00% | 0.00% | re-measured; see the STALE line - there is no source in this unit that can move it. |
+
+`create_node` is **instruction-for-instruction identical** to retail's, not merely fuzzy-100%:
+26 instructions on each side, every mnemonic equal, compared with `objdump -d` on
+`build/G2ME01/src/.../CGMMultiplayer.o` and `build/G2ME01/obj/.../CGMMultiplayer.o`
+(note: with the rename in `symbols.txt`, dtk now labels retail's copy `create_node...` too, so
+the two symbol tables agree).
+
+## `ChooseSpawnPoint`: the spelling ladder, measured on this tree (base 85.29%)
+
+Each row is cumulative - the next row adds one change to the row above.
+
+| change | % |
+|---|---|
+| base | 85.29 |
+| `if (!(nearestDistance < 7.f) && ...)` instead of `>=` | 86.04 |
+| ... + `for (int player = 0; player < static_cast<int>(GetNumPlayers()); ++player)` | 88.45 |
+| ... + `CObjectList& objects` hoisted above the **`rstl::vector candidates;` declaration** (not above `reserve`) | **91.59** |
+
+Measured individually as well: the predicate alone is 86.04, the `int` counter alone is 88.13,
+and *with the counter change in* putting `objects` back above `reserve` gives 88.45 - so the
+declaration order is worth +3.14 and run 2's "hoisting `ObjectListById` is worth 0.00%" was
+measured against a weaker base, not a null result.
+
+Two of the three are pure wins of a kind worth writing down:
+
+- **`int player` instead of `uint player`.** Retail strength-reduces the players array into a
+  *pointer* induction (`mr r23,r26 ; lwz r4,5372(r23) ; addi r23,r23,4`); we emitted a *byte
+  offset* induction plus an extra address form (`li r23,0 ; addi r0,r23,5372 ; lwzx r4,r26,r0`).
+  `CStateManager::GetPlayer` already takes `int`, so the counter's declared type is free to
+  choose, and `int` is what flips GCC's `ivopts` choice. The prologue (`lwz r31,2064(r5)` first,
+  then the three vector stores interleaved with the five `mr`s, then `bl reserve`,
+  `lha r30,8200(r31)`) and the whole inner player loop now match retail instruction for
+  instruction.
+- **`objects` above the declaration.** `mgr.ObjectListById(kOL_All)` is `lwz r31,2064(r5)`. We
+  emitted it *after* `bl reserve`; retail emits it as the first instruction of the body, still
+  reading the incoming `r5`. A load cannot be sunk past a call, so this is not a scheduling
+  choice - the expression has to be written before the statement that calls.
+
+The predicate change is the one with a semantic footnote: `!(a < b)` and `a >= b` differ only
+for an unordered compare, i.e. if `nearestDistance` is NaN. Retail takes the `blt` branch form,
+so retail accepts such a spawn point and `>=` rejects it; writing it as `!(nearestDistance < 7.f)`
+reproduces retail's *behaviour*, not just its bytes. `nearestDistance` is a `Magnitude()` of a
+position difference seeded at 1000000, so NaN needs a NaN coordinate. It does not complete the
+function; it is kept because it is a measured move toward the one unmatched function that is
+not a wall.
+
+## What still blocks `ChooseSpawnPoint`, precisely
+
+The inlined `rstl::vector<TUniqueId>::push_back`. Retail emits 15 instructions and we emit 18:
+
+```
+retail: lwz cap ; lwz size ; cmpw cap,size ; bne skip ; addi r3,&vec ; slwi r4,cap,1 ; bl reserve ; ...
+ours:   lwz size ; lwz cap ; lhz value ; cmpw ; blt store ; cmpwi cap,0 ; addi r3,&vec ; li r4,4 ; beq grow4 ; slwi r4,cap,1 ; bl reserve ; ...
+```
+
+The `cmpwi cap,0 / li r4,4 / beq` is `include/rstl/vector.hpp:80`'s
+`reserve(mCapacity != 0 ? mCapacity * 2 : 4)` - a **zero-capacity fallback retail does not
+have**. Retail's `push_back` is `if (mCount == mCapacity) reserve(mCapacity << 1);`.
+
+Getting retail's bytes therefore means deleting that fallback from a shared header, which makes
+`push_back` on a default-constructed vector write through a null pointer. That is a deliberate
+safety divergence in the port's own `rstl`, not a decompilation fix, and it is not this item's
+call to make: I did not do it and it is not filed as a `NEW:` (it names no unit, and the target
+would be a port-semantics decision rather than something a lane can verify by matching).
+Whoever finishes `ChooseSpawnPoint` should decide it explicitly and expect the header's blast
+radius to be measured with `report_diff.py`.
+
+## STALE / corrected claims from the earlier runs of this item
+
+STALE: "`fn_801968D4` is a `CPlayerState` field-layout question - something at `+4` is a byte and
+something in `0x48..0x57` is four floats" (run 1, repeated by run 2) - measured on this tree the
+layout is **identical** and only the scheduling differs. Both sides are 66 instructions copying
+the same offsets: 0 word, 4 byte, 8, 12, then word pairs 16/20, 24/28, 32/36, 40/44, then 48,
+52; out-of-line member copies at 56, 88, 1408, 1424; floats 72/76/80; **84 as a word in both**.
+Retail pairs its loads and stores (`lwz r5,16 ; lwz r0,20 ; stw r5,16 ; stw r0,20`) where we
+interleave (`lwz r5,16 ; stw <prev> ; lwz r0,20 ; stw r5,16`), and retail stores the frame in
+the prologue before its first load where we hoist `lwz r5,0(r4)` and `lbz r0,4(r4)` up into it.
+The "four floats at 0x48..0x54" reading came from aligning two streams that are the same length;
+there is no extra field. `include/MetroidPrime/Player/CPlayerState.hpp` declares no
+`CPlayerState::operator=` (only `SPersistentState::operator=`, line 192), so the copy is
+compiler-generated and **no source in this unit can change it**.
+
+STALE: "hoisting `ObjectListById` above `reserve` is worth exactly 0.00%" (run 2, ChooseSpawnPoint)
+- superseded. Above `reserve` it is worth 0.00% on its own; above the `rstl::vector candidates;`
+**declaration** it is worth +3.14% on top of the other two changes (85.29 -> 91.59 together).
+Run 2's variant also left the load reading the `r26` copy of `mgr` instead of the incoming `r5`.
+
+## Gates (all re-measured on this tree)
+
+- `./tools/goal_check.sh build/goal/item.json` -> **PASS**, seven checks ok.
+- `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` - unchanged; all
+  86 RELs re-hashed by `gate.sh` step 3 with no mismatch.
+- `./tools/decomp_build.sh` -> `All: 34.93% fuzzy, 28.60% matched, 12.90% linked (12373 / 28465)`.
+  The `All:` line did not fall (baseline 34.93% / 28.60% / 12.90%).
+- `python3 tools/check_symbol_names.py` -> `checked 525 units; 0 declared names are missing`.
+- `tools/report_diff.py build/goal/judge/report.base.json build/report.json` -> `no regression`;
+  `matched 12372 -> 12373   linked 5863 -> 5863   (+1 functions at 100%, 0 units newly linked)`,
+  reporting `create_node` as `RENAMED ... (0.00% -> 100.00%)`, which is the tool's designed
+  handling of a rename, not a deletion.
+- **The `pair<uint, T*>` overload was measured project-wide, not just in this unit**: ninja has
+  no header depfiles here (`ls build/G2ME01/src/**/*.o.d` finds none), so I `touch`ed all 1199
+  sources and did a full rebuild before diffing. Only `CGMMultiplayer.o` changed. The two other
+  places that name a `pair<uint, X*>` at all - `src/MetroidPrime/CGameArea.cpp:335`'s
+  `SRelLocation` (assigned, never `construct`ed) and `include/MetroidPrime/CParticleDatabase.hpp:32`'s
+  `map<uint, auto_ptr<...>>` (not a pointer second member, so the overload does not apply) -
+  cannot instantiate it.
+- No `configure.py`, `splits.txt`, `files.cmake` or `tools/` change; `total_functions` still
+  28465.
+
+## Nothing filed as `NEW:`
+
+The one thing left in this unit that a lane could verify is `ChooseSpawnPoint`, and it is a
+restatement of the current item. The `rstl::vector::push_back` fallback is a port-semantics
+decision in a shared header, not a unit or a symbol, and the brief bars filing a `NEW:` that
+names neither. Both are written up above instead.
+
+## A note on the reviewer's "count gamed" rule
+
+The +1 is a real byte match, not a rename onto a function that already matched: before this
+change our `create_node` was **112 bytes** with a `addic. r5,r3,16 / beq` guard retail does not
+have, and the `construct_impl` overload is what makes it 104. No initialisation was dropped, no
+call removed, no stub introduced, no `asm` added. The three `CGMMultiplayer.cpp` lines are a
+statement hoist, a loop-counter type, and a predicate spelling, all inside the item's own
+unmatched function, and none of them raises `matched_functions` - only `create_node` does.
