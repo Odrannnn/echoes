@@ -308,3 +308,209 @@ that would catch a rename that changed anything.
 NEW: none. The remaining gaps in this unit are register allocation inside functions this run
 measured, which is not the kind of item a lane should be handed, and `fn_802B6F84`/`fn_802B7A24`
 need a new disassembly reading rather than a queue entry.
+
+---
+
+# Run of 2026-10-02 (lane 7, third run), re-measured on top of the 38/46 head
+
+Three files changed: `src/Kyoto/Text/CTextExecuteBuffer.cpp`,
+`include/Kyoto/Text/CTextExecuteBuffer.hpp`, `config/G2ME01/symbols.txt`.
+No `configure.py`, no `splits.txt`, no `files.cmake`, no `tools/`, no `build/goal/` except this
+notes file, no asm, and **`include/rstl/list.hpp` was tried and reverted** (see the wall below).
+
+## Result, measured
+
+| | before (`build/goal/judge/report.base.json`) | after |
+|---|---|---|
+| unit `matched_functions` | **38 / 46** | **40 / 46** |
+| unit fuzzy | 95.178% | **95.977%** |
+| unit matched code | 73.360% | **80.851%** |
+| project `matched_functions` | 12411 | **12413** |
+| project `linked` | 5863 | 5863 (unchanged, correct for a `progress` item) |
+
+`python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json`:
+
+    matched  12411 -> 12413   linked 5863 -> 5863   (+2 functions at 100%, 0 units newly linked)
+      +100%  main/Kyoto/Text/CTextExecuteBuffer :: MoveWordLTR__18CTextExecuteBufferFv
+      +100%  main/Kyoto/Text/CTextExecuteBuffer :: StartNewLine__18CTextExecuteBufferFv
+      RENAMED ... fn_802B7A24 -> create_node__...  (0.00% -> 0.00%)
+    no regression
+
+`./tools/decomp_build.sh` -> `All: 35.08% fuzzy, 28.78% matched, 12.90% linked (12413 / 28465 functions)`,
+`87 files OK`. `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`./tools/probe_sources.sh` = `752 files, 0 failed, 0 errors; link: LINKED (290 undefined, 0 duplicates)`
+(the judge's `undef.base.count` is 290, so it did not rise);
+`python3 tools/check_symbol_names.py` = `checked 525 units; 0 declared names are missing from their object`;
+`python3 tools/check_decl_order.py --unit Kyoto/Text/CTextExecuteBuffer` = `ok`.
+`./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`**, every step `ok`, including
+`target rose: main/Kyoto/Text/CTextExecuteBuffer: 38 -> 40 / 46 functions`.
+
+Per function, before% -> after%, all measured on this tree:
+
+| function | size | before | after |
+|---|---|---|---|
+| `MoveWordLTR` | 408 | 97.01 | **100.00** |
+| `StartNewLine` | 268 | 83.27 | **100.00** |
+| `Add` | 112 | 78.71 | **92.18** |
+| `AddImage` | 508 | 99.09 | 99.09 (unchanged) |
+| `WrapOneLTR` | 756 | 95.38 | 95.38 (unchanged) |
+| `do_insert_before` | 112 | 33.29 | 33.29 (unchanged - see the wall) |
+| `fn_802B6F84` | 120 | 0.00 | 0.00 (unchanged) |
+| `fn_802B7A24` | 120 | 0.00 | 0.00 (renamed, still 0.00% - see the wall) |
+
+Nothing else in the unit moved, and `report_diff` says `no regression`.
+
+## The two spellings that took `StartNewLine` and `MoveWordLTR` to 100%
+
+Both functions' only remaining difference in the previous runs was the same three instructions:
+MWCC normalised the `bool` argument to `mImageBaseline` with `neg r0,rN / or r0,r0,rN /
+srwi r9,r0,31`, which retail does not emit. Retail's bytes are a bare `lbz r9,0xc4(r31)` into the
+constructor's sixth argument register.
+
+**Reading the member through a dereferenced pointer is what reproduces it.** Written
+`*static_cast< const bool * >(&mImageBaseline)` in the `rs_new CLineInstruction(...)` argument
+lists of `StartNewLine` and `MoveWordLTR` the compiler emits retail's exact `lbz r9,0xc4(r31)`
+and nothing else. It is the same value; the only thing it changes is where MWCC schedules the load.
+
+Measured, per function (StartNewLine / MoveWordLTR), all on this tree:
+
+| spelling of the `bool` argument | StartNewLine | MoveWordLTR |
+|---|---|---|
+| `mImageBaseline` (bare) | 75.66 | 90.20 |
+| `static_cast< bool >(mImageBaseline)` | 83.27 | 97.01 |
+| `mImageBaseline ? true : false` | 83.27 | - |
+| `!!mImageBaseline` | 83.27 | 97.01 |
+| `mImageBaseline != 0` / `!= false` | 83.27 | 97.01 |
+| `static_cast< bool >(mImageBaseline != 0)` | 83.27 | 97.01 |
+| `(mImageBaseline ? true : false)` / `(true ? mImageBaseline : false)` | 83.27 | 97.01 |
+| `(!mImageBaseline ? false : true)` | 83.27 | 97.01 |
+| `(mImageBaseline && true)` / `(mImageBaseline + 0)` | 83.27 | 97.01 |
+| `(mImageBaseline, mImageBaseline)` / `(mImageBaseline, mImageBaseline, mImageBaseline)` | 83.27 | 90.20 |
+| `*static_cast< const bool * >(&mImageBaseline)` | **87.76 -> 100.00** | **100.00** |
+| `(mImageBaseline ? true : false, mImageBaseline)` | 87.76 | **100.00** |
+
+The reason every conversion spelling ties is that they all produce the same tree: the load is
+evaluated *first* among the six constructor arguments but then re-normalised. A bare member needs
+no conversion, so no normalisation, but MWCC then schedules the `lbz` *last*, just before the
+`bl`. Only a spelling that is a pure lvalue read and still counts as a non-trivial operand
+reaches retail's shape. The two spellings that work are semantically identical; the pointer one is
+in the diff because it reads as one.
+
+`StartNewLine` additionally needed the temporary made explicit. Retail copies the
+`rstl::ncrc_ptr` it builds into a second stack slot, bumps the shared refcount, and releases the
+first copy before calling `Add` - the classic return-by-value copy. Naming the type on the
+initialisation reproduces it:
+
+```cpp
+const rstl::ncrc_ptr< CInstruction > instruction =
+    rstl::ncrc_ptr< CInstruction >(rs_new CLineInstruction(0, 0, 0, ...));
+```
+
+Measured: with the plain `= rs_new ...` initialisation `StartNewLine` is **87.76%** and 268/268
+bytes, with the explicit temporary 100.00% and 300/300 bytes. This is independent of the `bool`
+spelling - the two fixes compose (87.76% -> 100.00%).
+
+## `Add` (78.71% -> 92.18%), and the two stores it still misses
+
+Retail's `Add` (0x802B791C, 112 bytes) calls `rstl::__advance` directly with a by-reference
+iterator; ours called the two-argument `rstl::advance_iterator`, which it emitted out-of-line and
+called. Replacing the return expression with a named local and `rstl::advance` gives retail's
+call sequence:
+
+```cpp
+InstList::iterator Add(const rstl::ncrc_ptr< CInstruction >& instruction) {
+  mInstructions.push_back(instruction);
+  InstList::iterator it = mInstructions.begin();
+  rstl::advance(it, -1);
+  return it;
+}
+```
+
+That is 78.71% -> **92.18%**, 100/112 bytes, and the frame becomes retail's 0x30. Eight bytes
+remain: retail stores the `begin()` value at three stack slots (0x10, 0x14, 0x18) and we store it
+once (0x10); the other two are dead. Retail's `0x10` is the slot `__advance` writes and the
+return value is copied from it, so the two extra slots are retail's `advance_iterator` by-value
+parameter and its sret temporary - i.e. retail inlined `advance_iterator` and did not scalarise
+its aggregates. MWCC will not inline ours: removing `inline` from `advance`/`advance_iterator` in
+`rstl/iterator.hpp` makes it inline completely (the `__advance` call disappears with it,
+**81.39%**), and with the header as Prime 1 has it (no `inline` on `advance_iterator`) it stays a
+real `bl` (**78.71%**). Measured and all rejected: declaration before `push_back` (85.04%), a named
+`bidirectional_iterator_tag` for the third argument (92.18%), an extra named copy before the
+return (92.18%), `return *&it` (92.18%), `return rstl::advance_iterator(it, 0)` (77.64%), `int`
+parameter (changes the mangled name). Eight spellings, all 92.18% or worse.
+
+WALL: Add__18CTextExecuteBufferFRCQ24rstl24ncrc_ptr 92.18% - retail inlines
+rstl::advance_iterator with its aggregates live on the stack and MWCC will not, bare or with the
+inline keyword removed; the residual is two dead stores.
+
+## The `create_node` wall: +2 functions, measured, and it breaks a Matching unit
+
+This is the lead the previous run left ("`fn_802B7A24` ... `create_node` for the instruction
+list; ours is a different size"). **It is not a different size - ours is byte-identical.** Retail
+inlines `create_node` into `do_insert_before`, which is why the earlier runs saw 176 bytes there
+and 0.00% for the 120-byte `fn_802B7A24`; MWCC's inline-size limit decides that, and the limit
+is reachable.
+
+`rstl::list<T>::create_node` in `include/rstl/list.hpp` with **four** `RSTL_PRECONDITION`
+statements added (the lever `rstl/construct.hpp` already documents: "They still count toward
+MWCC's inline size limit") produces, measured:
+
+* `create_node<rstl::list<rstl::ncrc_ptr<CInstruction> > >` **emitted out-of-line at 120 bytes,
+  byte-for-byte identical to retail's `fn_802B7A24`** (verified instruction by instruction),
+  and called from `do_insert_before`;
+* `do_insert_before<...>` 33.29% -> **100.00%**;
+* the `symbols.txt` rename (`fn_802B7A24` -> that mangled name, in this diff) then reaches 100%;
+* the unit goes to **42 / 46**.
+
+It does not ship, because the same four statements break the DOL. `rstl::list` is used by other
+units, and outlining `create_node` changes one that is `Matching`:
+
+* `Kyoto/Particles/CParticleDataFactory.cpp` (`Object(Matching, ...)`, configure.py:1004) emits
+  `do_insert_before<rstl::list<CElementAllocationChunk> >`, and retail **inlines** `create_node`
+  there. With four preconditions our object grows a `create_node<...list<CElementAllocationChunk...>`
+  and `do_insert_before` shrinks, so `build.sha1` fails: `87 computed checksum(s) did NOT match`,
+  `main.dol: FAILED`. Without them, `87 files OK`.
+* Three preconditions leave both instantiations inlined; four outline both. There is no count that
+  separates them - the same source text produces both instantiations, so the estimate moves
+  together. (Retail's source must differ from ours for exactly one of them, and I did not find it.)
+* The other three objects that move are `NonMatching` and harmless:
+  `CAutoMapper`, `CGameArea`, `CTextExecuteBuffer` itself.
+
+Also measured and rejected for the same slot: Prime 1's own shape
+(`node(node* prev, node* next) {}` on `rstl::list<T>::node` plus `new (n) node(prev, next)`).
+That does outline `create_node`, and it is still 8 bytes wrong - MWCC's placement new emits
+`cmplwi r3,0 / beq` before the two stores, retail has no null check - so `create_node` is 128
+bytes against retail's 120. It outlines `CElementAllocationChunk` too.
+
+A future run that wants those two functions needs a way to make MWCC's estimate differ between
+the two instantiations. The only lever found that depends on `T` is the copy of `T` into the node
+(`rstl::ncrc_ptr`'s copy constructor bumps a refcount, `CElementAllocationChunk`'s is a struct
+copy), which suggests retail's `rstl::ncrc_ptr` copy constructor is spelled with more nodes than
+ours - but `include/rstl/rc_ptr.hpp` is used everywhere, so that is a much larger item than this
+one. Not filed as `NEW:` for that reason, and because the target would be this same unit.
+
+## Still open, with the evidence
+
+- **`AddImage` 99.09%** - register numbering only, 12 bytes of 508: retail puts the two bools in
+  r28/r29 and the two widths in r27/r26, we put the bools in r27/r26 and the widths in r28/r29.
+  No spelling tried in any run reaches it (see the earlier runs' lists: single reused `wrap`,
+  `> 1`, `!= 0`, two variables either order, an extra `const int` local, folded `&&`, `goto`).
+- **`WrapOneLTR` 95.38%** - retail keeps the line width in r24 and the block width in r28 across
+  the `MoveWordLTR()` call and reuses them for the `rem` estimate; we reload through r5/r4. One
+  new spelling measured this run: hoisting `const int lineWidth` / `const int blockWidth` into the
+  word-wrap block and using them in all three places gives **95.44%** (noise) and renumbers r24 to
+  `this`, so it is not the answer.
+- **`fn_802B6F84`** (120 bytes, 0x802B6F84, called once, from `BuildRenderBufferPages`). Read this
+  run: `r3` is `this` (the caller passes `r29`, which is `mr r29,r3` from the entry), `r4` points
+  at a stack object at `0x20(r1)`. It stores `r3+0xc` into `r3+0x4,0x8,0xc,0x10` and `0` into
+  `r3+0x14` - the shape of `rstl::list`'s four node pointers plus `mCount`, i.e. it resets
+  `CTextExecuteBuffer::mInstructions` - then builds two iterators from `*(r4+8)` and `*(r4+4)`,
+  reads `mInstructions.mEnd`, and calls
+  `rstl::list<CTextRenderBuffer>::insert(const iterator&, const_iterator, const_iterator)`
+  (the template-parameterised member at 0x802B6FFC, already 100%). No function in our object
+  matches those 120 bytes. It needs a disassembly reading, not a queue entry.
+- `tools/unit_fit.sh` was not re-run: the unit cannot flip with 6 of 46 functions short of 100%,
+  and this is a `progress` item.
+
+NEW: none. Both leads above are measured walls inside this same unit, which is what this notes
+file is for.

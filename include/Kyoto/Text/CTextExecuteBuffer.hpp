@@ -51,7 +51,9 @@ private:
                                                  InstList::const_iterator pageEnd);
   InstList::iterator Add(const rstl::ncrc_ptr< CInstruction >& instruction) {
     mInstructions.push_back(instruction);
-    return rstl::advance_iterator(mInstructions.begin(), -1);
+    InstList::iterator it = mInstructions.begin();
+    rstl::advance(it, -1);
+    return it;
   }
   void AddStringFragment(const wchar_t* str, int len);
   int WrapOneLTR(const wchar_t* str, int len);

@@ -223,13 +223,17 @@ void CTextExecuteBuffer::StartNewLine() {
   if (mCurrentLine) {
     TerminateLine(false);
   }
-  // The explicit bool conversions of mImageBaseline are not redundant: with a bare
-  // `mImageBaseline` MWCC sinks the `lbz` past the other five arguments (StartNewLine 75.66%,
-  // MoveWordLTR 90.20%); forcing the conversion loads it first, as retail does
-  // (83.27% and 97.01%, measured).
+  // Two spellings here are not redundant, both measured against retail's bytes:
+  // `rstl::ncrc_ptr<CInstruction>(...)` is what makes retail's copy of the temporary appear
+  // (without it this function is 87.76% rather than 100%), and reading mImageBaseline through a
+  // dereferenced pointer is what loads it *first* among the six constructor arguments. A bare
+  // `mImageBaseline` is loaded last (75.66% / 90.20% before the copy fix), and any explicit
+  // conversion - `static_cast<bool>`, `? true : false`, `!= 0`, `!!` - loads it first but
+  // normalises it with `neg/or/srwi`, which retail does not do.
   const rstl::ncrc_ptr< CInstruction > instruction =
-      rs_new CLineInstruction(0, 0, 0, mState.GetJustification(), mState.GetVerticalJustification(),
-                              mImageBaseline ? true : false);
+      rstl::ncrc_ptr< CInstruction >(rs_new CLineInstruction(
+          0, 0, 0, mState.GetJustification(), mState.GetVerticalJustification(),
+          *static_cast< const bool * >(&mImageBaseline)));
   mCurrentWord = Add(instruction);
   mCurrentLine = static_cast< CLineInstruction* >(instruction.GetPtr());
   mSpaceDistance = 0;
@@ -264,7 +268,8 @@ void CTextExecuteBuffer::MoveWordLTR() {
 
   const rstl::ncrc_ptr< CInstruction > instruction =
       rs_new CLineInstruction(1, mCurrentX, mCurrentY, mState.GetJustification(),
-                              mState.GetVerticalJustification(), static_cast< bool >(mImageBaseline));
+                              mState.GetVerticalJustification(),
+                              *static_cast< const bool * >(&mImageBaseline));
   mCurrentLine = static_cast< CLineInstruction* >(instruction.GetPtr());
   mInstructions.insert(mCurrentWord, instruction);
   mInstructions.insert(mCurrentWord, rs_new CWordInstruction());
