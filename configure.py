@@ -2396,9 +2396,31 @@ config.libs = [
         # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
         # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
         # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        # Added 2026-10-02 (progress-twin-rel-emperoringstage1). Two claims on top of the 14
+        # accessors, both of the shape `docs/RUNNING_THE_DECOMP.md` describes and neither a
+        # new idea. (1) `CEmperorIngStage1Rel.cpp`, .text 0xA22C..0xA2A0: **three**
+        # functions - RELExit (0xA22C, `li r3,0 / bl fn_8022756C`), RELMain (0xA250,
+        # `bl fn_16_A270`) and the loader registration fn_16_A270 (`lbl_16_bss_0 =
+        # fn_16_A2A0 ; fn_8022756C(&lbl_16_bss_0)`) - which is CIngPuddleRel's and
+        # CScriptDarkSamusBattleStageRel's block verbatim with this module's own names.
+        # **It sits in the middle of the module rather than at its head**, because this
+        # module's head accessors are the 0xB994 claim above and its own entity loader
+        # fn_16_A2A0 (0x31C) is the next function above this range; one unit cannot claim
+        # two discontiguous ranges, so the entry-point block is its own unit.
+        # (2) `REL/REL_Setup.cpp`, .text 0xC2A4..0xC448 + .rodata 0xAC0..0xB44: the free
+        # 0 -> 5 (`_unresolved`, `_epilog`, `_prolog`, ModuleDestructors,
+        # ModuleConstructors) that `tools/wire_rel_setup.py` claims for a module. It is
+        # named in the shared "REL" lib above already and must NOT be named twice
+        # ("Duplicate object name"); what it needed here was the two renames in this
+        # module's `symbols.txt`, RELExit/RELMain `scope:global`, so `_prolog`/`_epilog`
+        # resolve against CEmperorIngStage1Rel.cpp's definitions. Not in files.cmake: it
+        # defines a module entry point, which is that tool's counted-and-skipped case.
+        # The module's 0x0..0xC2A4 remainder is left unclaimed so dtk fills it from retail
+        # and the module's sha1 against config/G2ME01/config.yml still holds.
         "EmperorIngStage1",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/EmperorIngStage1Accessors.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CEmperorIngStage1Rel.cpp"),
         ],
     ),
     Rel(
