@@ -58,6 +58,22 @@
 #include "MetroidPrime/ScriptObjects/CScriptDebris.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptPickupGenerator.hpp"
 
+// `CBeamProjectile`'s destructor, out of line, and it lives here. Retail's symbol table puts
+// `__dt__15CBeamProjectileFv` at 0x800974C0 - inside this unit's range (0x800972BC..0x8009D644) and
+// immediately after `__dt__17CPlasmaProjectileFv` at 0x800972BC, whose 96th byte onwards is
+// `mr r3,r30 / li r4,0 / bl 0x800974c0`: a call, not an inline copy. Measured on this unit's object,
+// declaring the destructor in the class body (the spelling every other class here uses) makes
+// mwcceppc inline that call, and `__dt__17CPlasmaProjectileFv` then carries 5 instructions retail does
+// not have (134 words against 129, objdiff 95.66%). Out of line it is byte-identical.
+//
+// `inline` on the definition is what would put the call back, and it is also what keeps the symbol
+// weak - so it is neither: a plain out-of-class definition is strong here and undefined in
+// CBeamProjectile.cpp / CPlasmaProjectile.cpp, which is exactly retail's one definition of it. Neither
+// of those two units emits a CBeamProjectile vtable (their own `__vt__` is an undefined reference in
+// both, and TypesMatch.o is where the vtables and the destructors are), so they gain no new reference
+// to it at all - measured with `nm -u` on both objects.
+CBeamProjectile::~CBeamProjectile() {}
+
 // Three names here are inferred rather than read from a symbol table or another
 // version's config: id 93 CScriptTriggerEllipsoid (sits between the trigger
 // classes), id 104 CWallCrawler (its only vtable reference is WallCrawler.rel) and
@@ -938,9 +954,11 @@ SUnknownOuter::~SUnknownOuter() {
   delete x0_ptr;
 }
 CUnknownInner::~CUnknownInner() {}
-// Not at 100%: retail gives each of the two bounds a stack home *and* an outgoing-argument copy
-// (four stores, arguments at 12(SP) and 20(SP)); MWCC here gives one slot each. Everything else in
-// this function is byte-identical. See the lane report.
+// Not at 100%, and not even paired: retail's symbol table calls this `fn_8009D3D8`, mwcceppc mangles
+// every destructor, so objdiff can never pair the two and this scores 0.00% whatever the body is.
+// Retail also gives each of the two bounds a stack home *and* an outgoing-argument copy (four
+// stores, arguments at 12(SP) and 20(SP)); MWCC here gives one slot each. Everything else in this
+// function is byte-identical. See docs/goal-notes/match-typesmatch.md.
 CUnknownItemList::~CUnknownItemList() {
   uchar* last = xC_items + x4_count * 8;
   uchar* first = xC_items;

@@ -13,7 +13,13 @@ public:
                   TUniqueId uid, TAreaId areaId, TUniqueId owner, uint attribs, bool growingBeam);
 
   // CEntity
-  ~CBeamProjectile() override {}
+  // Declared here and defined in MetroidPrime/TypesMatch.cpp, because retail's symbol for it
+  // (`__dt__15CBeamProjectileFv`, 0x800974C0) sits inside *that* unit's range and `~CPlasmaProjectile`
+  // (0x800972BC) calls it there out of line. Defined in the class body, mwcceppc inlines the call and
+  // `__dt__17CPlasmaProjectileFv` comes out 5 instructions long (95.66%); see
+  // docs/goal-notes/match-typesmatch.md. Do not move the definition into CBeamProjectile.cpp: the
+  // DOL link would then see a second definition of the symbol retail's TypesMatch object already has.
+  ~CBeamProjectile() override;
   CEntity* TypesMatch(int typeId) const override;
 
   // CActor
