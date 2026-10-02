@@ -43,7 +43,7 @@
 // never defined here.  Its own 0x94 bytes are a spelling job of its own, which is why the claim
 // stops where it does, and its `bl` at 0x80004468 is retail's, so the carve cannot drop the call.
 // For the DOL dtk's own `auto_*` object defines it; for the port link it is the announced stand-in
-// `stub_199` in `src/MetroidPrime/PortLinkStubs.cpp`, the same trade `stub_186` makes for
+// `stub_80004438_0` in `src/MetroidPrime/PortLinkStubs.cpp`, the same trade `stub_186` makes for
 // `Carve80004010.c`'s callee.  Nothing here claims `fn_8000447C` is decompiled.
 //
 // Source order is **descending by address** and that is load-bearing: mwcceppc emits function
@@ -64,16 +64,17 @@
 
 /** 0x8000447C, `symbols.txt:75`, 0x94 = 148 bytes: the 36-byte element's destructor, the function
  *  this file's `fn_80004458` calls with the `-1` "do not free me" flag.  Declared, never defined
- *  here; the port link's stand-in is `stub_199` in `src/MetroidPrime/PortLinkStubs.cpp`.  The
- *  signature matches the declaration `src/MetroidPrime/Player/CGameStateStreamCtor.cpp:236`
- *  already carries.  `-1` is an `int`, not a `short`: the twin's `li r4,-1` is the same
- *  instruction either way, and the callee's `extsh` reads the caller's flag word. */
+ *  here; the port link's stand-in is `stub_80004438_0` in `src/MetroidPrime/PortLinkStubs.cpp`,
+ *  an announced empty body.  The signature matches the declaration
+ *  `src/MetroidPrime/Player/CGameStateStreamCtor.cpp:236` already carries, which is itself never
+ *  called.  `-1` is an `int`, not a `short`: the twin's `li r4,-1` is the same instruction either
+ *  way, and the callee's `extsh` reads the caller's flag word. */
 extern void fn_8000447C(void* self, int flag);
 /* The ninth upstream sync (2026-10-02) named 0x8000447C `__dt__11CWorldStateFv` in `symbols.txt`,
  * so retail's link has no `fn_8000447C` any more and this file's `bl` must spell the new name.
- * The port keeps the old one, which nothing defines there: it is one of the listed undefined
- * symbols in `docs/research/port_link_gap_list.md`, not `stub_199` as the note above says
- * (that stub is `fn_801FDAE8`). */
+ * The port keeps the old one, which nothing in the port's own objects defines: the stand-in
+ * `stub_80004438_0` in `src/MetroidPrime/PortLinkStubs.cpp` does, and that file is not in
+ * `configure.py`, so this file's own bytes are the same either way. */
 #ifdef __MWERKS__
 extern void __dt__11CWorldStateFv(void* self, int flag);
 #define fn_8000447C __dt__11CWorldStateFv

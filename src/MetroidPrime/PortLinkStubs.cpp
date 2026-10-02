@@ -1346,6 +1346,39 @@ extern "C" void stub_224() {}
 extern "C" void stub_801e515c_0() asm("fn_801E51A4");
 extern "C" void stub_801e515c_0() {}
 
+// `fn_8000447C` - retail `.text:0x8000447C`, 0x94 = 148 bytes, `CWorldState::~CWorldState()`;
+// the ninth upstream sync (2026-10-02) gave it that name in `config/G2ME01/symbols.txt:75`.
+//
+// **This is an empty-body stand-in and it is announced as one.** It does not claim 0x8000447C is
+// decompiled: it is not. No unit claims that range - it is still dtk's `auto_03_8000447C_text.o`
+// (`build/G2ME01/asm/auto_03_8000447C_text.s:10` is the only place retail's 37 instructions appear,
+// and `config/G2ME01/splits.txt` has no entry for them) - and this file is not in `configure.py`,
+// so a definition here cannot reach main.dol. What retail's function does, measured from those 37
+// instructions, is: if `self` is non-null, `bl fn_80009224` on `self+0x1C`, then
+// `ReleaseData__Q24rstl23rc_ptr<13CMapWorldInfo>Fv` on `self+0x10` and `fn_80009008` on `self+0x08`
+// (each behind its own null test), then `Free__7CMemoryFPCv(self)` when `(short)flag > 0`. **An
+// empty body does none of that**, so an element destroyed through this name leaks its three
+// `rc_ptr` payloads rather than releasing them. That is the trade every stub in this file makes -
+// an undefined symbol the linker cannot do without - and it is why this one is named after the
+// unit that asks for it instead of being hidden among the numbered stubs.
+//
+// **Why the port asks for it at all.** `src/MetroidPrime/Carve80004438.c:71-80` declares
+// `fn_8000447C` and, under `#ifdef __MWERKS__` only, `#define`s it to `__dt__11CWorldStateFv`, so
+// the matching build's `bl` at 0x80004468 is retail's own `__dt__11CWorldStateFv` while the port
+// object's is `fn_8000447C` - and measured
+// (`build/goal/judge/undef.base.txt:243`, `tools/link_undef_refs.py`) that object is
+// `Carve80004438.c.o` alone. The declaration in
+// `src/MetroidPrime/Player/CGameStateStreamCtor.cpp:236` is not a second referencer: it is declared
+// and never called.
+//
+// This stand-in is not new work and not a new claim: an earlier one for the same symbol lived in
+// this file and was lost. The rebase that union-merged this lane's `stub_197` (for `fn_8000447C`)
+// with another lane's `stub_197` took the symbol with it - `docs/goal-notes/carve-80004438.md:478`
+// records it, and `:341` names `stub_197` as the stand-in that used to be here. `stub_199` is
+// `fn_801FDAE8` (:1181 above), so nothing under a `stub_N` name covered this one after the merge.
+extern "C" void stub_80004438_0() asm("fn_8000447C");
+extern "C" void stub_80004438_0() {}
+
 // typeinfo for CGunWeapon
 extern "C" char stub_data_0[64] asm("_ZTI10CGunWeapon") = {};
 
