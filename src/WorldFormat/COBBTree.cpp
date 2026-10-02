@@ -5,6 +5,22 @@
 COBBTree::CSimpleAllocator* COBBTree::CNode::spAllocator = nullptr;
 COBBTree* COBBTree::sPrebuiltTrees[4] = {};
 
+// Retail keeps `CCollisionEdge(CInputStream&)` out of line: it is `fn_8024747C` (0x8024747C,
+// 0x2C bytes), and `rstl::vector<CCollisionEdge>::vector(CInputStream&, const Alloc&)`
+// (retail 0x8024F0FC, 184 bytes) calls it once per element with a stack temporary at `r1+8` as
+// the destination, then copies the two halves into the slot. Written in the class it is
+// implicitly inline; mwcceppc inlines it at every call site, no symbol survives, and the vector
+// instantiation unrolls four elements per iteration into 464 bytes instead of 184.
+// `#pragma dont_inline` was measured and changes nothing - the call appears only once the
+// definition is out of class. Declared in WorldFormat/CCollisionEdge.hpp; this is the only unit
+// that constructs a CCollisionEdge from a stream (`rstl::vector<CCollisionEdge>`'s stream
+// constructor is instantiated only by COBBTree::SIndexData's initialiser list), so this
+// definition is also the only one the DOL could put at 0x8024747C.
+CCollisionEdge::CCollisionEdge(CInputStream& in) {
+  mIndex1 = in.Get< ushort >();
+  mIndex2 = in.Get< ushort >();
+}
+
 COBBTree::SIndexData::SIndexData(CInputStream& in)
 : mMaterials(in)
 , mVertMaterials(in)

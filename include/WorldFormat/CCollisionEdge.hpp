@@ -11,14 +11,16 @@
 // 184 bytes. Defined in the class, this constructor is implicitly inline, mwcceppc inlines it
 // and no symbol survives, so the stream constructor is 464 bytes instead. `#pragma dont_inline`
 // around the class was measured and changes nothing (still 464, no out-of-line copy emitted);
-// the call only appears if the constructor is defined out of class.
+// the call only appears if the constructor is defined out of class, which is what this is for - it
+// is declared here and defined in src/WorldFormat/COBBTree.cpp, the only unit that instantiates
+// `rstl::vector<CCollisionEdge>`'s stream constructor. Both retail functions then reproduce
+// byte for byte (0x2C and 0xB8).
 class CCollisionEdge {
 public:
   CCollisionEdge(ushort index1, ushort index2) : mIndex1(index1), mIndex2(index2) {}
-  explicit CCollisionEdge(CInputStream& in) {
-    mIndex1 = in.Get< ushort >();
-    mIndex2 = in.Get< ushort >();
-  }
+  // Declared only; defined out of class in src/WorldFormat/COBBTree.cpp, next to the comment
+  // there that measures why.
+  explicit CCollisionEdge(CInputStream& in);
 
   ushort GetVertIndex1() const { return mIndex1; }
   ushort GetVertIndex2() const { return mIndex2; }
