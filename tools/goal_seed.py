@@ -9,7 +9,8 @@ The loop eats queue items; when the queue runs dry nothing regenerates it by han
 candidates from measurements instead of memory, which matters because every wrong figure in this
 repo's docs came from recall.
 
-Four kinds of candidate, in this order:
+Four kinds of candidate, in the order below except that **match is proposed last of all**, after
+carve (2026-10-02: plain match items took 43 agent runs that day and landed one):
 
   * **REL head** (`progress` items, `module:<Name>`) - a retail REL module that links *no* object of
     our own code. Its head (accessors/RELMain/RELExit) is the standard first step and the recipe
@@ -40,7 +41,12 @@ A fifth kind comes last of all (opt-in until its trial passed on 2026-10-02):
     directory from the nearest claimed range below - so the lane only writes code. Needs
     `build/G2ME01/main.elf` under --root. All-twin runs first.
 
-And one kind on trial, seeded only with `--only twin` (pass rate unmeasured, 2026-10-02):
+And two kinds on trial, seeded only with `--only twin` / `--only dup` (pass rates unmeasured,
+2026-10-02):
+
+  * **dup** (`progress` items, a DOL unit path or `module:<Name>`) - unmatched functions whose
+    shape has DUP_MIN or more unmatched copies and no matched one, so the first match turns the
+    rest into twins. One item per unit or module hosting such a copy in a source file of ours.
 
   * **twin** (`progress` items, a DOL unit path or `module:<Name>`) - unmatched functions whose
     instructions are identical, once relocated words are masked, to a function that already
@@ -96,6 +102,8 @@ UNIT_SKIP = {"MetroidPrime/Enemies/CPatterned", "MetroidPrime/Enemies/CAi"}
 CARVE_TINY = 64  # bytes: an unsourced function this small is first-attempt work without a twin
 CARVE_NAME_MAX = 70  # characters of a twin's mangled name quoted in the reason (rstl ones run to 500)
 CARVE_MAX_FNS = 4  # functions in one carve item; a longer run is proposed again with what is left
+DUP_MIN = 5  # copies of one unmatched shape before its first match is worth an item of its own
+DUP_LIST_MAX = 6  # shapes named in one `dup` item's reason
 TWIN_LIST_MAX = 10  # twins named in one `twin` item's reason; the rest are a --list away
 PRIME_LIST_MAX = 12  # functions named in one item's reason; more makes the item a project
 
@@ -476,6 +484,9 @@ def twin_candidates(report: dict) -> list[dict]:
             f"{t['name'][:CARVE_NAME_MAX]} ({t['size']} B"
             + (f", in {t['unit'].split('/', 1)[1]}" if t["rel"] else "")
             + f") = `{t['twin_name'][:CARVE_NAME_MAX]}` in {t['twin_source']}"
+            + (f" [already landed in a module as `{t['rel_example'][1][:CARVE_NAME_MAX]}` in "
+               f"{t['rel_example'][2]}]"
+               if t["rel"] and t.get("rel_example") and t["rel_example"][2] != t["twin_source"] else "")
             for t in fns[:TWIN_LIST_MAX])
         more = f" (and {len(fns) - TWIN_LIST_MAX} more: python3 tools/twin_scan.py --list)" \
             if len(fns) > TWIN_LIST_MAX else ""
@@ -496,10 +507,84 @@ def twin_candidates(report: dict) -> list[dict]:
                       "the statement order and types that produce these instructions, so a "
                       "mismatch is in what you named, not in the shape. A twin in another class "
                       "is often the same inherited or templated function: prefer declaring it "
-                      "the way the twin's class does over inventing a new body. One function "
+                      "the way the twin's class does over inventing a new body. Where a line "
+                      "says [already landed in a module as ...], that file is the same function "
+                      "already built inside another REL module: copy how it is declared, placed "
+                      "and split there. One function "
                       "taken to 100% is a pass; write notes per function (before%, after%, "
                       "whether the twin's source matched unchanged). Seeded by goal_seed.py",
             "sort": (-sum(t["size"] for t in fns),),
+        })
+    out.sort(key=lambda c: c["sort"])
+    return out
+
+
+def dup_candidates(report: dict) -> list[dict]:
+    """Units holding an unmatched function whose shape recurs DUP_MIN or more times unmatched.
+
+    No copy of such a shape is matched anywhere, so the twin kind cannot see it; the first match
+    makes every other copy a twin. The item goes to the copy that is cheapest to write: one in a
+    DOL unit with a source file of ours, else one in a REL module that already links our code."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from twin_scan import scan
+    try:
+        _twins, rest, _missing = scan(ROOT)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"goal_seed: twin scan of {ROOT} failed ({e})", file=sys.stderr)
+        return []
+    own = own_code_modules()
+    shapes: dict[int, list[tuple]] = {}
+    for r in rest:
+        shapes.setdefault(r[0], []).append(r)
+    hosts: dict[tuple, list[tuple]] = {}
+    for copies in shapes.values():
+        if len(copies) < DUP_MIN:
+            continue
+        best = None
+        for _h, size, unit, name, src, auto in copies:
+            if auto or not src or not (ROOT / src).exists():
+                continue
+            if unit.startswith("main/"):
+                u = unit.split("/", 1)[1]
+                if u in UNIT_SKIP:
+                    continue
+                rank, key = 0, (f"progress-dup-{re.sub(r'[^a-z0-9]', '', Path(u).name.lower())}", u)
+            else:
+                mod = unit.split("/", 1)[0]
+                if mod not in own:
+                    continue
+                rank, key = 1, (f"progress-dup-rel-{mod.lower()}", f"module:{mod}")
+            cand = (rank, not name.startswith("fn_"), unit, name, key, src, size)
+            if best is None or cand[:3] < best[:3]:
+                best = cand
+        if best:
+            mods = len({c[2].split("/", 1)[0] for c in copies})
+            hosts.setdefault(best[4], []).append((len(copies), best[6], best[3], best[5], mods))
+
+    out = []
+    for (id_, target), fns in hosts.items():
+        fns.sort(key=lambda f: (-f[0] * f[1], f[2]))  # copies x bytes is what one match unlocks
+        listed = "; ".join(f"`{name[:CARVE_NAME_MAX]}` ({size} B, in {src}): {n} unmatched copies "
+                           f"across {mods} module(s)" for n, size, name, src, mods in fns[:DUP_LIST_MAX])
+        where = ("this REL module's matched_functions, summed over its units; keep the module's "
+                 "sha1 equal to config/G2ME01/config.yml") if target.startswith("module:") else \
+            "the unit's matched_functions; it stays NonMatching, do not run flip_test to decide"
+        out.append({
+            "id": id_,
+            "kind": "progress",
+            "target": target,
+            "reason": f"dup item: raise {where}. Re-measure first. These unmatched function(s) here "
+                      "each have byte-shape copies (same instructions apart from call targets and "
+                      "data addresses) that are unmatched everywhere, so the first match of one "
+                      f"turns all its copies into copy-work for later items: {listed}. Work on "
+                      "them in that order and spend the whole run on the first if it needs it. "
+                      "Many are inlined or compiler-generated members (copy constructors, "
+                      "destructors, rstl templates): if so, fix the class or template declaration "
+                      "in include/ so the compiler emits it, rather than writing a body. In the "
+                      "notes give, per function, before%, after% and the exact construct that "
+                      "produced the match - the other copies will be written from that line. "
+                      "Seeded by goal_seed.py",
+            "sort": (-sum(n * size for n, size, *_ in fns),),
         })
     out.sort(key=lambda c: c["sort"])
     return out
@@ -535,7 +620,7 @@ def main() -> int:
     ap.add_argument("--queue-dir", default=None,
                     help="queue directory (default: $MP_GOAL_QUEUE_DIR, else ../wt-mp2-goal/build/goal)")
     ap.add_argument("--max", type=int, default=10, help="most items to seed in total (default: 10)")
-    ap.add_argument("--only", choices=("rel-head", "prime1", "match", "unit", "carve", "twin"),
+    ap.add_argument("--only", choices=("rel-head", "prime1", "match", "unit", "carve", "twin", "dup"),
                     default=None,
                     help="seed one kind of candidate only")
     ap.add_argument("--prime1-min-same", type=int, default=0,
@@ -570,11 +655,12 @@ def main() -> int:
     kinds = {"rel-head": lambda: rel_head_candidates(queue_dir),
              "prime1": lambda: [c for c in prime1_candidates(report)
                                 if -c["sort"][0] >= args.prime1_min_same],
-             "match": lambda: match_candidates(report),
              "unit": lambda: unit_candidates(report),
              "carve": lambda: carve_candidates(report),
-             "twin": lambda: twin_candidates(report)}
-    opt_in = {"twin"}  # kinds on trial: seeded only with --only, not by a lane's automatic refill
+             "match": lambda: match_candidates(report),  # last: 1 of 43 runs landed on 2026-10-02
+             "twin": lambda: twin_candidates(report),
+             "dup": lambda: dup_candidates(report)}
+    opt_in = {"twin", "dup"}  # kinds on trial: seeded only with --only, not by a lane's automatic refill
     cands = [c for k, f in kinds.items()
              if (args.only == k if k in opt_in else args.only in (None, k)) for c in f()]
     seen_ids, picked = set(), []

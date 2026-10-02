@@ -135,6 +135,13 @@ say() { echo "[$(date -u '+%F %T')Z] $*" | tee -a "$LOG"; }
 # session in wt-mp2-goal-L1 until ~19:23, so its files landed in the next item's commit (9a9fbf5).
 # Deleting the session is what stops it ("Session not found" in the service log). The previous
 # clean survivor stays, so the worktree still keeps one session.
+#
+# **The delete itself is `--standalone`.** A plain `opencode session delete` is a client of the
+# background service and *starts* it when none is running - with this lane's environment (TMPDIR
+# and all). 2026-10-02: lane 9's prune started `opencode serve --service` at 19:34:55, and that
+# service then resumed unfinished sessions from the shared DB that belonged to other projects and
+# to OpenChamber's own server, so two agents wrote one tree. The cleanup for ghost sessions was
+# what created the thing that makes them.
 SESSIONS="$GOAL/sessions"   # this worktree's finished-run session IDs, oldest first
 prune_sessions() {
   local sid old
@@ -143,7 +150,7 @@ prune_sessions() {
   [ -n "$sid" ] || return 0
   if [ "${2:-0}" != 0 ] || grep -q '"type":"error"' "$1" 2>/dev/null; then
     if [ -s "$SESSIONS" ] && ! grep -qx "$sid" "$SESSIONS"; then
-      timeout -k 10s 60s opencode session delete "$sid" </dev/null >/dev/null 2>&1 \
+      timeout -k 10s 60s opencode session delete --standalone "$sid" </dev/null >/dev/null 2>&1 \
         && say "deleted unfinished opencode session $sid (exit ${2:-0}) so the service cannot resume it" \
         || say "could not delete unfinished opencode session $sid - the service may resume it in $WT; delete it by hand"
       return 0
@@ -153,7 +160,7 @@ prune_sessions() {
   echo "$sid" >>"$SESSIONS"
   while read -r old; do
     [ "$old" = "$sid" ] && continue
-    timeout -k 10s 60s opencode session delete "$old" </dev/null >/dev/null 2>&1 \
+    timeout -k 10s 60s opencode session delete --standalone "$old" </dev/null >/dev/null 2>&1 \
       || say "could not delete opencode session $old - dropped from $SESSIONS; delete it by hand"
   done <"$SESSIONS"
   echo "$sid" >"$SESSIONS"
@@ -560,6 +567,27 @@ for u in ([t] if re.search(r"\.(cpp|cp|c)$", t) else [t + ".cpp", t + ".cp", t +
 sys.exit(1)' )
 }
 
+# named_already_matched <item-json> - for a match item an agent filed ("found by ..."), are the
+# functions its reason names all at 100% in the head's report while the unit is still open? Seven
+# such items each took an agent run on 2026-10-02 only to be marked STALE:. Prints the names.
+# Seeded items are left alone: theirs is the unit's flip, which 100% everywhere does not finish.
+named_already_matched() {
+  printf '%s' "$1" | ( cd "$WT" && python3 -c '
+import json, re, sys
+it = json.load(sys.stdin)
+reason, t = it.get("reason", ""), re.sub(r"\.(cpp|cp|c)$", "", it.get("target", ""))
+if not reason.startswith("found by ") or not t: sys.exit(1)
+try: units = json.load(open("build/report.base.json"))["units"]
+except Exception: sys.exit(1)
+pct = {}
+for u in units:
+    if u["name"].split("/", 1)[-1] == t:
+        for f in u.get("functions", []): pct[f["name"]] = f.get("fuzzy_match_percent", 0.0)
+named = sorted({w for w in re.findall(r"[A-Za-z_][\w<>,@$]*", reason.split(":", 1)[-1]) if w in pct})
+if not named or any(pct[n] < 100.0 for n in named) or all(v >= 100.0 for v in pct.values()): sys.exit(1)
+print(" ".join(named))' )
+}
+
 # note_reject <run-label> - the reviewer's REJECT, into the item's notes for the next attempt.
 note_reject() {
   { printf '\n## Review rejected run %s (%s, reviewer %s)\n\n' "$1" "$(date -u '+%F %TZ')" "$REVIEWER"
@@ -825,6 +853,12 @@ while :; do
     # already vouches for the unit, and an agent run would only find nothing to do.
     say "$ID: its unit is already Matching at $(git -C "$WT" rev-parse --short HEAD) - done, no agent run"
     Q done "$ID" | tee -a "$LOG"
+    continue
+  fi
+  if [ "$KIND" = match ] && NAMED=$(named_already_matched "$ITEM"); then
+    say "$ID: every function it names is already 100% at $(git -C "$WT" rev-parse --short HEAD) ($NAMED) - to review, no agent run"
+    Q review "$ID" --why "stale precheck: already 100% in build/report.base.json: $NAMED" | tee -a "$LOG"
+    skipped=$((skipped+1))
     continue
   fi
   if [ "$KIND" = port ] && ! port_judgeable "$ITEM"; then
