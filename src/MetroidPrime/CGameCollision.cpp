@@ -681,9 +681,7 @@ void CGameCollision::MakeCollisionCallbacks(CStateManager& mgr, CPhysicsActor& a
   if (id != kInvalidUniqueId) {
     if (CPhysicsActor* other = TCastToPtr< CPhysicsActor >(mgr.ObjectById(id))) {
       CCollisionInfoList swapped(collisions);
-      for (int i = 0; i < swapped.GetCount(); ++i) {
-        swapped[i].Swap();
-      }
+      swapped.Swap(0);
       // The original passes the unswapped list despite constructing the swapped copy.
       other->CollidedWith(actor.GetUniqueId(), collisions, mgr);
     }

@@ -1173,3 +1173,207 @@ side-by-side of one function, retail from the split `.s` when it has a `.fn` blo
 `main.elf` by address otherwise - **the retail address is `report.json`'s unit-relative `address`
 field for objdiff but `metadata.virtual_address` for objdump**), `m.sh` (rebuild + per-function
 diff against a saved clean-tree report), `v.sh` (the four ray/leaf functions' scores only).
+
+---
+
+## Run 7 (2026-10-01, lane 7) - the pointer-bounded loop lever, applied to `SendScriptMessages`
+
+**Result: two functions rose, but `matched_functions` did NOT, so
+`./tools/goal_check.sh build/goal/item.json` returned `FAIL - target did not rise:
+main/MetroidPrime/CGameCollision: 20 -> 20 / 52 functions`.** The judge for a `progress` item is
+`tools/goal_check.sh`'s `target_rose` sub-check, which requires the unit's **function count** to
+rise strictly - not `matched_code` bytes and not `fuzzy_match_percent`. This run's gains are real
+and regression-free but are **percentage-only**, so this item did not pass and the driver will have
+discarded the change. Read that before re-running: **a percentage gain on a function that is not
+already at 99.x% does not satisfy a `progress` item.** The threshold is one function *crossing* 100%.
+
+| function | before | after |
+|---|---|---|
+| `SendScriptMessages` | 69.22 | **94.79** |
+| `DetectDynamicCollisionMoving(primitive, transform, actor, direction, collision, distance)` | 92.00 | **94.00** |
+
+Unit `.text` fuzzy 63.74% -> 64.65%, `matched_code` unchanged at 10.89% (neither function reached
+100%, so no bytes counted). Project `All:` **11327 / 28465** - unchanged, by the same rule.
+`tools/report_diff.py` -> `matched 11327 -> 11327, linked 5507 -> 5507, no regression`.
+Hand-made diff is **one file**: `src/MetroidPrime/CGameCollision.cpp` (+11/-8). No header touched.
+`docs/HANDOFF.md`'s state block was rewritten by the gate (machine-made, 32.59 -> 32.60 fuzzy).
+
+### The one that mattered: a pointer-bounded loop kills mwceppc's unroll
+
+Run 1 read `SendScriptMessages`' 384-byte-unrolled aggregation loop and concluded:
+
+> retail's message-construction prologue runs `for (i = 0; i < count; ++i)` with a 96-byte stride,
+> ours emits an unrolled 4x body (`mtctr`/`bdnz` plus an `andi. r6,r6,3` remainder loop). Same
+> source, different unrolling - the classic GC 1.3.2 vs 2.7 codegen split. **Wall.**
+
+That is wrong, and it was wrong for a reason this repo had already solved elsewhere.
+`src/MetroidPrime/CStateManager.cpp:298` records, for `fn_800391E4`:
+
+> the pointer-bounded form is what removes the 16-float unroll an indexed
+> `for (i = 0; i < n; ++i)` produces, and every pointer-bounded spelling then lands on the same two
+> prologue bytes
+
+An index loop gives mwceppc a trip count it will unroll and then needs a remainder loop for; a
+pointer-bounded loop gives it a pair of pointers and it does not unroll at all. Retail's disassembly
+shows a `cmplw r4,r7` against an end pointer - pointer-bounded. **Run 1 never tried the pointer
+form here even though the technique was already documented in this repo.**
+
+```cpp
+-  for (int i = 0; i < collisions.GetCount(); ++i) {
+-    materials.Add(collisions[i].GetMaterialLeft());
+-  }
++  const CCollisionInfo* first = &collisions[0];
++  const CCollisionInfo* last = &collisions[collisions.GetCount()];
++  for (const CCollisionInfo* it = first; it != last; ++it) {
++    value |= it->GetMaterialLeft().GetValue();
++  }
++  CMaterialList materials(value);
+```
+
+Accumulating into a `u64` and constructing the `CMaterialList` once afterwards, instead of calling
+`CMaterialList::Add` on a stack object, is what keeps the two accumulator words in `r5`/`r6` for the
+whole loop instead of reloading `88(r1)`/`92(r1)` each iteration - which is exactly what retail does.
+Four steps, each measured separately: pointer-bounded loop alone **90.51**, `u64` accumulator
+**92.49**, declaring the two bools *before* the loop so their `li`s hoist into the prologue like
+retail's **93.63**, a named `const CMaterialList& material` in the second loop so it stays in `r20`
+across the `IsFloor` call **94.35**, declaring `hasPlatform` before `hasFloor` (retail assigns
+hasFloor=r28/hasPlatform=r29, the reverse of ours) **94.63**, and hoisting `first`/`last` into named
+locals **94.79**.
+
+**Note the semantics, because run 1 of this item was rejected for exactly this.** The aggregation
+loop is *kept* - every collision's `GetMaterialLeft()` is still OR-ed into one list and there is
+still exactly one `SendMaterialMessage` call after the `IsFloor` loop. `CMaterialList::Add` is
+`value |= other.value`, so the `u64` accumulator is that loop spelled out. Nothing about the number
+or content of delivered messages changes. The rejected hunk moved the call *inside* the floor loop;
+this one does not.
+
+### `DetectDynamicCollisionMoving` 92.00 -> 94.00: a named bool, not `!= 0`
+
+Retail's tail is `clrlwi r3,r3,24 ; neg r0,r3 ; or r0,r0,r3 ; srwi r3,r0,31` - the full `!= 0`
+normalisation, which we did not emit at all. Runs 4 and 6 both measured `return f(...) != 0` and both
+found it **worse** (this function 92.00 -> **84.00**, re-measured here to the same two decimals): the
+four instructions are right but mwceppc schedules them *before* the epilogue `lmw`/`lwz` instead of
+after, and the body is otherwise instruction-identical.
+
+Binding the callee to a named local first gives the `clrlwi` without the reordering:
+
+```cpp
+const bool hit = CCollisionPrimitive::CollideMoving(...);
+return hit;
+```
+
+`return hit != 0` on top of the named local is 84.00 again, so it is the local that matters, not the
+comparison. The same edit applied to the two sibling wrappers
+`DetectDynamicCollisionBoolean(primitive, transform, actor)` (91.17 -> **89.46**) and
+`DetectDynamicCollision(primitive, transform, actor, collisions)` (91.85 -> **90.27**) is **worse**,
+so it is specific to the `CollideMoving` overload. Reverted both; kept only the Moving one.
+
+### Also tried this run, none of it helping (measured, do not repeat)
+
+- `MakeCollisionCallbacks` 99.69%, the closest function in the unit to 100% and **the one this item
+  most needed.** 65 of 68 instructions identical; retail's swap-loop counter is `r31`, ours is `r29`,
+  because retail recycles the vector copy-ctor's countdown register and mwceppc allocates a fresh
+  one. Re-confirmed run 4's measurement instruction-for-instruction, and a new spelling (declaring
+  the loop counter outside the loop as a `while`) is **identical, 99.69**. This is the single best
+  target for a future run: one register away from flipping the item.
+- `DetectStaticCollision` 97.87%: dropping the `const CWorld* world = mgr.GetWorld()` hoist and
+  calling `mgr.GetWorld()` inline in both loops is **worse** (94.98). Run 1's hoist was right; retail
+  keeps `r26` for the world pointer and `r30` for `mgr`, we keep `r27` for `mgr` - the block rotation
+  is the allocator, re-confirmed.
+- `CollideCachedAABox` 92.21%: a pointer-bounded/cursor form (`++leaf` with `GetNumCaches() > i`) is
+  **worse** (91.41), re-confirming run 5's measurement that the index form is the better one *here*
+  even though the cursor form is better in the four `DetectStaticCollision*_Cached` functions.
+- `RayStaticLineOfSightTest(CStateManager)` 94.14%: its remaining diff is a genuine *store-order*
+  difference - retail stores the line's direction as `f3,f4,f5` (ascending components) and we store
+  `f5,f4,f3`. A named `const CUnitVector3f dir` local in front of the `CLine` is **identical**.
+  Same shape in `RayStaticIntersection` 89.97% (run 6's FPR-numbering wall) - the two are one
+  problem and neither moved.
+- `SendMaterialMessage` 98.21% and the tail of `SendScriptMessages`: one root cause, the `CScriptMsg`
+  constructor's register mapping - retail loads `actor.GetUniqueId()` into `r6` and `kInvalidUniqueId`
+  into `r7`, we do the reverse, and the 8 `sth`s then follow. Hoisting `const TUniqueId actorId =
+  actor.GetUniqueId();` above the `if` is **worse** for `SendScriptMessages` (93.32). This confirms
+  run 5's four-spelling wall on `SendMaterialMessage` and extends it: this is not reachable from the
+  call site's source either.
+
+### Gates, all run in this tree
+
+- `./tools/fast_try.sh MetroidPrime/CGameCollision` after every edit - the numbers above.
+- `./tools/decomp_build.sh` -> `All:  32.60% fuzzy, 25.25% matched, 11.94% linked (11327 / 28465
+  functions)`; unit `64.64533% fuzzy, 10.89% matched (20 / 52 functions)`. The matched count is
+  unchanged **because no function crossed 100%**, which is the item's failure, not a regression.
+- `sha1sum build/G2ME01/main.dol` -> `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (retail, correct).
+- `./tools/probe_sources.sh` -> `probe: 751 files, 0 failed, 0 errors; link: LINKED (250 undefined,
+  0 duplicates)`.
+- `python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json` -> `matched
+  11327 -> 11327, linked 5507 -> 5507, no regression`.
+- `python3 tools/check_symbol_names.py` -> `checked 514 units; 0 declared names are missing`.
+- `python3 tools/check_raw_offsets.py` -> `ok: 162 raw-offset site(s) in 69 file(s)`.
+- `python3 tools/check_decl_order.py --unit MetroidPrime/CGameCollision` -> `ok: 1 unit(s) checked,
+  none emits its functions out of retail order`.
+- `./tools/goal_check.sh build/goal/item.json` -> **`goal_check: FAIL`**, every sub-check `ok` except
+  `target rose: main/MetroidPrime/CGameCollision: 20 -> 20 / 52 functions`. `gate.sh` itself is `ok`
+  (DOL sha1, 86 RELs, wiring, docs claims, port probe all clean) and `no asm added` is `ok`.
+- `tools/flip_test.sh` not run: the item is `progress` and says not to flip.
+
+### Process lessons (not `NEW:` items)
+
+- **A `progress` item is passed by a *function count* crossing 100%, not by bytes or by fuzzy
+  percent.** This is in the brief, but the cost of misreading it is a whole run: 25 points on a
+  720-byte function and 2 on another moved nothing the judge counts. Check
+  `goal_check.sh`'s `target_rose` before choosing a target, and prefer a function already at 97%+
+  over one at 69% even when the 69% one is more tractable.
+- **A wall recorded from an *unrolling* diff is not a wall until the pointer-bounded form has been
+  tried, and this repo documents that form in `CStateManager.cpp`.** Runs 1-6 all inherited run 1's
+  "GC 1.3.2 vs 2.7 unrolling" conclusion for `SendScriptMessages`; it was a spelling difference the
+  whole time, worth 25 points. **When a notes file says "same source, different unrolling", read
+  `CStateManager.cpp:298` before believing it.**
+- **A named `bool` local and an explicit `!= 0` are three different pieces of code.** `f()` emits
+  `clrlwi`; `const bool h = f(); return h;` emits `clrlwi` placed differently; `f() != 0` emits all
+  four normalisation instructions but schedules them against the epilogue. Which one retail used is
+  visible in the tail, and the two wrapper overloads wanted different ones.
+- **`DetectDynamicCollisionMoving(CPhysicsActor)` is the tightest open target in the unit after
+  `MakeCollisionCallbacks`**: 9 differing lines out of 50, and the 3 missing ones
+  (`neg`/`or`/`srwi`) are a `!= 0` that mwceppc will not place after the epilogue from any of the
+  four spellings measured across two runs.
+
+### No `NEW:` filed
+
+`MakeCollisionCallbacks` (99.69%, one register) is the obvious candidate but it is this item's own
+unit and target, so filing it would re-queue this item under a new name. The `CScriptMsg` r6/r7
+register mapping is a wall (four spellings measured), not work.
+
+## Not committed, as instructed. Tree state
+
+`src/MetroidPrime/CGameCollision.cpp` (+11/-8) is the whole hand-made diff; `docs/HANDOFF.md`'s
+state block was rewritten by the gate (machine-made, and the driver rewrites it anyway). Helper
+scripts are under `.tmp/opencode/cgc7/` (gitignored): `t.sh` (rebuild one object + print this unit's
+scores and per-function deltas vs a saved clean-tree baseline), `delta.py` (the delta printer),
+`d1.py` (normalised side-by-side of one function - **both objects' addresses come from
+`powerpc-eabi-nm -S`, not from `report.json`'s `metadata.virtual_address`**, which is module-relative
+and makes objdump return nothing), `sc.py` (per-function score table), `report.base.json`.
+
+## Run 8 (2026-10-02, lane 9) - `MakeCollisionCallbacks` 99.69 -> 100.00
+
+**Result: unit 21 -> 22 / 52 functions** (`./tools/goal_check.sh build/goal/item.json` -> PASS; matched
+12413 -> 12414, linked 5863 -> 5863, no regression). Diff is one file,
+`src/MetroidPrime/CGameCollision.cpp`, 3 lines in `MakeCollisionCallbacks`:
+
+```cpp
+-      for (int i = 0; i < swapped.GetCount(); ++i) {
+-        swapped[i].Swap();
+-      }
++      swapped.Swap(0);
+```
+
+Runs 4 and 7 called this a one-register WALL (swap-loop counter r29 vs retail r31) and tried
+hand-spelled loops (`while`, counter hoisted). What they did not try: calling the existing
+`CCollisionInfoList::Swap(int start)` (include/Collision/CCollisionInfoList.hpp:15), which is what
+Prime 1 writes (`swapList.Swap(0)`). Its inlined `start` variable is what lets the allocator reuse
+the vector copy-ctor's countdown register (r31). Measured: 99.69 -> 100.00, no other function moved.
+Lesson: when a hand-written loop over a container wall-ends on a register, check whether the
+container already has an inline helper doing that loop, and call it.
+
+Re-measured on this tree (not changed): DetectDynamicCollision(nearList) 99.13, DetectDynamicCollisionMoving(nearList) 98.48,
+RayDynamicIntersection 98.05, DetectStaticCollision_Cached 97.89. SendScriptMessages is 71.07 here
+(run 7's pointer-bounded loop was discarded with that run; reapplying it is worth +24 points, not a count).
+Not committed. Helper: `.tmp/l9/d.sh <mangled-substr>` diffs ours vs target for one function.
