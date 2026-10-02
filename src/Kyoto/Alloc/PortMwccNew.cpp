@@ -24,6 +24,15 @@ extern "C" void* __nw__FUlPCcPCc(unsigned long size, const char* /*fileAndLine*/
   return ::operator new(size);
 }
 
+// Retail's own mangled name for the free itself, which `Matching` units reproduce by calling it
+// through `extern "C"` - the same mechanism as `__nw__FUlPCcPCc` above.
+// `src/WorldFormat/Carve80255A0C.c` (retail 0x80255A0C..0x80255B28) is the unit that needs it:
+// its three free steps are `__sys_free`-shaped, `rstl::destroy_impl`-shaped and the
+// deleting-destructor convention, and the last two reach `CMemory::Free` by that name. It is
+// unclaimed by any unit (`symbols.txt:12992`, 0x802CE388, 0x64 bytes), so `dtk`'s own object
+// supplies the bytes in the DOL link and this is only what a host link binds to.
+extern "C" void Free__7CMemoryFPCv(const void* ptr) { CMemory::Free(ptr); }
+
 // The other half of the same split. Retail's `operator delete` is `CMemory::Free`, and `Matching`
 // units rely on it: `CResLoader::AddGroupCache` takes its buffer from `CMemory::Alloc` and gives it
 // to an `rstl::auto_ptr`, whose `delete` on the host would hand a game-heap pointer to glibc
