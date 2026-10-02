@@ -1,11 +1,16 @@
 #include "MetroidPrime/Player/CPlayerGunBase.hpp"
 
+#include "Kyoto/Graphics/CColor.hpp"
+#include "Kyoto/Graphics/CLight.hpp"
 #include "Kyoto/Input/CFinalInput.hpp"
 #include "Kyoto/Math/CMath.hpp"
 #include "Kyoto/Math/CRelAngle.hpp"
 #include "Kyoto/Math/CQuaternion.hpp"
 #include "Kyoto/Math/CUnitVector3f.hpp"
+#include "Kyoto/Math/CVector3f.hpp"
 #include "MetroidPrime/CCameraManager.hpp"
+#include "MetroidPrime/CHintManager.hpp"
+#include "MetroidPrime/CGameLight.hpp"
 #include "MetroidPrime/CRainSplashGenerator.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/CWorldShadow.hpp"
@@ -20,6 +25,9 @@
 // `src/MetroidPrime/PortCTweakPlayerControls.cpp`, next to `fn_80215854`/`fn_80215860`.
 extern "C" bool fn_8021580C(const CTweakPlayerControls* self);
 extern "C" bool fn_80215818(const CTweakPlayerControls* self);
+extern "C" uint fn_801DDF18(uint, uint);
+extern "C" uint fn_801DDF0C(uint, uint);
+extern "C" bool fn_8022A5B4(const CHintManager*, int, CStateManager&);
 
 CPlayerGunBase::CPlayerGunBase(const rstl::string& name, TUniqueId playerId, const CVector3f& scale,
                                int maxSplashes)
@@ -52,12 +60,32 @@ CPlayerGunBase::CPlayerGunBase(const rstl::string& name, TUniqueId playerId, con
 
 CPlayerGunBase::~CPlayerGunBase() {}
 
+// **The `const` overload, `GetObjectById`, not `ObjectById`** - same reason and same evidence as
+// `GetPlayerFromAll` below: objdiff compares the instruction stream but not the symbol name a
+// `R_PPC_REL24` names, so calling the non-const twin still scored 100%. The target object says
+// `GetObjectById__13CStateManagerCF9TUniqueId`. The two accessors differ only in constness, so
+// this is invisible in the bytes and only the relocation disagrees, and the const one returns a
+// `const CEntity*` that has to be cast away before `TCastToPtr` will take it.
 CPlayer* CPlayerGunBase::GetPlayer(CStateManager& mgr) const {
-  return TCastToPtr< CPlayer >(mgr.ObjectById(mPlayerUniqueId));
+  return TCastToPtr< CPlayer >(const_cast< CEntity* >(mgr.GetObjectById(mPlayerUniqueId)));
 }
 
+// **This calls the plain `ObjectById`, not `GetObjectByIdFromListAll`** - which the name suggests
+// and which the source did until this unit was linked. objdiff does not compare the *symbol name*
+// of a `R_PPC_REL24` relocation, so the wrong callee still scored 100%: the instruction stream is
+// identical, one `bl` either way. The two objects disagree, and the target object is the one to
+// believe:
+//
+//   build/G2ME01/obj/…/CPlayerGunBase.o   bl -> ObjectById__13CStateManagerF9TUniqueId
+//   build/G2ME01/src/…/CPlayerGunBase.o   bl -> GetObjectByIdFromListAll__13CStateManagerF9TUniqueId
+//
+// `tools/flip_test.sh` is what caught it, as an `undefined: 'CStateManager::GetObjectByIdFromListAll
+// (TUniqueId)'` from the linker: the unit is `NonMatching`, so retail's object was satisfying that
+// reference all along and the error only appears when our object replaces it. **Comparing
+// relocation symbol names between the two objects is a check every `progress` item in this unit
+// should have run** - see `docs/goal-notes/progress-unit-cplayergunbase.md`.
 CPlayer* CPlayerGunBase::GetPlayerFromAll(CStateManager& mgr) const {
-  return TCastToPtr< CPlayer >(mgr.GetObjectByIdFromListAll(mPlayerUniqueId));
+  return TCastToPtr< CPlayer >(mgr.ObjectById(mPlayerUniqueId));
 }
 
 CWorldShadow* CPlayerGunBase::GetWorldShadow() { return mWorldShadow.get(); }
@@ -102,8 +130,85 @@ void CPlayerGunBase::Update(float dt, CStateManager& mgr) {
   }
 }
 
+// Retail 0x801DE29C, 404 bytes, matched instruction for instruction
+// (`.tmp/opencode/sbs.py`: `differing instrs: 0 retail len 101 ours len 101`).
+//
+// Four things here are measured rather than guessed, and each is a *shape* MWCC produces only one
+// way:
+//
+// - **The masks are cleared when a control hint is ACTIVE, not when there is none.** Retail's
+//   `clrlwi. r0,r3,24 / beq <body>` at 0x801DE334 branches *over* the clearing block, so a true
+//   `fn_8022A5B4` clears. The check asks "is a control hint active", and an active hint blocks
+//   weapon input exactly as a big strike or a freeze does. Writing `!fn_8022A5B4(...)` compiles,
+//   inverts the program and mirrors the branch: 76.39%.
+// - **`morphed` is computed once, into a named value.** `r26 = (player->mMorphBallState == 1)` is
+//   retail's `subfic / cntlzw / srwi`, after which `r28 = mInBigStrike && !r26` (bit 4 of the byte
+//   at 942) and `r27 = player->GetFrozenState() && !r26` are each initialised to 0 and set to 1
+//   by a branch. Inlining the morph test into both of them moves registers.
+// - **Each of the last three terms introduces its condition as a *named* variable before the mask
+//   it feeds.** Retail's three phi pairs are `li r6,0 / beq / li r6,4`, `li r5,0 / beq / li r5,2`
+//   and `li r3,0 / beq / li r3,8`: each in a **volatile** register, and each `li rX,0` landing
+//   *after* the `bl` that produced its condition. That is the whole reason for the shape. A mask
+//   written as `mask = 0u; if (cond) { mask = Nu; } mInputFlags |= mask;` has a zero-init that
+//   is hoistable above the call, so MWCC makes `mask` live across the `bl` and has to give it a
+//   callee-saved register (r26) - which is the last 10 instructions of the difference. Pulling
+//   the call into a named `const bool` first makes the zero-init depend on it, so the `li rX,0`
+//   stays put and the mask becomes volatile-local. Measured with `tools/try_batch.py`: one
+//   reused variable **10** differing instructions, one variable per term declared at the top
+//   **28**, the named-condition form **7**.
+// - **The third condition is a `const uint` compared `!= 0u`, not a `bool`.** That is the last 7
+//   instructions. With a `bool`, MWCC lowers `mask = c8 ? 8u : 0u` to `clrlwi / cmplwi r0,1 /
+//   neg / or / srwi.` in **r4** instead of retail's `clrlwi. r0,r3,24 / li r3,0 / beq / li r3,8`,
+//   because a boolean compare against a constant is exactly what its if-conversion pass is built
+//   for. Widening the condition to `uint` removes the boolean-ness, so the phi survives: 7 -> **0**.
+//   The other two terms still want a `bool` - `const uint` on term 2 costs 10 - so the three
+//   spellings differ deliberately rather than by accident.
+//
+// `mInputFlags` is a plain `= c ? 1 : 0` for the first term, which MWCC if-converts into
+// `neg / or / srwi r0,r0,31`, and is read-modify-written from the member between the other three
+// - which is why retail reloads 908(r29) before every `or`.
 void CPlayerGunBase::ProcessInput(const CFinalInput& input, CStateManager& mgr) {
-  // TODO: Populate fire/charge/missile flags using the player's input mapping and strike gates.
+  CPlayer* player = GetPlayer(mgr);
+  const bool morphed = player->GetMorphballTransitionState() == CPlayer::kMS_Morphed;
+  const bool inBigStrike = mInBigStrike && !morphed;
+  const bool frozen = player->GetFrozenState() && !morphed;
+  // **The `const` `GetControlHintManager`**, matching retail's
+  // `GetControlHintManager__7CPlayerCFv`; `player` is not a `const CPlayer*`, so overload
+  // resolution picks the non-const twin on its own and the call has to be made through a const
+  // pointer to pick the right one. The two differ only in constness, so this is invisible in the
+  // bytes and only the relocation disagrees - see the note on `GetPlayer`.
+  const CPlayer* constPlayer = player;
+  if (inBigStrike || frozen || fn_8022A5B4(constPlayer->GetControlHintManager(), 1, mgr)) {
+    mPressedInputFlags = 0;
+    mReleasedInputFlags = 0;
+    mLastInputFlags = 0;
+    mInputFlags = 0;
+    return;
+  }
+  mInputFlags = player->FireBeamHeld(input) ? 1 : 0;
+  const bool chargeHeld = player->fn_8022b7f4(input);
+  uint mask = 0u;
+  if (chargeHeld) {
+    mask = 4u;
+  }
+  mInputFlags |= mask;
+  const bool missileOrBomb = player->GetControlMapper().GetDigitalInput(
+      CControlMapper::kC_MissileOrPowerBomb, input);
+  mask = 0u;
+  if (missileOrBomb) {
+    mask = 2u;
+  }
+  mInputFlags |= mask;
+  // `const uint`, not `const bool` - see the note above the function.
+  const uint secondaryHeld = player->fn_8022b974(input);
+  mask = 0u;
+  if (secondaryHeld != 0u) {
+    mask = 8u;
+  }
+  mInputFlags |= mask;
+  mReleasedInputFlags = fn_801DDF18(mLastInputFlags, mInputFlags);
+  mPressedInputFlags = fn_801DDF0C(mLastInputFlags, mInputFlags);
+  mLastInputFlags = mInputFlags;
 }
 
 void CPlayerGunBase::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
@@ -403,8 +508,59 @@ void CPlayerGunBase::Holster(CStateManager& mgr) {
   GetPlayerFromAll(mgr)->SetAimTarget(kInvalidUniqueId);
 }
 
+// Retail's `.rodata` blob at 0x803AAC38, seven bytes, `3f 3f 28 3f 3f 29 00 00` - the same
+// "??" placeholder `rs_new` passes as its `operator new` file argument (see
+// `include/Kyoto/Alloc/CMemory.hpp`), but living in `auto_06_803AAC38_rodata.o` rather than in
+// this unit's own `.rodata`. It is the gun light's *name* string's base: `CreateGunLight` asks
+// for `+7`, which is the second NUL, i.e. the empty name. `CFirstPersonCamera.cpp` uses the same
+// `rstl::string_l(<label> + N)` spelling for the same reason. The host copy of the bytes is in
+// `src/MetroidPrime/PortPoolStandIns.cpp`.
+extern "C" const char lbl_803AAC38[];
+
 void CPlayerGunBase::CreateGunLight(CStateManager& mgr) {
-  // TODO: Allocate/register the gun's CGameLight and store its unique ID.
+  if (mLightId != kInvalidUniqueId) {
+    return;
+  }
+  mLightId = mgr.AllocateUniqueId();
+  const uint lightSource = mLightId.Value();
+  // Retail allocates 440 bytes (`li r3,440` into `operator new(unsigned long, char const*,
+  // char const*)`), and the `mr. r28,r3 / beq` pair after it is MWCC's own null check, so this
+  // is a plain `rs_new` and not a hand-written one. The argument list, from the call at
+  // 0x801DE064:
+  //   r4  &24(r1)  = mLightId          (TUniqueId, `sth`)
+  //   r5  &36(r1)  = kInvalidAreaId    (TAreaId is four bytes, so `lwz`/`stw` - the light is
+  //                                    in no area)
+  //   r6  0        = active = false
+  //   r7  &40(r1)  = the name, `lbl_803AAC38 + 7`
+  //   r8  this+36  = mTransform        (CEntity is 0x24, so mTransform is the first member)
+  //   r9  &28(r1)  = mPlayerUniqueId   (parent)
+  //   r10 &56(r1)  = CLight::BuildDirectional(CVector3f::sForwardVector, CColor::Black())
+  //                 (`CVector3f::Forward()` is the public accessor for that same static, and
+  //                 mwcceppc does not enforce the `protected` that gcc does)
+  //   8(r1)        = lightSource       (`clrlwi r29,r0,22`, and `TUniqueId::Value()` is
+  //                                    exactly `value & 0x3FF` - the header's own accessor.
+  //                                    It has to be a named local: written inline as the eighth
+  //                                    argument, MWCC emits the `lhz` before the allocation and
+  //                                    the `clrlwi` inside the null-check arm - 12 differing
+  //                                    instructions; hoisted, 6, and the six are all one pair
+  //                                    swapped, see below)
+  //   12(r1)       = 0                 (priority)
+  //   f1           = 0.f               (lifetime, .sdata2 0x8041D354)
+  //   16(r1)       = nullptr           (the `const CEntityInfo*`; this tree's constructor
+  //                                    defaults it, and retail stores a literal 0)
+  // The `rs_new` and the `AddObject` are **one full expression**, not a named local followed by
+  // a second statement: retail calls `AddObject` (0x801DE074) *before* the `extsb. r0,r27 / beq`
+  // pair that destroys the `rstl::string` temporary, so the temporary's scope has to reach past
+  // the call, which only happens inside the expression that made it. With the pointer in a local
+  // the destructor runs first and the two calls swap: 91.30%.
+  //
+  // The `extsb. r0,r27 / beq` pair itself is MWCC's own guard on that temporary - r27 is set once
+  // the temporary exists - so it needs no spelling here.
+  mgr.AddObject(rs_new CGameLight(mLightId, kInvalidAreaId, false,
+                                  rstl::string_l(lbl_803AAC38 + 7), mTransform, mPlayerUniqueId,
+                                  CLight::BuildDirectional(CVector3f::Forward(),
+                                                           CColor::Black()),
+                                  lightSource, 0, 0.f, nullptr));
 }
 
 void CPlayerGunBase::DeleteGunLight(CStateManager& mgr) {

@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (213)
+## other game methods (214)
 
 - `_Z10TCastToPtrI11CScriptDockEPT_P7CEntity`
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
@@ -24,6 +24,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN10CAuxWeapon11fn_801D5DD0EiR13CStateManager`
 - `_ZN10CAuxWeapon11fn_801D6894ER13CStateManagerb`
 - `_ZN10CAuxWeaponD1Ev`
+- `_ZN10CGameLightC1E9TUniqueId7TAreaIdbRKN4rstl12basic_stringIcNS2_11char_traitsIcEENS2_17rmemory_allocatorEEERK12CTransform4fS0_RK6CLightjjfPK11CEntityInfo`
 - `_ZN10CGameStateD1Ev`
 - `_ZN10CGunMotion11fn_801D6D8CEv`
 - `_ZN10CGunMotion11fn_801D6ED0EiR13CStateManagerfb`

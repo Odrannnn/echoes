@@ -408,7 +408,12 @@ TYPES_MATCH_CLASS(CUnknown96, CActor)
 TYPES_MATCH_CLASS(CUnknown101, CGameCamera)
 TYPES_MATCH_CLASS(CUnknown137, CActor)
 TYPES_MATCH_CLASS(CUnknown152, CEnergyProjectile)
-TYPES_MATCH_CLASS(CUnknown46, CGameHint)
+// `CUnknown46` is declared in `include/MetroidPrime/CGameHint.hpp` instead of here, because
+// `fn_8022A5B4` (retail 0x8022A5B4, host body in `src/MetroidPrime/PortCHintManager.cpp`) needs
+// the class to have `CGameHint`'s members and its own first member at 0x1A8 - the flag word that
+// function masks against - so a `TYPES_MATCH_CLASS` throwaway here would be a different type with
+// no members. Its `TypesMatch` and `TCastToPtr` specialisations are still below, and still
+// reproduce retail's bytes: the class declaration is the only thing that moved.
 
 // Three of the 32 now have their own virtual destructors in the DOL, and with them the members
 // those destructors touch. None of the member types is named anywhere; what is written here is

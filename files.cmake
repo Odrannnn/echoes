@@ -140,6 +140,10 @@ set(MP_GAME_SOURCES
     # unclaimed auto-split range, so no configure.py unit can own it. See the file's header,
     # and do not compile the two together.
     src/MetroidPrime/PortCTweakPlayerControls.cpp
+    # `fn_8022A5B4` (retail 0x8022A5B4), the control-hint query `CPlayerGunBase::ProcessInput`
+    # calls - another unclaimed auto-split range, same arrangement as the file above. Needed
+    # because `CPlayerGunBase.cpp` *is* in the port build, so the call has to resolve there.
+    src/MetroidPrime/PortCHintManager.cpp
     # Port-only: the three unclaimed `.data` vtables CMorphBall.cpp's `fn_800C88C0` /
     # `fn_800C33DC` store (`lbl_803B36F0` / `lbl_803B36FC` / `lbl_803B1750`). dtk fills them
     # with retail's bytes in the DOL build; the host build has no dtk step, so without this

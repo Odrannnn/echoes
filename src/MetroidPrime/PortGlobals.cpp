@@ -104,6 +104,7 @@
 #include "MetroidPrime/CCameraShakeManager.hpp"
 #include "MetroidPrime/CHintManager.hpp"
 #include "MetroidPrime/CUnknown85.hpp"
+#include "MetroidPrime/CGameHint.hpp"
 #include "MetroidPrime/Cameras/CSurfaceCamera.hpp"
 #include "Kyoto/Particles/CElementGen.hpp"
 
@@ -822,6 +823,12 @@ PORT_CAST_TO_PTR(CCollisionActor, kET_CollisionActor)
 // Type 85 is `CUnknown85` in src/MetroidPrime/TypesMatch.cpp, which is deliberately out of the port
 // build; `CCameraManager::SetSurfaceCamera` needs the cast. See include/MetroidPrime/CUnknown85.hpp.
 PORT_CAST_TO_PTR(CUnknown85, 85)
+// Type 46 is `CUnknown46`, retail's control-hint actor (the `LoadControlHint` / `CTLH` loader);
+// `fn_8022A5B4` in `PortCHintManager.cpp` casts every active hint to it. `tools/dis.sh 0x80099B68
+// 0x24` is the ordinary wrapper with `li r4,46`, and it is here for the same reason as the two
+// above: `src/MetroidPrime/TypesMatch.cpp` holds the cast and is out of the port build. The class
+// itself is declared in `include/MetroidPrime/CGameHint.hpp`.
+PORT_CAST_TO_PTR(CUnknown46, 46)
 
 // `TCastToPtr<CPatterned>(CEntity*)` (0x80097584, 0x1C) is not the type-id wrapper the five above
 // are: retail's body is a null test plus `rlwinm. r0,r0,30,29,29` on the byte at `0x20`, which is

@@ -442,3 +442,573 @@ variant but only prints a unified diff; `sbs.py` prints both columns, which is w
 
 No `NEW:` lines: the remaining work is in this same unit or behind another unit's header layout,
 so filing either would be a restatement of this item.
+
+---
+
+# progress-unit-cplayergunbase — lane 8, third attempt
+
+Worktree `../wt-mp2-goal-L8`, branch `goal/lane-8`, HEAD `6a2f742f`. Unit stays `NonMatching`; no
+`flip_test.sh` was run. `MP_GOAL_BASE=$PWD/build/report.base.json ./tools/goal_check.sh
+build/goal/item.json`: **PASS**, `target rose: 19 -> 20 / 21 functions`.
+
+`item.json`'s `reason` is stale (it says 17/21 and names four functions left). Lanes 4 and 8 above
+had already landed two of them, so this run started at 19/21 with `CreateGunLight` (276 B, 1.45%)
+and `ProcessInput` (404 B, 0.99%) the only two left. **`CreateGunLight` is now 100%.**
+`ProcessInput` was taken to **95.74% and then reverted** — see (3) for why, and for the body, which
+is finished and is the whole remaining work on this unit.
+
+## Measured
+
+| | base (`build/report.base.json`) | now |
+|---|---|---|
+| unit `matched_functions` | 19 / 21 | **20 / 21** |
+| unit `matched_code` | 3496 | 3772 (= +276, exactly `CreateGunLight`'s size: nothing else moved) |
+| unit `fuzzy_match_percent` | 83.90804 | 90.421455 |
+| DOL `matched_functions` | 12376 | 12377 |
+| DOL `fuzzy_match_percent` | 34.959015 | 34.963177 |
+| `All:` line | 34.96% / 28.63% / 12.90% | 34.96% / 28.63% / 12.90% |
+
+`gate.sh`'s `report_diff.py` step: `+1 functions at 100%, 0 units newly linked`, `linked 5863 ->
+5863` — so no function anywhere got worse. `matched_code` rising by exactly the one function's size
+is the check that the `0.f` I added did not move the unit's `.sdata2` pool and shuffle another
+function's `lfs` offset; see (1).
+
+Files touched: `src/MetroidPrime/Player/CPlayerGunBase.cpp` (the `CreateGunLight` body, four
+includes, the `lbl_803AAC38` declaration, and a comment on `ProcessInput`),
+`src/MetroidPrime/PortPoolStandIns.cpp` (the host bytes of `lbl_803AAC38`), and
+`docs/research/port_link_gap{,_list}.md` (the one new port gap, which `gate.sh` requires - see
+(4)). `docs/HANDOFF.md` is in the diff because `goal_check.sh` runs `gate.sh` with
+`MP_GATE_DOCS_WRITE=1`, which rewrote the derived state block; it was not hand-edited. Nothing in
+`tools/`, `docs/HANDOFF.md`, `docs/RUNNING_THE_DECOMP.md` or `build/goal/` was edited by me. No asm.
+
+## 0. Two things about this tree that cost me an hour, and will cost the next run the same
+
+**(a) `build/G2ME01/obj/...` is the *retail target* and `build/G2ME01/src/...` is *our* object —
+the names are the opposite of what they look like, and the two previous attempts' notes read them
+the wrong way round.** `objdiff.json` says so: `"target_path": "build/G2ME01/obj/…"` (dtk's
+retail object) and `"base_path": "build/G2ME01/src/…"` (built from our source by the `mwcc_sjis`
+rule; `build.ninja:6179`). Lanes 4 and 8 disassembled `obj/…` and read the `blr`-only
+`CreateGunLight`/`ProcessInput` as "dtk did not reconstruct them"; that was **our** stale object.
+`build/G2ME01/obj/MetroidPrime/Player/CPlayerGunBase.o` has the full 276-byte and 404-byte
+functions and 20 of the 21 symbols at 100%. The `nm -u` list quoted in lane 4's blocker 1
+(`lbl_803AAC38`, `kInvalidAreaId`, `fn_8022A5B4`, `sForwardVector__9CVector3f`, …) is the
+*retail* object's, and it is the right list to work from.
+
+**(b) The worktree's object was stale and ninja believed it.** At the start,
+`build/G2ME01/src/MetroidPrime/Player/CPlayerGunBase.o` was dated 2026-09-30 21:57 with *full*
+`CreateGunLight`/`ProcessInput` bodies, while the checked-out source (06:51:36 the same morning)
+has both empty — i.e. the `build/` directory was seeded from a tree whose source no longer matches
+it, and because the `.o` ended up 1 s newer than the source, `ninja -d explain` said "no work to
+do" and `decomp_build.sh` reported the stale object's numbers. `touch
+src/MetroidPrime/Player/CPlayerGunBase.cpp` first, then build. The numbers happened to come out
+the same (19/21 either way) so nothing was *decided* on the stale object, but `report.json` is
+only as good as the object it was generated from. **Re-measure means: touch the source, build,
+then read `build/report.json`.**
+
+## 1. `CreateGunLight` — 1.45% -> 100.0% (276 B)
+
+Retail 0x801DDF88, decoded from the target object (identical to `./tools/dis.sh 0x801DDF88 0x114`).
+**Instruction-for-instruction identical: `.tmp/opencode/sbs.py` reports `differing instrs: 0
+retail len 69 ours len 69`**, not just objdiff's 100%.
+
+```cpp
+if (mLightId != kInvalidUniqueId) return;
+mLightId = mgr.AllocateUniqueId();
+const uint lightSource = mLightId.Value();
+mgr.AddObject(rs_new CGameLight(mLightId, kInvalidAreaId, false,
+    rstl::string_l(lbl_803AAC38 + 7), mTransform, mPlayerUniqueId,
+    CLight::BuildDirectional(CVector3f::Forward(), CColor::Black()),
+    lightSource, 0, 0.f, nullptr));
+```
+
+Five things were not guessable, and each is worth more than the function:
+
+- **`0x803BAC30` is not what the code points at, and the object at that address is not a
+  `CEntityInfo`.** This corrects blocker 2 in both notes above. `lis r3,-32709` is
+  `0x803B0000` and `addi r4,r3,-21448` is `+0xAC38`, so `r4 = 0x803BAC38`; the target object's
+  relocation names it `lbl_803AAC38`, and `config/G2ME01/symbols.txt:17380` has
+  `lbl_803AAC38 = .rodata:0x803AAC38; size:0x7 data:string` — a **7-byte rodata string**
+  (`3f 3f 28 3f 3f 29 00`, read out of `build/G2ME01/obj/auto_06_803AAC38_rodata.o`), in an
+  *unclaimed* rodata range, not in `CVectorElement`'s claimed `.data`. It is the same `"??"`
+  placeholder `rs_new` passes as its `operator new` file argument
+  (`include/Kyoto/Alloc/CMemory.hpp:59`, `new ("\?\?(\?\?)", nullptr)`), and `addi r4,r4,7` makes
+  the light's **name** the second NUL — an empty string. So the two dead `lis`/`addi` pairs before
+  and after the null check are one for `rs_new`'s file argument and one for the name; nothing is a
+  `CEntityInfo`, and the constructor's eleventh argument really is `nullptr` (`stw r0,16(r1)` with
+  a literal 0). **`rstl::string_l(<label> + N)` is already this tree's idiom** — see
+  `CFirstPersonCamera.cpp:24` and `CMainShutdownSubsystems.cpp:121` — so the spelling was free.
+- **objdiff does not compare the *name* of an `ADDR16_HA`/`LO` relocation.** This is what made
+  the address question moot, and it is measurable from a function that already matched: our
+  `__ct__` references `@stringBase0` where retail references `lbl_803AAC38` (`nm` shows the retail
+  object carrying **both** — its own 7-byte `@stringBase0` *and* the external `lbl_803AAC38`),
+  and `__ct__` is at 100%. So the source may use `rs_new` for the allocation and the external
+  label for the name, and the two `lis`/`addi` pairs still compare equal. Declaring
+  `extern "C" const char lbl_803AAC38[];` and pointing at it is still the honest spelling, and it
+  needs a host definition (below) because `probe_sources.sh` strictly links.
+- **`mLightId.Value()` has to be a named local.** `TUniqueId::Value()` is `value & 0x3FF`, which
+  is exactly retail's `clrlwi r29,r0,22` for the eighth argument. Written inline as that argument,
+  MWCC emits the `lhz` *before* the allocation and the `clrlwi` *inside* the null-check arm:
+  **12 differing instructions** (`tools/try_batch.py`, variant `base`). Hoisted into
+  `const uint lightSource` it is **6**, and the 6 are the `lis`/`addi` for the name landing one
+  slot earlier than retail's. `const ushort` and `int` locals are also 6; hoisting
+  `mPlayerUniqueId` the same way is **25**; `static_cast<uint>(mLightId.Value())` inline is 12.
+- **`rs_new …` and `mgr.AddObject` must be one full expression.** Retail calls `AddObject`
+  (0x801DE074) *before* the `extsb. r0,r27 / beq` pair that destroys the `rstl::string`
+  temporary, so the temporary's scope has to reach past the call. With
+  `CGameLight* light = rs_new …; mgr.AddObject(light);` the destructor runs first and the two
+  calls swap: **91.30%**, and 6 differing instructions. As one expression: **0**. The
+  `extsb.`/`beq` guard itself is MWCC's, and needs no spelling.
+- **mwcceppc does not enforce `protected`; gcc does.** `CVector3f::sForwardVector` is a protected
+  static, and the body compiles and links for the DOL with it — then `tools/probe_sources.sh`
+  fails on `'CVector3f::sForwardVector' is protected within this context`. `CVector3f::Forward()`
+  is the existing public accessor for the same object (`CUnitVector3f.hpp:43`), needs no cast, and
+  emits the identical `lis`/`addi` against `sForwardVector__9CVector3f`: still 100%. **Any future
+  body that a protected member reaches is a DOL-build pass and a port-probe failure.**
+
+Two more that were free, and are worth not re-deriving: `TAreaId` is four bytes in this tree, so
+the second argument's `lwz`/`stw` of `kInvalidAreaId` is the plain argument and not a truncation;
+and **adding `0.f` did not move the unit's `.sdata2` pool** — 0.0f is already in it (the
+constructor's `mCooldown(0.f)`), so the `lfs f1, -0x506C(r2)` offset matched and no other
+function's `lfs` moved. That is what `matched_code` +276 exactly measures.
+
+`tools/unit_fit.sh` now reports **7** functions present in our object but not in the retail unit
+object (648 bytes): the six pre-existing COMDAT weak destructors plus one new,
+`__dt__rstl::basic_string<…>` (80 bytes), which is the `rstl::string_l` temporary's destructor —
+the same harmless kind the tool's own text describes. `.text` is over the claimed range by 640
+bytes, which is those 648 less the 8 the two empty bodies used to take.
+
+## 2. `fn_8022A5B4` — what lane 8 got right, and the one thing they did not
+
+`./tools/dis.sh 0x8022A5B4 0x8C`, confirmed against
+`build/G2ME01/obj/auto_03_8022A5AC_text.o` (which is what defines it in the DOL link, so the DOL
+link is fine and only the host needs a body):
+
+```
+r0  = self[0x18]                      count
+r30 = self[0x20]                      data
+r31 = r30 + count * 112               end
+loop: id = *(u16*)(r30 + 4)  ->  mgr.GetObjectById(id)  ->  TCastToPtr<CUnknown46>(that)
+      if (r3 != 0 && (*(u32*)(r3 + 0x1A8) & mask) != 0) return true
+      r30 += 112; if (r30 != r31) goto loop
+return false
+```
+
+Lane 8's decode of the loop is right. What they missed is what the read at **+0x1A8** is:
+`include/MetroidPrime/CGameHint.hpp:48` has `CHECK_SIZEOF(CGameHint, 0x1a8)` and
+`CGameHint : public CActor`, so the flag word is the **first member of a class derived from
+`CGameHint`**, not a field of some unrelated type. Retail's `CUnknown46` is that class; this tree
+has no declaration for it, and `CGameHint` is already 100%-matched at its own size, so the class
+is missing rather than mis-sized. That also means the "fix `CHintManager`'s layout" note below is
+only two thirds of the work.
+
+## 3. `ProcessInput` — 0.99% -> 95.74%, then reverted
+
+**The body is finished and is 10 register-allocation instructions from 100%.** With
+`fn_8022A5B4` declared, the gate clean of raw offsets, and the following source, objdiff reports
+**95.74%** and `.tmp/opencode/sbs.py` reports 10 differing instructions, all of them the register
+MWCC picks for one variable:
+
+```cpp
+CPlayer* player = GetPlayer(mgr);
+const bool morphed = player->GetMorphballTransitionState() == CPlayer::kMS_Morphed;
+const bool inBigStrike = mInBigStrike && !morphed;
+const bool frozen = player->GetFrozenState() && !morphed;
+if (inBigStrike || frozen || fn_8022A5B4(player->GetControlHintManager(), 1, mgr)) {
+  mPressedInputFlags = 0; mReleasedInputFlags = 0; mLastInputFlags = 0; mInputFlags = 0;
+  return;
+}
+mInputFlags = player->FireBeamHeld(input) ? 1 : 0;
+uint mask = 0u;                                     // ONE variable, reused for all three terms
+if (player->fn_8022b7f4(input)) { mask = 4u; }
+mInputFlags |= mask;
+if (player->GetControlMapper().GetDigitalInput(CControlMapper::kC_MissileOrPowerBomb, input)) {
+  mask = 2u;
+}
+mInputFlags |= mask;
+if (player->fn_8022b974(input)) { mask = 8u; }
+mInputFlags |= mask;
+mReleasedInputFlags = fn_801DDF18(mLastInputFlags, mInputFlags);
+mPressedInputFlags = fn_801DDF0C(mLastInputFlags, mInputFlags);
+mLastInputFlags = mInputFlags;
+```
+
+plus `extern "C" uint fn_801DDF18(uint, uint);` / `fn_801DDF0C` declared near the top (the
+definitions stay where they are; mwcceppc emits in reverse source order) and
+`#include "MetroidPrime/CHintManager.hpp"`.
+
+The 10: retail puts the mask phi in a **volatile** register each time — `li r6,0 / beq / li r6,4`,
+then `li r5,2`, then `li r3,8`, each `or r0,r0,rX`-ed into the common `lwz`/`or`/`stw`. This build
+puts it in **r26**, a callee-saved register that `stmw r25,20(r1)` has already saved, for all three
+terms. Nothing else differs. Every callee-saved register is spoken for in both (r25 `mgr`, r26
+`morphed`, r27 `frozen`, r28 `inBigStrike`, r29 `this`, r30 `input`, r31 `player`), so r26 is the
+only free one here and a volatile is the only free one there; it is a tie-break I could not move.
+
+**The two semantic findings, both worth keeping whatever happens to the register:**
+
+- **The hint test is not negated.** Retail's `clrlwi. r0,r3,24 / beq <body>` branches *over* the
+  clearing block, so a **true** `fn_8022A5B4` clears the masks. The check asks "is a control hint
+  active", and an active hint blocks weapon input exactly as a big strike or a freeze does. My
+  first version wrote `!fn_8022A5B4(...)`, which compiles, inverts the program, and mirrors the
+  branch — 76.39% with the right everything else, versus 95.74% with the `!` removed.
+- **`mInputFlags` is a plain `= c ? 1 : 0` for the first term and a reused `mask` variable for the
+  other three.** The first term's `neg r0,r5 / or r0,r0,r5 / srwi r0,r0,31` is MWCC if-converting
+  the phi; the other three stay branches, because the value goes into a *variable* that is then
+  OR-ed, so the `|=` is common to both arms instead of duplicated into the taken one.
+
+**66 spellings measured** (`tools/try_batch.py`, `.tmp/opencode/pi_variants.py`, differing
+instructions; 33 was the naive first attempt, **10 is the best found**):
+
+| tail spelling for terms 2-4 | differing |
+|---|---|
+| `mInputFlags \|= c ? N : 0;` | 33 (with term 1 as `= FireBeamHeld(...)`), 21 (with `? 1 : 0`) |
+| `if (c) { mInputFlags \|= N; }` | 20, then **15** (with term 1 as `? 1 : 0`) |
+| `if (c) { mInputFlags \|= N; } else { mInputFlags \|= 0; }` | 15 — MWCC deletes the no-op arm first |
+| `if (!(c)) {} else { mInputFlags \|= N; }`, `do {} while (0)`, `!= false`, `+= 0` first, `\| 0` | 15 each |
+| `const uint m = c ? N : 0u; mInputFlags \|= m;` | 21 |
+| `uint m; if (c) m = N; else m = 0; mInputFlags \|= m;` | 21 (if-converted) |
+| `uint m = N; m = c ? m : 0; …` | 21 |
+| `uint m = 0u; if (c) m = N; mInputFlags \|= m;` — **one variable per term** | 28 |
+| `… m = N; if (!c) m = 0; …` | 30 |
+| same, `mask = 0u;` re-executed before each `if` | 28 |
+| all three variables declared at the top of the function | 69 / 53 |
+| `switch (c ? 1 : 0)`, `static_cast<uint>(c) * N`, `c ? (1u << k) : 0` | 34 / 28 / 21 |
+| **`uint mask = 0u;` declared after term 1, reused** | **10** |
+| same with `int`, or with `mInputFlags = mInputFlags \| mask` | 10 each |
+| term 1 as `mInputFlags \|= c ? 1 : 0` | 47 (two more than `=`) |
+
+**Why it is reverted rather than left in.** The only missing symbol is `fn_8022A5B4`, and giving
+the port a body for it needs three raw offsets (`self + 0x18`, `self + 0x20`, `entity + 0x1A8`).
+`tools/check_raw_offsets.py` is a `gate.sh` step and it is right to be: `PortGlobals.cpp` has no
+section in `docs/research/raw_offsets.md`, so `GATE FAIL: raw-offsets link-gap`. Two ways out, and
+a next run should pick one deliberately:
+
+1. **Model the layout (the right one).** `rstl::vector<T>` here is
+   `{rmemory_allocator; int mCount; int mCapacity; T* mItems;}`, so retail's count at 0x18 and data
+   at 0x20 mean **`rstl::vector<SHint> mHints` sits at 0x14**. That is consistent with everything
+   else the header already claims: `fn_801B9480`'s comment puts the current hint id at **0x0C**,
+   and `CHECK_SIZEOF(CHintManager, 0x44)` = 0x14 + three 16-byte vectors exactly. So the guessed
+   layout is one member short before `mHints` and the fix is to put it at 0x14, give `SHint` its
+   measured 0x70 stride with the `TUniqueId` at +4, and add the hintable class derived from
+   `CGameHint` that owns the word at 0x1A8. `CHintManager` has no unit of its own, so no `.text`
+   moves. Then `fn_8022A5B4` is written against members and there are no raw offsets at all.
+2. **Add the `## src/MetroidPrime/PortGlobals.cpp (3 sites)` section** to
+   `docs/research/raw_offsets.md`, which is what 71 other files do. It is one measured line, but
+   it books the debt in a `Port*.cpp` rather than paying it, and `docs/research/` is close enough
+   to the judge that I did not want to decide that inside a `progress` item.
+
+Neither choice is made here, so the body is not in the tree. What is left in the source is a
+comment pointing at this file, so nothing is lost.
+
+## 4. The one port gap this item opened, and why it is booked rather than closed
+
+Writing `CreateGunLight` made `CPlayerGunBase.o` reference
+`CGameLight::CGameLight(TUniqueId, TAreaId, bool, rstl::string const&, CTransform4f const&,
+TUniqueId, CLight const&, uint, uint, float, CEntityInfo const*)`. `gate.sh`'s `link-gap` step
+ratchets against `docs/research/port_link_gap_list.md`, so a newly missing symbol fails until the
+list is regenerated — and the tool says so: *"Run --write-list and describe what provides each new
+symbol in port_link_gap.md."* That is what I did: `--write-list` is a 2-line diff (the
+`other game methods` row 212 -> 213 and the one name), plus one dated entry in
+`docs/research/port_link_gap.md` in the style of the six already there.
+
+It is not closeable here. `src/MetroidPrime/CGameLight.cpp:4` has the body, and that unit is out
+of `files.cmake` with a measured reason (`tools/check_files_cmake.py:381`: listing it opens five
+names of its own — `CEntityInfo`'s copy constructor and destructor, `CActorParameters`'s
+constructor and two more — and closes none). Defining it host-side instead runs into the same
+five through `CActor(..., CModelData(), CMaterialList(kMT_NoStepLogic), CActorParameters(), ...)`,
+because `CActorParameters.cpp` is not in the port build. It closes when `CActorParameters` and
+`CEntityInfo` are. The DOL build is unaffected: the name is resolved by the linker out of
+`build/G2ME01/obj/MetroidPrime/Player/CPlayerGunBase.o`, and the unit stays `NonMatching`.
+
+`lbl_803AAC38` needed no such booking: the host bytes went into `src/MetroidPrime/PortPoolStandIns.cpp`
+next to `lbl_803A56C0`, retail's other transcribed rodata pool, and
+`build/probe-logs/link_check.log` reports `290 undefined against a baseline of 291 (no growth)`,
+0 duplicates.
+
+## Verification run by this lane
+
+```
+touch src/MetroidPrime/Player/CPlayerGunBase.cpp      # see 0(b): the seeded object is stale
+./tools/decomp_build.sh
+#   All:  34.96% fuzzy, 28.63% matched, 12.90% linked (12377 / 28465 functions)
+#   main/MetroidPrime/Player/CPlayerGunBase: 90.42% fuzzy, 90.33% matched (20 / 21 functions)
+python3 tools/check_symbol_names.py     # checked 525 units; 0 declared names are missing
+python3 tools/check_decl_order.py       # ok: 981 unit(s) checked, 28 permuted, all 28 accounted for
+python3 tools/check_raw_offsets.py      # ok: 167 raw-offset site(s) in 71 file(s), all documented
+./tools/probe_sources.sh                # 752 files, 0 failed; link: LINKED (290 undefined, 0 dups)
+./tools/unit_fit.sh MetroidPrime/Player/CPlayerGunBase.cpp   # 7 harmless COMDAT extras, 648 B
+sha1sum build/G2ME01/main.dol          # 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+./tools/gate.sh                         # GATE PASS  6a2f742f+5 changed
+MP_GOAL_BASE=$PWD/build/report.base.json ./tools/goal_check.sh build/goal/item.json
+#   ok gate.sh / counts 12376 -> 12377, linked 5863 -> 5863 / target rose 19 -> 20 / no asm
+#   goal_check: PASS progress-unit-cplayergunbase
+```
+
+Instruction-level check used throughout (`.tmp/opencode/sbs.py`, gitignored; rewritten this run to
+take the function name and the unit as arguments): prints the target object's and our object's
+disassembly of one function side by side and counts differing instructions with branch targets
+normalised. `tools/try_batch.py` reports the same number per variant but only prints a unified
+diff, and it matches built functions by *exact* symbol name, so it is no use on a name that
+carries a `__FUiUi` suffix (the two `fn_801DDF*` leaves).
+
+No `NEW:` lines: everything left is in this same unit, and filing it would restate the item.
+
+## Lane 8: passed, then failed on the moved tip (2026-10-02 05:55:17Z)
+
+The judged change failed goal_check.sh (exit 1) once rebased onto e761ac133c98; re-do it against the current tip.
+
+---
+
+# progress-unit-cplayergunbase — lane 8, fourth attempt
+
+Worktree `../wt-mp2-goal-L8`, branch `goal/lane-8`, HEAD `e761ac13`. Unit stays `NonMatching` in
+`configure.py`; the flip was attempted and reverted (see (5) for why it fails). `MP_GOAL_BASE=$PWD/
+build/goal/judge/report.base.json ./tools/goal_check.sh build/goal/item.json`: **PASS**,
+`target rose: 19 -> 21 / 21 functions`. **The unit is at 100% fuzzy and 100% matched.**
+
+`item.json`'s `reason` is stale again (it says 17/21 and names four functions left). All four were
+taken to 100% across the runs above and this one; `CreateGunLight` was re-done here because the
+third attempt's judged change failed on the moved tip (see the last section of the notes above),
+and `ProcessInput` — the one every earlier run called blocked — went this run.
+
+## Measured
+
+| | base (`build/goal/judge/report.base.json`) | now |
+|---|---|---|
+| unit `matched_functions` | 19 / 21 | **21 / 21** |
+| unit `matched_code` | 3496 | **4176** (= the whole `.text`) |
+| unit `fuzzy_match_percent` | 83.90804 | **100.0** |
+| DOL `matched_functions` | 12390 | 12392 |
+| DOL `fuzzy_match_percent` | 35.010788 | 35.02107 |
+| `All:` line | 35.01% / 28.68% / 12.90% | 35.02% / 28.69% / 12.90% |
+
+`gate.sh`'s `report_diff.py`: `+2 functions at 100%, 0 units newly linked`, `linked 5863 -> 5863`,
+`no regression`. Port link `291 undefined, 0 duplicates` — **unchanged**, see (3).
+
+| function | bytes | before | after |
+|---|---|---|---|
+| `CreateGunLight__14CPlayerGunBaseFR13CStateManager` | 276 | 1.45 | **100.0** |
+| `ProcessInput__14CPlayerGunBaseFRC11CFinalInputR13CStateManager` | 404 | 0.99 | **100.0** |
+
+Both verified instruction-for-instruction against the **target** object with `.tmp/opencode/sbs.py`
+(`differing instrs: 0 retail len 69 ours len 69` and `differing instrs: 0 retail len 101 ours len 101`),
+not just on objdiff's percentage.
+
+Files touched: `src/MetroidPrime/Player/CPlayerGunBase.cpp` (both bodies, the four includes, the
+`lbl_803AAC38` and `fn_*` declarations, and **three wrong-callee fixes** — (4)), `files.cmake`,
+`include/MetroidPrime/CHintManager.hpp`, `include/MetroidPrime/CGameHint.hpp`,
+`src/MetroidPrime/TypesMatch.cpp`, `src/MetroidPrime/PortGlobals.cpp`,
+`src/MetroidPrime/PortPoolStandIns.cpp`, new `src/MetroidPrime/PortCHintManager.cpp`, and
+`docs/research/port_link_gap{,_list}.md`. `docs/HANDOFF.md` and `docs/RUNNING_THE_DECOMP.md` are in
+the diff because `goal_check.sh` runs `gate.sh` with `MP_GATE_DOCS_WRITE=1`, which rewrote the
+derived state block and the probe file count; neither was hand-edited. Nothing in `tools/` or
+`build/goal/` was edited by me. No asm.
+
+## 0. Two corrections to the notes above, both measured this run
+
+**(a) `item.json`'s `reason` and this file's earlier counts are both behind the tree.** Re-measured
+properly — `touch src/MetroidPrime/Player/CPlayerGunBase.cpp` first, per the third attempt's own
+warning that the seeded object is stale — the tree is at 19/21 with **two** functions left, not
+four. A `report.json` read without rebuilding answers a question about the previous build.
+
+**(b) The third attempt did not fail on its code.** `build/goal/run.log:3640-3655` records the real
+reason: `GATE FAIL: docs`, `stale: the gap table says other game methods is 213, the generated list
+has 214`. Its code passed everything else, including `target rose: 19 -> 20`. The lesson is the one
+`tools/check_docs_claims.py` exists for and this file's own §4 above describes: **a generated table
+row has to be regenerated, not recomputed by hand** — `python3 tools/link_gap.py --write-list`
+rewrites `port_link_gap_list.md`, and the `port_link_gap.md` group table has to be read off *that*
+file afterwards. Doing it in that order is the whole fix.
+
+## 1. `CreateGunLight` — 1.45% -> 100.0% (276 B), re-done
+
+The third attempt's body was correct and reproduced instruction-for-instruction; this run re-applied
+it and **corrected one thing in it**. It defined
+
+```cpp
+extern "C" const char lbl_803AAC38[] = "??(?)\0";
+```
+
+in `PortPoolStandIns.cpp`. Retail's seven bytes are `3f 3f 28 3f 3f 29 00` (`powerpc-eabi-objdump -s
+-j .rodata build/G2ME01/obj/auto_06_803AAC38_rodata.o` reads `3f3f283f 3f290000`) — that is
+`"??(??)\0"`, **six characters plus a NUL**, not five. `CreateGunLight` asks for `lbl_803AAC38 + 7`,
+so the definition has to be **eight** bytes with a trailing NUL, or the pointer names one past the
+object. `"??(??)\0\0"` is what is there now. This is invisible to objdiff (it does not compare the
+contents of a `.rodata` object another unit owns) and to the DOL build, and it is exactly the
+`lbl_803A56C0` trap the neighbouring definition in the same file documents — the leading `\0\0`
+there, the trailing one here.
+
+Everything else in that body re-measured identically; the argument-by-argument derivation in the
+notes above stands, including that `rs_new ...` and `mgr.AddObject` must be one full expression
+(91.30% otherwise) and that `mLightId.Value()` has to be a hoisted local (12 differing instructions
+inline, 6 hoisted).
+
+## 2. `ProcessInput` — 0.99% -> 100.0% (404 B), and the notes' blocker was not one
+
+The blocker every earlier run recorded was `fn_8022A5B4`, on the grounds that writing it needs three
+**raw offsets** (`CHintManager`+0x18/+0x20 and entity+0x1A8) for a `CUnknown46` that `include/` does
+not have, and that `tools/check_raw_offsets.py` is a gate. **Every one of those three claims is
+false**, and re-measuring costs about ten minutes:
+
+- **`CHintManager`'s existing layout already produces retail's offsets.** The third attempt's
+  "one member short before `mHints`" is wrong. `tools/probe_cc.sh` with `tools/probe_offsets.cpp`'s
+  method (`.tmp/opencode/probe_hint2.cpp`) reads back, under mwcceppc:
+
+  | | measured | retail |
+  |---|---|---|
+  | `mHints` | **0x14** | — |
+  | `rstl::vector::mCount` (at `mHints`+8) | **0x18** | `lwz 24(r3)` |
+  | `rstl::vector::mItems` (at `mHints`+12) | **0x20** | `lwz 32(r3)` |
+  | `sizeof(CHintManager)` | **0x44** | — |
+
+  The header's `CHECK_SIZEOF(CHintManager, 0x44)` was already right and nothing had to move.
+- **`CUnknown46` is not absent from `include/`** — it was declared in `src/MetroidPrime/TypesMatch.cpp`
+  all along (`TYPES_MATCH_CLASS(CUnknown46, CGameHint)` at line 411), just as a throwaway with no
+  members. It is retail's control-hint actor: `docs/research/missing_classes.md` already names the
+  `LoadControlHint` / `CTLH` loader as `10CUnknown46`, `fn_8022CEFC`, 752 bytes. `CGameHint` is
+  `CHECK_SIZEOF` **0x1A8** and that constructor writes the word at +0x1A8 as its second act
+  (`stw r30,424(r29)` with `li r0,19` in r30), while `fn_8022A5B4` reads `lwz r0,424(r3)` — so the
+  flag word is `CUnknown46`'s **first member**, not an unrelated field. The class moved to
+  `include/MetroidPrime/CGameHint.hpp` with that one member modelled and **no `CHECK_SIZEOF`**, since
+  the remaining 0x148 is unread and a guessed total would be a claim the tree cannot back.
+- **`SHint`'s real layout was already in the header's comment and only needed writing down.** 0x70
+  stride, `TUniqueId` at +4, pinned by three functions walking the table identically —
+  `fn_801BA3EC` (0x801BA3EC), `fn_801BA428` (0x801BA428) and `fn_8022A5B4` all do
+  `mulli rX,count,112` and `lhz rX,4(entry)`.
+
+So `fn_8022A5B4` is written **against members**, in a new `src/MetroidPrime/PortCHintManager.cpp`
+(the unclaimed-`.text`-gap arrangement `PortCTweakPlayerControls.cpp` already uses), and
+`tools/check_raw_offsets.py` stays green at **167 sites in 71 files** — no new file, no new debt.
+`TCastToPtr<CUnknown46>` went into `PortGlobals.cpp` beside the other `PORT_CAST_TO_PTR`s, because
+`TypesMatch.cpp` holds the real one and is out of the port build. Moving `CUnknown46`'s *declaration*
+into the header (so it has members) required deleting the `TYPES_MATCH_CLASS` line that made a second,
+member-less `CUnknown46`; its `TypesMatch` and `TCastToPtr` bodies stay put and `TypesMatch` is
+still **511 / 511 at 100%**, so nothing in that `Matching` unit moved.
+
+**Generalisable: a "raw offsets needed" blocker is often a "the header does not model this yet"
+blocker wearing a disguise.** Two of the three offsets were already reachable and one needed a class
+that already existed in a source file. Check what the header *produces* (`tools/probe_cc.sh` +
+`tools/probe_offsets.cpp`) before booking debt in `raw_offsets.md`.
+
+## 3. The four spellings that took `ProcessInput` from 10 to 0 differing instructions
+
+The earlier attempts measured 66 spellings and stopped at 10, all of them the same register
+allocation. Measured with `tools/try_batch.py` this run, differing instructions:
+
+| spelling | differing |
+|---|---|
+| one reused `uint mask = 0u;` (the earlier best) | 10 |
+| one variable per term, each declared at the top | 28 |
+| one variable per term, each in its own scope | 28 |
+| `<< 2` / `<< 1` / `<< 3` instead of a mask | 28 |
+| `uint m = c ? N : 0u;` per term | 21 |
+| **each term's condition pulled into a named `const bool` first** | **7** |
+| named condition on term 4 only, plus `== true` | 6 |
+| **term 4's condition as `const uint` compared `!= 0u`** | **0** |
+
+Two findings, both about *register lifetime*, and both worth more than this function:
+
+- **A mask's zero-init is hoistable above the call that produces its condition.** Retail's three
+  phi pairs are `li r6,0 / beq / li r6,4`, `li r5,0 / beq / li r5,2`, `li r3,0 / beq / li r3,8` —
+  each in a **volatile** register, and each `li rX,0` landing *after* the `bl`. Written the obvious
+  way, `mask = 0u; if (cond) { mask = Nu; } mInputFlags |= mask;` has a constant zero-init with
+  nothing to order it against, so MWCC sinks it above the call, `mask` is live across the `bl`, and
+  it must be callee-saved — **r26**, which is the entire 10-instruction difference. Introducing the
+  condition as a named `const bool` *first* makes the zero-init depend on the call, and the mask
+  becomes volatile-local. 10 -> 7. This is a general shape, not a spelling: **anything MWCC is free
+  to hoist above a call is what forces a callee-saved register.**
+- **The last 7 is if-conversion, and a boolean is what triggers it.** With `const bool`, MWCC
+  lowers `mask = c8 ? 8u : 0u` to `clrlwi / cmplwi r0,1 / neg / or / srwi.` in **r4** rather than
+  retail's `clrlwi. r0,r3,24 / li r3,0 / beq / li r3,8` — a boolean compare against a constant is
+  exactly what its if-conversion pass is built for. Declaring the *same* condition `const uint` and
+  testing `!= 0u` removes the boolean-ness and the phi survives: 7 -> **0**. The other two terms
+  still need a `bool` — `const uint` on term 2 costs 10 — so **the three terms deliberately use
+  different types.** Do not "tidy" that into three identical lines; it costs the match.
+
+The first two findings in the notes above still stand and are load-bearing: **the hint test is not
+negated** (a true `fn_8022A5B4` clears the masks; `beq` branches over the clearing block), and term
+1 is `= c ? 1 : 0` while terms 2-4 are read-modify-written from the member.
+
+## 4. Three functions that objdiff scored 100% called the **wrong function**
+
+`tools/flip_test.sh` failed first on `undefined: 'CStateManager::GetObjectByIdFromListAll(TUniqueId)'`
+— a symbol that appears nowhere in retail's object. Comparing the two objects' **relocation symbol
+names** per function finds three genuine mismatches, all in code already at 100%:
+
+| function | retail's `bl` target | what the source called |
+|---|---|---|
+| `GetPlayer` | `GetObjectById__13CStateManagerCF9TUniqueId` (const) | `ObjectById` (non-const) |
+| `GetPlayerFromAll` | `ObjectById__13CStateManagerF9TUniqueId` | `GetObjectByIdFromListAll` |
+| `ProcessInput` | `GetControlHintManager__7CPlayerCFv` (const) | `GetControlHintManager` (non-const) |
+
+`GetPlayerFromAll` is the worst: **the name says "from all lists" and retail calls the plain
+`ObjectById`.** All three are fixed and all 21 functions now agree on relocation names, except
+`__dt__` which carries one extra COMDAT weak reference.
+
+**objdiff does not compare the symbol name of a `R_PPC_REL24` relocation** — the instruction stream
+is one `bl` either way, so a wrong callee scores 100% and hides until the unit is linked with our
+object in it. `GetPlayerFromAll` had been sitting at 100% across at least three previous runs of
+this item. The check is four lines of `powerpc-eabi-objdump -d -r` per object plus a dict compare
+(`.tmp/opencode/`, throwaway); **it is worth running on any `progress` item whose unit is close to a
+flip**, because it is the only thing standing between "100%" and "reproduces retail".
+
+## 5. The flip, and exactly what stops it
+
+`./tools/flip_test.sh MetroidPrime/Player/CPlayerGunBase.cpp` → **FAIL**, and the reason is measured,
+not guessed:
+
+```
+WARNING: 87 computed checksum(s) did NOT match
+sha1sum build/G2ME01/main.dol -> 3f7da7fcbb9250d31555c7a1d1867fd3ab229f8e   (expected 6ef9b491...)
+```
+
+Flipped by hand and both DOLs kept: the flipped one is **608 bytes larger** (3969632 vs 3969024) and
+comparing it section by section against `tools/dol_read.py`'s table shows **every** section differing,
+starting with `.text` at +0x2A. That is what a size change does to a fixed-address image — it is not
+648 misplaced bytes, it is one oversized object shifting everything after it. The cause is
+`tools/unit_fit.sh`:
+
+```
+.text  claimed 4176  ours 4824  retail 4176  over by 648
+7 function(s) present in ours but not in the retail unit object, 648 bytes total
+```
+
+six pre-existing COMDAT weak template/inline destructors plus the `rstl::string` temporary
+destructor that `CreateGunLight`'s `rstl::string_l(...)` argument introduced (80 bytes). The tool's
+own text says CAi carries 224 bytes of these and still flips, so the count alone is not the verdict —
+but here the DOL sha1 is, and it fails. `configure.py` was restored and the tree rebuilt
+(`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`) before the judge ran.
+
+**So the next thing this unit needs is not a body: it is for those seven COMDAT instantiations to
+stop being emitted.** That is a template/inline question about `CRainSplashGenerator`'s members and
+`rstl::single_ptr`'s destructor, in *other* units' headers, and it is the kind of change that moves
+`.text` everywhere — a `match` item, not a `progress` one. Not attempted here.
+
+## Verification run by this lane
+
+```
+touch src/MetroidPrime/Player/CPlayerGunBase.cpp   # see §0(a): the seeded object is stale
+./tools/decomp_build.sh
+#   All:  35.02% fuzzy, 28.69% matched, 12.90% linked (12392 / 28465 functions)
+#   main/MetroidPrime/Player/CPlayerGunBase: 100.00% fuzzy, 100.00% matched (21 / 21 functions)
+sha1sum build/G2ME01/main.dol                       # 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+86 RELs cmp orig/G2ME01/files/RelProd/*.rel         # 0 differ
+python3 tools/check_symbol_names.py                 # checked 525 units; 0 declared names are missing
+python3 tools/check_decl_order.py                   # ok: 981 unit(s) checked, 28 permuted, all 28 accounted for
+python3 tools/check_raw_offsets.py                  # ok: 167 raw-offset site(s) in 71 file(s), all documented
+python3 tools/check_files_cmake.py                  # every configured DOL object is in files.cmake or excluded
+./tools/probe_sources.sh                            # 753 files, 0 failed; STRICT PASS 291 undefined, 0 dups
+python3 tools/link_gap.py --rebuild --write-list   # 286 entries; fn_8022A5B4 removed, CGameLight ctor added
+python3 tools/check_docs_claims.py                  # docs claims agree with the tree
+./tools/unit_fit.sh MetroidPrime/Player/CPlayerGunBase.cpp   # 7 COMDAT extras, 648 B - see §5
+./tools/flip_test.sh MetroidPrime/Player/CPlayerGunBase.cpp  # FAIL: DOL sha1 differs, see §5
+MP_GOAL_BASE=$PWD/build/goal/judge/report.base.json ./tools/goal_check.sh build/goal/item.json
+#   ok gate.sh / counts 12390 -> 12392, linked 5863 -> 5863 / target rose 19 -> 21 / no asm
+#   goal_check: PASS progress-unit-cplayergunbase
+```
+
+Scratch scripts, all gitignored in `.tmp/opencode/`: `sbs.py` (side-by-side instruction diff of one
+function against the **target** object), `probe_hint.cpp` / `probe_hint2.cpp` + `tools/probe_cc.sh`
+(the `CHintManager` / `SHint` offset probe — `offsetof` under mwcceppc, not the host), and
+`pi2.py`..`pi10.py` (the 40-odd `ProcessInput` spellings for `tools/try_batch.py`).
+
+No `NEW:` lines: everything still open on this unit is in it (the COMDAT extras, §5), so filing one
+would restate the item.

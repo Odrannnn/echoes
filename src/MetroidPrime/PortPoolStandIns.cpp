@@ -148,6 +148,19 @@
 
 #include <string.h>
 
+// `lbl_803AAC38` is retail's `.rodata:0x803AAC38`, `size:0x7` in `config/G2ME01/symbols.txt`, and
+// `build/G2ME01/obj/auto_06_803AAC38_rodata.o` holds it - an unclaimed rodata range, so no unit of
+// ours owns it and nothing in the DOL defines it for the port build. The only reference is
+// `CPlayerGunBase::CreateGunLight` (retail 0x801DDF88), which asks for `+7`: the byte *after*
+// retail's own string, i.e. the gun light's **empty** name.
+//
+// **Both NULs are load-bearing, exactly as in `lbl_803A56C0` below.** Retail's seven bytes are
+// `3f 3f 28 3f 3f 29 00` - "??(??)" and one NUL (`powerpc-eabi-objdump -s -j .rodata` on
+// `build/G2ME01/obj/auto_06_803AAC38_rodata.o` reads `3f3f283f 3f290000`), and `+7` lands on the
+// next byte, which in retail is the following zero. `"??(??)\0"` alone is 7 bytes and `+7` would
+// read one past the object; the trailing `\0` is the byte the pointer actually names.
+extern "C" const char lbl_803AAC38[] = "??(??)\0\0";
+
 extern "C" const char lbl_803A56C0[] =
     // **The leading `\0\0` is not decoration.** Retail's first bytes are `3f 3f 28 3f 3f 29
     // 00 00` at 0x803A56C0 - "??(??)" and *two* NULs - and dropping one moves every offset in
