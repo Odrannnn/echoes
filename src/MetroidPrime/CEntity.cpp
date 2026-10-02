@@ -2,6 +2,33 @@
 
 #include "MetroidPrime/CStateManager.hpp"
 
+// Retail's object ends with two functions nothing in this file calls:
+// `rstl::vector<SConnection>::reserve` (152 B) and the `rstl::uninitialized_copy` it calls
+// (60 B), between `__distance<...>` and `__sinit_CEntity_cpp`. They are mwccceppc's out-of-line
+// copies for the instantiation, and this object comes first in link order, so mwldeppc keeps
+// these two and the rest of the DOL binds to them - the one caller in the DOL is the
+// connection-list reader at 0x80234028. Nothing here odr-uses `reserve`:
+// `CEntityInfo`'s copy constructor allocates straight through `rmemory_allocator::allocate`, so
+// the template is never instantiated and both functions come out at 0.00%. Spelling the member
+// out is how this repo reproduces such a copy - see
+// `src/MetroidPrime/Player/CStaticInterference.cpp` and `src/MetroidPrime/CGameHintInfo.cpp`,
+// which do the same for their own vectors - and the body is the one in `rstl/vector.hpp`,
+// unchanged.
+template <>
+void rstl::vector< SConnection >::reserve(int newSize) {
+  if (newSize <= mCapacity) {
+    return;
+  }
+
+  SConnection* newData;
+  mAllocator.allocate(newData, newSize);
+  uninitialized_copy(begin(), end(), newData);
+  destroy(mItems, mItems + mCount);
+  mAllocator.deallocate(mItems);
+  mItems = newData;
+  mCapacity = newSize;
+}
+
 rstl::vector< SConnection > CEntity::NullConnectionList;
 
 CEntityInfo CEntity::NullEntityInfo =
@@ -75,14 +102,17 @@ void CEntity::PreThink(float dt, CStateManager& mgr) {}
 
 void CEntity::Think(float dt, CStateManager& mgr) {}
 
-void CEntity::SetActive(const bool active) { mActive = active; }
-
+// `SendActive` is defined above `SetActive`, the opposite of the header's order: mwcceppc emits
+// definitions in reverse source order, and retail's object has `SetActive` (0x8b0, 16 B) before
+// `SendActive` (0x8c0, 128 B).
 void CEntity::SendActive(CStateManager& mgr, bool active) {
   if (active != GetActive()) {
     mgr.SendScriptMsg(this, GetUniqueId(), active ? kSM_Activate : kSM_Deactivate,
                       kInvalidUniqueId);
   }
 }
+
+void CEntity::SetActive(const bool active) { mActive = active; }
 
 TAreaId CEntity::GetAreaIdForPersistence() const { return mNotInArea ? kInvalidAreaId : mAreaId; }
 
