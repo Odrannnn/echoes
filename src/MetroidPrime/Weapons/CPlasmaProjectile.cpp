@@ -588,6 +588,37 @@ void CPlasmaProjectile::CreatePlasmaLights(uint sourceId, const CLight& light, C
   }
 }
 
+// `rstl::vector<TUniqueId>::operator=`, under the name retail's symbol table gives it. Retail's
+// entry at .text:0x801197E8 is 0xB0 bytes and dtk recovered no name for it (`fn_801197E8`),
+// although it named the sibling instantiations (`__as__Q24rstl45vector<9TEditorId,...>` at
+// 0x8005424C and 97 others). The member spelling emits the weak COMDAT
+// `__as__Q24rstl45vector<9TUniqueId,...>`, and objdiff pairs functions by name, so objdiff had
+// nothing to pair and scored it 0.00% while the bytes were already identical - the COMDAT copy
+// this TU emitted at 0x250 was instruction for instruction the same. The body below is
+// `include/rstl/vector.hpp`'s `operator=` spelled out, and it emits those same bytes under the
+// name objdiff can pair. One relocation target still differs and does not matter: retail calls
+// `fn_800E9A38` where this calls `clear__Q24rstl45vector<9TUniqueId,...>` for `dest.clear()` -
+// the same three instructions under a different name, and objdiff scores the function 100.00%.
+// `DeletePlasmaLights` below calls it in place of `mLights = rstl::vector<TUniqueId>()`, which is
+// what retail's `bl fn_801197E8` at 0x801197BC is.
+extern "C" rstl::vector< TUniqueId >& fn_801197E8(rstl::vector< TUniqueId >& dest,
+                                                  const rstl::vector< TUniqueId >& src) {
+  if (&dest == &src)
+    return dest;
+  dest.clear();
+  if (src.size() == 0) {
+    dest.mAllocator.deallocate(dest.mItems);
+    dest.mCount = 0;
+    dest.mCapacity = 0;
+    dest.mItems = nullptr;
+  } else {
+    dest.reserve(src.size());
+    rstl::uninitialized_copy(src.mItems, src.mItems + src.mCount, dest.data());
+    dest.mCount = src.mCount;
+  }
+  return dest;
+}
+
 void CPlasmaProjectile::DeletePlasmaLights(CStateManager& mgr) {
   for (rstl::vector< TUniqueId >::iterator it = mLights.begin(); it != mLights.end(); ++it) {
     const TUniqueId& id = *it;
@@ -595,7 +626,7 @@ void CPlasmaProjectile::DeletePlasmaLights(CStateManager& mgr) {
       mgr.DeleteObjectRequest(id);
     }
   }
-  mLights = rstl::vector< TUniqueId >();
+  fn_801197E8(mLights, rstl::vector< TUniqueId >());
 }
 
 void CPlasmaProjectile::UpdateLights(float expansion, float dt, CStateManager& mgr) {
