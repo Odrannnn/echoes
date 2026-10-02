@@ -209,6 +209,67 @@ CCollisionActorManager::CCollisionActorManager(
   }
 }
 
+// ---------------------------------------------------------------------------------------
+// The two out-of-line copies of `rstl::destroy` / `rstl::destroy_impl` that retail emitted
+// for `vector<CJointCollisionDescription>` and left unnamed - dtk calls them by address.
+//
+// `rstl::vector<CJointCollisionDescription>::~vector` (0x80136318, 132 bytes, 100% before this
+// and after) is the only caller: it computes the two ends, copies them into its own frame at
+// +0xc and +0x10 (0x80136350-0x80136360) and then `bl fn_8013639C` **with their addresses** in
+// r3 and r4 (0x8013633C / 0x80136344). So `fn_8013639C`'s own parameters are lvalue references,
+// and it re-copies both into its frame before forwarding - which is why it is 56 bytes and not
+// the 32 a plain forwarder would be.
+//
+// Retail's two functions, in retail's order (mwcceppc emits descending source order, so
+// `fn_8013639C` is the one defined second here):
+//
+//   fn_8013639C (0x8013639C, 0x38)  `destroy<It>(It& begin, It& end)` - the forwarder
+//     lwz r5,0(r4) ; stw r0,0x14(r1) ; addi r4,r1,0x8 ; lwz r0,0(r3) ; addi r3,r1,0xc ;
+//     stw r5,0x8(r1) ; stw r0,0xc(r1) ; bl fn_801363D4
+//   fn_801363D4 (0x801363D4, 0x60)  `destroy_impl<It>(It begin, It& end)` - the loop
+//     lwz r31,0(r3) ; mr r30,r4 ; b loop
+//     loop: lwz r0,0(r30) ; cmplw r31,r0 ; bne body        <- the end is RE-READ every pass
+//     body: cmplwi r31,0 ; beq next ; addic. r0,r31,0x2c ; beq next ;
+//           addi r3,r31,0x2c ; bl internal_dereference<basic_string>
+//     next: addi r31,r31,0x68
+//
+// The reload at 0x80136410 is the whole shape of `fn_801363D4`: retail keeps the *address* of
+// the end iterator in the callee-saved r30 and re-reads `0(r30)` on every iteration, because the
+// loop body calls `internal_dereference` and mwcceppc will not keep a load hoisted out of a loop
+// whose body can write through a non-const reference. Spelled `const It&` - the more natural
+// reading, and what the previous run's notes settled on - mwcceppc hoists `*end` into r31 before
+// the loop, the test compares two registers, and the function comes out 92 bytes carrying 22 of
+// retail's 24 instructions. A **non-const** `It&` for the end is what reproduces all 96 bytes,
+// which is why the `e` parameter below is not `const`. `const It&` for `begin`, or `begin` by
+// value, both work; `begin` as a non-const reference puts its `lwz r31,0(r3)` one instruction
+// later than retail has it and loses two. `fn_8013639C` takes both of its parameters by
+// `const&` because it only reads them; it copies `end` into a local because its callee wants a
+// modifiable lvalue.
+//
+// Neither of these is called from our own `~vector`: the header's `rstl::destroy` still outlines
+// its own local copy (`destroy<pointer_iterator<...>>__4rstl...`, 100 bytes) right after
+// `~vector` in `.text`, where it was before. Pointing the header at these two instead means
+// editing `include/rstl/vector.hpp`, which moves `~vector` in every unit that has one - a
+// tree-wide change, not a one-unit one. The spellings measured while getting here, including the
+// one that reached 99.86% by handing the two iterators to `fn_801363D4` the wrong way round, are
+// in docs/goal-notes/destroy-pair-ccollisionactormanager.md.
+// ---------------------------------------------------------------------------------------
+
+typedef rstl::vector< CJointCollisionDescription >::iterator CJointDescriptionIterator;
+
+extern "C" void fn_801363D4(CJointDescriptionIterator b, CJointDescriptionIterator& e) {
+  CJointDescriptionIterator cur = b;
+  for (; cur != e; ++cur) {
+    rstl::destroy(&*cur);
+  }
+}
+
+extern "C" void fn_8013639C(const CJointDescriptionIterator& b,
+                            const CJointDescriptionIterator& e) {
+  CJointDescriptionIterator ee(e);
+  fn_801363D4(b, ee);
+}
+
 CCollisionActorManager::~CCollisionActorManager() {}
 
 void CCollisionActorManager::Update(float dt, CStateManager& mgr, EUpdateOptions options) {
