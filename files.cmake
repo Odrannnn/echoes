@@ -353,6 +353,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     # which collide in a flat link, and tools/check_files_cmake.py counts that case separately
     # ("further units are out because they define a module entry point") rather than failing.
     src/MetroidPrime/ScriptObjects/CFogOverlayRelStubs.cpp
+    # Lumite's (module 39) teardown pair, `fn_39_778`/`fn_39_798`. Its host branch is empty by
+    # design (the bodies are inside `#ifdef __MWERKS__`), so listing it adds no undefined
+    # reference; it is listed because check_files_cmake.py requires every config.py `Matching`
+    # object to be in this list, and only a RELMain/RELExit unit is exempt.
+    src/MetroidPrime/ScriptObjects/CLumiteRelTail.cpp
     # CRumbleManager::StopRumble. Its own file because CRumbleManager.cpp is a
     # `MatchingFor("G2ME01")` unit and must not be edited; see the file's header.
     src/MetroidPrime/CRumbleManagerStopRumble.cpp

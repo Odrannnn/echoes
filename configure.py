@@ -1551,6 +1551,32 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CSnakeWeedSwarmRel.cpp"),
         ],
     ),
+    # Lumite's head, .text 0x0..0x190, and the teardown pair at 0x778..0x7C0: fn_39_0, the
+    # thirteen-accessor block, RELExit, RELMain and the loader registration RELMain calls, plus
+    # fn_39_778/fn_39_798. Module 39, same arrangement as DarkCommando and MysteryFlyer above,
+    # with two measured differences and one spelling that is its own. `fn_39_0` **inlines** the
+    # optional_object<CAABox> conversion - there is no out-of-line constructor in this module's
+    # symbols.txt, unlike MysteryFlyer's fn_45_2BBC - so it is the real
+    # `rstl::optional_object<CAABox>` return type that reproduces its 0x68 bytes, the same shape
+    # DarkCommando's fn_3_14 has. The registration's loader slot is `lbl_39_bss_40`
+    # (`.bss:0x40`, four bytes), **not** `lbl_39_bss_0`, which is the first of the module's five
+    # `.bss` objects; and the setter import is the plain `fn_80218BFC`, so no symbols.txt rename
+    # is needed. Everything from fn_39_190
+    # (0x190, 0x5A8), the module's own entity loader, up is left unclaimed - and fn_39_738
+    # (0x738, 0x40) between the two claims stays retail - so dtk fills both gaps from retail and
+    # the module's sha1 still holds.
+    Rel(
+        "Lumite",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CLumiteRel.cpp"),
+            # The teardown pair at 0x778..0x7C0 **and fn_39_738 at 0x738**, which needs a
+            # different compiler: GC/1.3.2 emits the pair's `stw r31,0xc(r1)` / `mr r31,r3` save
+            # in the prologue, above the `lbz` retail has first, and GC/2.7 emits it after the
+            # load, instruction for instruction (see the source's header). Same per-object
+            # override `CGameOptions.cpp` uses above.
+            Object(Matching, "MetroidPrime/ScriptObjects/CLumiteRelTail.cpp", mw_version="GC/2.7"),
+        ],
+    ),
     # PillBug's head, .text 0x0..0x130: the thirteen short accessors the REL loader generator
     # emits, the vtable call at 0x90, and the loader registration RELMain calls. Module 48, the
     # same arrangement as MetareeSwarm above; its table is CAi's, so the one call goes to vtable

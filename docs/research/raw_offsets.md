@@ -247,6 +247,22 @@ no offset because it calls `CPhysicsActor::GetBoundingBox` through a one-method 
 real header adds `.data` and breaks the module hash). Blocker: the same CActor/CPatterned hierarchy
 module 45's entity loader `fn_45_170` needs.
 
+## `src/MetroidPrime/ScriptObjects/CLumiteRel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_39_D4` copies out). **As with `CAtomicAlphaRel.cpp`,
+`CMysteryFlyerRel.cpp`, `CEmperorIngStage3Rel.cpp` and `CIngSpaceJumpGuardianRel.cpp` above, the
+checker undercounts this file**: `+0x448` (`fn_39_68`'s float store), `+0x44F` (`fn_39_78`),
+`+0x34C` (`fn_39_A8`'s bit 3) and `+0x754` (`fn_39_B4`, the address of a member) are all reached
+through a plain `static_cast< char* >` or a subscript, which the checker does not key on, so the
+true count is five sites over five members. It is the same generated accessor block as the rest of
+the family, with two differences worth recording, both read off the disassembly rather than assumed
+from a sibling: this head has **no leading accessor above the `GetBoundingBox` wrapper** - `fn_39_0`
+is at 0x0 - and its predicate run is three `li r3,0` in a row at 0x80/0x88/0x90 before `fn_39_BC`'s
+`li r3,1`, where the family alternates. `fn_39_0` needs no offset because it calls
+`CPhysicsActor::GetBoundingBox` through the same one-method local stand-in (the real header adds
+`.data` and breaks the module hash). Blocker: the same CActor/CPatterned hierarchy module 39's
+entity loader `fn_39_190` (0x190, 0x5A8) needs before the module's other 139 functions can move.
+
 ## `src/MetroidPrime/ScriptObjects/CEmperorIngStage3Rel.cpp` (4 sites)
 
 `+0x44F` (the byte `fn_18_44` returns), `+0x34C` (the bitfield byte, `& 8`), `+0x54` (the three floats
