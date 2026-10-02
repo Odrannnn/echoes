@@ -209,15 +209,23 @@ extern "C" rstl::vector< SFixed6 >* fn_80043234(rstl::vector< SFixed6 >* self, s
 }
 
 // ---- family 3: fn_8004371C (0x8004371C, 160 B) / fn_800436CC (80 B) / 6A8 / 688 ----
-// The object is a counted array of 44-byte records at +4, with the count at +0, walked by
-// index rather than by pointer: `li r29,0` is the loop counter, `addi r30,r30,44` steps and
-// `cmpw r29,r0` against `lwz r0,0(r28)` is the test. Each record holds a pointer at +36 whose
-// first byte is a flag, and a `CToken*` at +40; the token is destroyed and freed when the
-// pointer is non-null and its flag byte is non-zero.
+// The object is a counted array of 44-byte records at +4, with the count at +0, walked by a
+// pointer that steps by 44 in the latch: `addi r30,r28,4` seeds it, `li r29,0` is the loop
+// counter and the test is `lwz r0,0(r28) ; cmpw r29,r0` with the counter as the first operand.
+// Each record holds a flag byte at +0x24 and a `CToken*` at +0x28; the token is destroyed and
+// freed when the element pointer is non-null, the flag byte's *address* is non-null, the flag
+// byte is non-zero and the token pointer is non-null.
+//
+// The address test is dead code - the address is `p + 0x24` and cannot be null - but it is what
+// retail emits (`addic. r3,r30,36 ; beq`) and MWCC reproduces it from a null test written
+// against the member's address, sharing the register with the `lbz` that follows. Reading the
+// flag through a *pointer* member instead, as an earlier attempt did, makes MWCC emit a real
+// `lwz r3,36(r30)` and costs the whole shape.
 struct SRecord44 {
-  uchar x0[36];  // 0x00..0x23
-  uchar* x24;    // 0x24 - the flag pointer: `addic. r3,r30,36` is 0x24 into the record
-  CToken* x28;   // 0x28 - `lwz r31,40(r30)`
+  uchar x0[36]; // 0x00..0x23
+  uchar x24;    // 0x24 - `addic. r3,r30,36 ; beq` tests this member's ADDRESS, and
+               //       `lbz r0,0(r3)` then reads the byte through that same register
+  CToken* x28;  // 0x28 - `lwz r31,40(r30)`
 };
 CHECK_SIZEOF(SRecord44, 0x2C) // 44, the `addi r30,r30,44`
 
@@ -226,17 +234,30 @@ struct SRecordArray {
   SRecord44 m_items[1];
 };
 
-// The redundant `beq 43780` between the `cmplwi r31,0` test and the `~CToken` call is
-// MWCC's duplicate of the branch it just emitted: it re-tests the token pointer it has already
-// proved non-null, and this time the target is the `CMemory::Free` rather than the loop end.
+// The `beq 43780` between the `cmplwi r31,0` test and the `~CToken` call is MWCC's duplicate of
+// the branch it has just emitted: the *inner* `if` re-tests the token pointer, finds cr0 still
+// set from the outer test and does not re-issue the compare - and this time the target is the
+// `CMemory::Free` rather than the end of the loop, so it skips the destructor alone. That
+// nesting is also why the four outer tests are one `if` and not four `continue`s: retail's outer
+// `beq`s land on the latch's `addi r30,r30,44`, so the element pointer advances every trip.
 extern "C" void fn_8004371C(SRecordArray* self) {
-  for (int i = 0; i < self->m_count; ++i) {
-    SRecord44& rec = self->m_items[i];
-    if (rec.x24 == nullptr || rec.x24[0] == 0 || rec.x28 == nullptr) {
-      continue;
+  int i = 0;
+  SRecord44* p = self->m_items;
+  for (; i < self->m_count; ++i) {
+    if (p != nullptr && &p->x24 != nullptr && p->x24 != 0) {
+      // The token is a local read *here*, after the flag tests, and not at the top of the body:
+      // retail's `lwz r31,40(r30)` sits between the flag test and the token's own null test.
+      // Reading it into a named local is also what keeps it in a callee-saved register across
+      // the destructor call, so both calls are `mr r3,r31` with no second load.
+      CToken* t = p->x28;
+      if (t != nullptr) {
+        if (t != nullptr) {
+          t->~CToken();
+        }
+        CMemory::Free(t);
+      }
     }
-    rec.x28->~CToken();
-    CMemory::Free(rec.x28);
+    p = reinterpret_cast< SRecord44* >(reinterpret_cast< uchar* >(p) + sizeof(SRecord44));
   }
 }
 
@@ -447,6 +468,236 @@ extern "C" SByteBuf356List* fn_800437BC(SByteBuf356List* self, short flag) {
     }
   }
   return self;
+}
+
+// ---- the two release families that share the "count down, then free" shape ------------------
+// `fn_8003AD5C` (0x8003AD5C, 24 B) is a bare countdown and nothing else:
+//   lwz r0,0(r3) ; mtctr r0 ; cmpwi r0,0 ; blelr ; bdnz ; blr
+// There is no store and no call in it, so the count is read from the object at +0 and the loop
+// body is **empty** - MWCC's downward counted loop over nothing. The `blelr` (rather than a
+// `beq` to a separate `blr`) is the leaf shape: no frame, so the early exit returns directly.
+struct SCounted {
+  int m_count; // 0x00 - `lwz r0,0(r3)`
+};
+
+extern "C" void fn_8003AD5C(SCounted* self) {
+  for (int i = self->m_count; i > 0; --i) {
+  }
+}
+
+// 0x8003AD28 (52 B): the countdown, then the count is cleared. `mr r31,r3` before the call and
+// `stw r0,0(r31)` after it is the callee-saved copy of `this` that the clear needs, because r3
+// is the caller's argument register.
+extern "C" void fn_8003AD28(SCounted* self) {
+  fn_8003AD5C(self);
+  self->m_count = 0;
+}
+
+// 0x80043888 (80 B) is the same four-layer deleting destructor as `fn_800437BC` above, one layer
+// up: `mr. r30,r3 ; beq` (the null test on `this`, with the record so cr0 is already set for the
+// `extsh` below), the leaf, then `extsh. r0,r31 ; ble` for the flag, then the free, then the
+// `mr r3,r30` return. It is `fn_800437BC` with `fn_8003AD5C` as the leaf and nothing to destroy.
+extern "C" SCounted* fn_80043888(SCounted* self, short flag) {
+  if (self != nullptr) {
+    fn_8003AD5C(self);
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 0x80038E0C (84 B): the same deleting destructor over an object with a heap block at +0x0C.
+// The flag test is `extsh. r0,r31 ; ble`, so the parameter is a **short** and the branch is
+// `ble`, i.e. the free happens for flag > 0 - the shape the three families above already pin.
+struct SFreeBlock {
+  uchar x00[0x0C];
+  void* m_block; // 0x0C - `lwz r3,12(r30)`
+};
+
+extern "C" SFreeBlock* fn_80038E0C(SFreeBlock* self, short flag) {
+  if (self != nullptr) {
+    CMemory::Free(self->m_block);
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// ---- 0x80039A7C: the same walk as fn_8004371C, with a plain free as the leaf --------------
+// Element stride 20, count at +0, elements at +4, and each element carries a flag byte at +12
+// and a heap block at +16. Two things about the flag are retail's and not a guess:
+//   * `addic. r0,r30,12 ; beq` is a null test on the **address** of the flag byte, not on its
+//     value - dead code, because the address is `p + 12`. The `lbz r0,12(r30)` that follows
+//     reuses the register that held the address, so the two share one address computation.
+//   * `cmplwi r30,0 ; beq` at the top of the body tests the walking element pointer itself.
+struct SFree20 {
+  uchar x00[12]; // 0x00..0x0B
+  uchar m_flag;  // 0x0C
+  void* m_block; // 0x10
+};
+CHECK_SIZEOF(SFree20, 20) // the `addi r30,r30,20`
+
+struct SFree20Array {
+  int m_count;        // 0x00
+  SFree20 m_items[1]; // 0x04
+};
+
+extern "C" SFree20Array* fn_80039A7C(SFree20Array* self, short flag) {
+  if (self != nullptr) {
+    int i = 0;
+    SFree20* p = self->m_items;
+    for (; i < self->m_count; ++i) {
+      // One `if`, not three `continue`s: retail's three `beq`s all land on the `addi r30,r30,20`
+      // in the latch, so the element pointer advances on every trip. A `continue` would jump
+      // past it and the three branches would be 4 bytes further on - measured 99.62% that way.
+      if (p != nullptr && &p->m_flag != nullptr && p->m_flag != 0) {
+        CMemory::Free(p->m_block);
+      }
+      p = reinterpret_cast< SFree20* >(reinterpret_cast< uchar* >(p) + sizeof(SFree20));
+    }
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// ---- 0x80041618 / 41690 / 416DC: the two tree searches and their pair -----------------------
+// One search, written twice. The node is `{left +0, right +4, key +0x10}` and the tree holds its
+// root at +0x10; the result is a two-word iterator `{node, tree + 8}` - the `addi r0,r4,8` is the
+// end sentinel, which is why the out parameter is filled with an address of the tree itself.
+// Both keys are read as words and masked with `clrlwi .,6`, i.e. `& ~0x3F`, so the comparison is
+// over the top bits of the key. The two functions differ only in which operand MWCC put first in
+// the `cmplw`: 0x800416DC compares `key >= node_key` and 0x80041690 the equivalent
+// `node_key < key`, and that is what puts the search key in r5 in one and in r0 in the other.
+struct STreeNode {
+  STreeNode* m_left;  // 0x00
+  STreeNode* m_right; // 0x04
+  uchar x08[8];
+  uint m_key; // 0x10, `lwz r0,16(r7)` then `clrlwi r0,r0,6`
+};
+
+struct STree {
+  uchar x00[8];
+  uchar* m_end;      // 0x08 - the iterator's end word is this address
+  uchar x0C[4];
+  STreeNode* m_root; // 0x10, `lwz r7,16(r4)`
+};
+
+struct STreeKey {
+  uint m_key; // `lwz r0,0(r5)` then `clrlwi`
+};
+
+struct STreeIter {
+  STreeNode* m_node; // 0x00
+  uchar* m_end;      // 0x04
+};
+
+// Both keys are read as words and masked with `clrlwi .,6`. That mnemonic keeps the *low* bits,
+// so the mask is 0x3FFFFFF, not ~0x3F: `& 0x3F` measures as `clrlwi .,26` and `& ~0x3F` as a
+// `clrrwi` - a different instruction and a different register, both measured. The search key is
+// read **first** in the source, which is what keeps the masked copy in r5, the register the key
+// pointer arrived in.
+// The two functions differ only in which operand the `cmplw` names first, and that is the whole
+// of it: 0x800416DC tests `key < node_key` and 0x80041690 the equivalent `node_key >= key`, so the
+// `cmp` has its operands the other way round and the branch is `bge` in one and `blt` in the
+// other. Both put the shorter arm (the step to the right child) out of line.
+extern "C" void fn_800416DC(STreeIter* out, STree* tree, STreeKey* key) {
+  uint k = key->m_key & 0x3FFFFFF;
+  STreeNode* best = nullptr;
+  STreeNode* n = tree->m_root;
+  while (n != nullptr) {
+    if (k < (n->m_key & 0x3FFFFFF)) {
+      best = n;
+      n = n->m_left;
+    } else {
+      n = n->m_right;
+    }
+  }
+  out->m_node = best;
+  out->m_end = reinterpret_cast< uchar* >(tree) + 8;
+}
+
+extern "C" void fn_80041690(STreeIter* out, STree* tree, STreeKey* key) {
+  const uint k = key->m_key & 0x3FFFFFF;
+  STreeNode* best = nullptr;
+  STreeNode* n = tree->m_root;
+  while (n != nullptr) {
+    if ((n->m_key & 0x3FFFFFF) >= k) {
+      best = n;
+      n = n->m_left;
+    } else {
+      n = n->m_right;
+    }
+  }
+  out->m_node = best;
+  out->m_end = reinterpret_cast< uchar* >(tree) + 8;
+}
+
+// 0x80041618 (120 B) runs both over the same tree and key and packs the two iterators into a
+// 16-byte result - the 0x80041690 one's node and end first, then the 0x800416DC one's. The two
+// 8-byte results are separate stack locals, and MWCC hands out the slots in the *reverse* of the
+// order they are declared, so the DC result is declared second and is the one at +8.
+struct STreeRange {
+  STreeNode* m_hi; // 0x00 - from fn_80041690
+  uchar* m_hiEnd;  // 0x04
+  STreeNode* m_lo; // 0x08 - from fn_800416DC
+  uchar* m_loEnd;  // 0x0C
+};
+
+extern "C" void fn_80041618(STreeRange* out, STree* tree, STreeKey* key) {
+  STreeIter hi;
+  STreeIter lo;
+  fn_800416DC(&lo, tree, key);
+  fn_80041690(&hi, tree, key);
+  out->m_hi = hi.m_node;
+  out->m_hiEnd = hi.m_end;
+  out->m_lo = lo.m_node;
+  out->m_loEnd = lo.m_end;
+  return;
+}
+
+// ---- 0x8003EE44: a 44-byte member-wise copy ----------------------------------------------
+// No frame and no call: a float at +0, an int at +4, eight more floats from +8 to +0x24 and then
+// four single bytes at +0x28..+0x2B, each copied with its own `lbz`/`stb` rather than as one word
+// - so they are four separate members and not a `uchar[4]`. The float/int alternation in the
+// stores (`f0` at +0, `f1` at +8, `f0` at +0xC, ...) is MWCC's two-float schedule over the
+// member list in offset order, which is what fixes the order the members are assigned in.
+struct SFixed44 {
+  float m_f00;  // 0x00
+  int m_i04;    // 0x04
+  float m_f08;  // 0x08
+  float m_f0C;  // 0x0C
+  float m_f10;  // 0x10
+  float m_f14;  // 0x14
+  float m_f18;  // 0x18
+  float m_f1C;  // 0x1C
+  float m_f20;  // 0x20
+  float m_f24;  // 0x24
+  uchar m_b28;  // 0x28
+  uchar m_b29;  // 0x29
+  uchar m_b2A;  // 0x2A
+  uchar m_b2B;  // 0x2B
+};
+CHECK_SIZEOF(SFixed44, 44)
+
+extern "C" void fn_8003EE44(SFixed44* self, const SFixed44& other) {
+  self->m_f00 = other.m_f00;
+  self->m_i04 = other.m_i04;
+  self->m_f08 = other.m_f08;
+  self->m_f0C = other.m_f0C;
+  self->m_f10 = other.m_f10;
+  self->m_f14 = other.m_f14;
+  self->m_f18 = other.m_f18;
+  self->m_f1C = other.m_f1C;
+  self->m_f20 = other.m_f20;
+  self->m_f24 = other.m_f24;
+  self->m_b28 = other.m_b28;
+  self->m_b29 = other.m_b29;
+  self->m_b2A = other.m_b2A;
+  self->m_b2B = other.m_b2B;
 }
 
 // fn_800391B4 (0x2FB4, 48 bytes) is the fourth such forwarder and it now lands with its callee:
