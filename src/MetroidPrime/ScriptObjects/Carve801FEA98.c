@@ -11,7 +11,9 @@
 //   fn_801FEAB8    0x801FEAB8  0x28    10 instructions   `rstl::construct< T >(T*, T const&)`
 //
 // **What the two are: `rstl::construct`'s two halves for the 0x24-byte script-object element whose
-// copy constructor is `fn_801FEAE0`.**  Retail names neither, so both are read off their bytes and
+// copy constructor is `fn_801FEAE0` (now claimed and `Matching` as
+// `ScriptObjects/Carve801FEAE0.cpp`; see the superseded note at its declaration).**  Retail names
+// neither, so both are read off their bytes and
 // off the twins the already-`Matching` `src/MetroidPrime/Player/Carve80004C4C.c` and
 // `src/MetroidPrime/Player/CGameStateBlockConstruct.cpp` hold for exactly this pair:
 //
@@ -46,12 +48,21 @@
 //     fn_801FEA98` at 0x801FF868 with `mr r3,r30` / `mr r4,r31` at 0x801FF860..0x801FF864 and both
 //     cursors stepped by 36 afterwards (`addi r31,r31,36` / `addi r30,r30,36`).  That unit's own
 //     comment calls this symbol "the 0x24-byte element's copy, called with the destination first".
-//   The callee settles it as well: `fn_801FEAE0` (0x801FEAE0, 0x68, unclaimed) stores the `.data`
+//   The callee settles it as well: `fn_801FEAE0` (0x801FEAE0, 0x68) stores the `.data`
 //     vtable pair `lbl_803B7BCC` / `lbl_803B7BF0` (0x803B7BCC, 0x803B7BF0) into +0x0, copies the
 //     `rstl::basic_string` at +0x4 through
 //     `__ct__Q24rstl66basic_string<c,Q24rstl14char_traits<c>,Q24rstl17rmemory_allocator>`, runs
 //     `fn_801FE8B8` (0x801FE8B8, 0xC4) over the member at +0x14 and returns the destination - a copy
-//     constructor, i.e. the `T(src)` this file's guard calls.
+//     constructor, i.e. the `T(src)` this file's guard calls.  **Superseded 2026-10-02** on the
+//     "unclaimed" and on "matching its 0x68 bytes needs ... that string copy and `fn_801FE8B8`'s
+//     body", both of which said the DOL could not take it:
+//     `ScriptObjects/Carve801FEAE0.cpp` now claims 0x801FEAE0..0x801FEB48 and is `Matching`, with
+//     the symbol renamed to `__ct__21SCarve801FEAE0ElementFRC21SCarve801FEAE0Element`.  A
+//     `Matching` unit needs its callees' **symbols**, not their bodies - the string copy
+//     constructor is already claimed by `rstl/rstl_strings.cpp`, the two `.data` vtables only need
+//     their addresses taken for the relocations, and `fn_801FE8B8` is a `bl` to a symbol dtk
+//     already defines.  Only the port's flat link needs stand-ins for those.  The layout paragraph
+//     above is still right.
 // Nothing is asserted here about the class itself: no member of it is read or written in either
 // body of this claim, so no struct is spelled and both pointers are passed as `void*`.
 //
@@ -69,9 +80,12 @@
 //
 // Its own unit because a claim may not span an unclaimed gap.  In front of it `fn_801FEA2C`
 // (0x801FEA2C, 0x6C) ends exactly where this claim starts (0x801FEA2C + 0x6C = 0x801FEA98) and is
-// still unclaimed; behind it `fn_801FEAE0` (0x801FEAE0, 0x68) starts exactly where the claim ends
-// and is left to dtk, because matching its bytes needs the `.data` vtable pair above plus the
-// `basic_string` copy constructor and `fn_801FE8B8`'s 0xC4 bytes, none of them claimed.
+// still unclaimed; behind it `fn_801FEAE0` (0x801FEAE0, 0x68) starts exactly where the claim ends.
+// **Superseded 2026-10-02**: the sentence that followed said that function "is left to dtk, because
+// matching its bytes needs the `.data` vtable pair above plus the `basic_string` copy constructor
+// and `fn_801FE8B8`'s 0xC4 bytes, none of them claimed".  It is claimed now, as
+// `ScriptObjects/Carve801FEAE0.cpp` (0x801FEAE0..0x801FEB48), and the two bounds above are
+// unchanged - this claim still starts at 0x801FEA98 and still stops at 0x801FEAE0.
 //
 // The directory is retail's own, taken from the nearest claimed ranges: this address sits between
 // `ScriptObjects/Carve801FDB5C.c` (0x801FDBE0..0x801FDC88) and `ScriptObjects/Carve801FEE40.c`
@@ -84,8 +98,17 @@
  *  the vtable pair 0x803B7BCC / 0x803B7BF0 into +0x0, the `rstl::basic_string` at +0x4 copied
  *  through `__ct__Q24rstl66basic_string<...>`, the member at +0x14 built by `fn_801FE8B8`
  *  (0x801FE8B8, 0xC4) - and matching its 0x68 bytes needs the `.data` pair as well as that string
- *  copy and `fn_801FE8B8`'s body.  Declared here, never defined. */
-extern void fn_801FEAE0(void* self, const void* src);
+ *  copy and `fn_801FE8B8`'s body.  Declared here, never defined.
+ *
+ *  **Superseded 2026-10-02** on all three points of that last sentence.
+ *  `ScriptObjects/Carve801FEAE0.cpp` claims 0x801FEAE0..0x801FEB48 and is `Matching`; the shape
+ *  this paragraph describes is exactly what that unit reproduces, 26 of 26 instructions.  The
+ *  obstacles were the port's, not the DOL's: a `Matching` unit needs its callees' **symbols**, not
+ *  their bodies.  The name below is the constructor's, not retail's placeholder - retail's symbol
+ *  table calls this address `fn_801FEAE0` and the bytes are a copy constructor, so mwcceppc emits a
+ *  mangled name and `config/G2ME01/symbols.txt:8313` was renamed to match.  That reference is what
+ *  proves the definition in the DOL link, and it is why the `bl` at 0x801FEACC resolves. */
+extern void __ct__21SCarve801FEAE0ElementFRC21SCarve801FEAE0Element(void* self, const void* src);
 
 /** `fn_801FEAB8` - retail `.text:0x801FEAB8`, 0x28 = 40 bytes: `rstl::construct` for the 0x24-byte
  *  element, i.e. the placement-new guard `if (dest != 0) T(dest, src)`.  The twin is `fn_80004D5C`
@@ -95,7 +118,7 @@ void fn_801FEAB8(void* dest, const void* src);
 
 void fn_801FEAB8(void* dest, const void* src) {
   if (dest != 0) {
-    fn_801FEAE0(dest, src);
+    __ct__21SCarve801FEAE0ElementFRC21SCarve801FEAE0Element(dest, src);
   }
 }
 

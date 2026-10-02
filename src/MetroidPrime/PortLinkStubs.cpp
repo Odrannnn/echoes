@@ -18,7 +18,13 @@
  *   9, the total 196 -> 200).  The 187 was itself one high: `grep -cE 'asm\("'` counted 196 before
  *   this change, and two of those lines are `stub_801e515c_0` and `stub_80004438_0`, which the
  *   `^extern "C" void stub_*() asm(` term below misses because of their `_0` suffix - 189 by that
- *   term, 191 counting both.  Before that, after the `Carve801FD67C.cpp` carve:
+ *   term, 191 counting both.  Before that, after the `Carve801FEAE0.cpp` carve:
+ *   `stub_225` (`fn_801FEAE0`) was retired because that unit now defines the symbol for the port's
+ *   link as well - its `#ifndef __MWERKS__` half exports retail's own mangled constructor name, which
+ *   is the name `Carve801FEA98.c` now calls - and `stub_232` (`fn_801FE8B8`, the new body's callee)
+ *   plus `stub_data_9` (`lbl_803B7BCC`, the base vtable the new body stores first) were added for it
+ *   - functions 191 -> 193, data 9 -> 10, the total 200 -> 203, measured this run with the three
+ *   terms the breakdown below names.  Before that, after the `Carve801FD67C.cpp` carve:
  *   `stub_197` (`fn_801FD67C`) was retired because that unit now defines the symbol for the port's
  *   link too, and `stub_data_8` (`lbl_803B7BFC`) was added in its place - functions 187 -> 186, data
  *   8 -> 9, and the total did not move, because `stub_227` (`fn_801FD6F0`), the callee this
@@ -893,13 +899,40 @@ extern "C" void stub_182() {}
 // place the link is back to `287 undefined, 0 duplicates` and link_gap.py prints `281  MISSING`,
 // all accounted for (the 282 was this symbol, and only it).
 //
+// **This block is gone: `stub_225` (`fn_801FEAE0`) was retired** on 2026-10-02, because
+// `src/MetroidPrime/ScriptObjects/Carve801FEAE0.cpp` (Matching, 0x801FEAE0..0x801FEB48) now defines
+// that symbol for the port's link as well - its `#ifndef __MWERKS__` half exports retail's own
+// mangled constructor name, which is the name `Carve801FEA98.c` now calls.  Leaving both would be
+// two definitions of one symbol in the port's flat link.  This block's own last paragraph claimed
+// that matching those 0x68 bytes "needs the `.data` pair as well as that string copy and
+// `fn_801FE8B8`'s body, none of them claimed", and that is the trade being retired: **a `Matching`
+// unit needs its callees' symbols, not their bodies.**  The string copy constructor is claimed and
+// `Matching` (`rstl/rstl_strings.cpp`), the two `.data` vtables only need their addresses taken so
+// the relocations land in our object, and `fn_801FE8B8` is a `bl` to a symbol dtk already defines.
+// Only the port's flat link needs stand-ins for those, and they are below.  Functions 193 -> 193
+// (`stub_232` for `fn_801FE8B8` replaces this one), data 9 -> 10 (`stub_data_9` for `lbl_803B7BCC`),
+// the total 202 -> 203 - derived by the terms in the header paragraph above.
+
+// fn_801FE8B8 - retail 0x801FE8B8, 0xC4 = 196 bytes (`config/G2ME01/symbols.txt:8308`), the 0x24-byte
+// script-object element's +0x14 member's own **copy constructor**: it reads the count at +4 and the
+// capacity at +8 of its receiver's source and allocates `count * 0x14` into +0xC (the same
+// count/capacity/buffer shape `stub_227`'s `fn_801FD6F0` releases). Asked for by the port because
+// `src/MetroidPrime/ScriptObjects/Carve801FEAE0.cpp` (Matching, 0x801FEAE0..0x801FEB48) reproduces
+// retail's bytes, and its `bl fn_801FE8B8` at 0x801FEB28 is one of them - the carve cannot drop the
+// call without losing the match. For the DOL nothing is needed: `fn_801FE8B8` is in dtk's unclaimed
+// `auto_03_801FDC88_text.o` (`powerpc-eabi-nm` shows `T fn_801FE8B8` in it), which the matching build
+// links, so main.dol resolves it from retail's own bytes; this file is not in `configure.py`, so
+// the stub cannot reach main.dol. The port link does not carry that object, which is why its gap
+// would grow by this symbol.
+//
 // This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
-// claim that fn_801FEAE0 is decompiled - it is not: no unit claims it, so its bytes stay dtk's in
-// the DOL. Claiming it instead only moves the same gap one function along: its 0x68 bytes need the
-// `.data` pair as well as that string copy and `fn_801FE8B8`'s body, none of them claimed. The same
-// trade `stub_196` and `stub_197` above make for their carves' callees.
-extern "C" void stub_225() asm("fn_801FEAE0");
-extern "C" void stub_225() {}
+// claim that fn_801FE8B8 is decompiled - it is not: 0x801FE8B8 is still unclaimed and dtk's.
+// Claiming it instead only moves the same gap one function along: its 0xC4 bytes need the bodies of
+// `fn_801FD774` (0x801FD774, 0x60) and `internal_dereference__Q24rstl66basic_string<...>`, both
+// unclaimed. The same trade `stub_196`, `stub_197` and `stub_227` above make for their carves'
+// callees.
+extern "C" void stub_232() asm("fn_801FE8B8");
+extern "C" void stub_232() {}
 
 // fn_801F9848 - retail 0x801F9848, 0x88 = 136 bytes / 34 instructions (`symbols.txt:8193`), the
 // copy constructor of the 0x40-byte element that `CCameraColliderGroup`'s vector holds: it stores
@@ -1367,7 +1400,7 @@ extern "C" void stub_224() asm("_Z19LoadWorldTeleporterR13CStateManagerR12CInput
 extern "C" void stub_224() {}
 
 // The callees of `src/MetroidPrime/ScriptObjects/Carve801E515C.c` (Matching, 0x801E515C..0x801E51A4),
-// added by hand for the same reason `stub_185` and `stub_225` above exist:
+// added by hand for the same reason `stub_185` and the retired `stub_225` above exist:
 // the carve's nine words per function *are* those `bl`s, so the calls cannot be dropped without
 // losing the match, and the port's link does not carry the dtk `auto_03_801E3E38_text.o` that
 // defines them in the DOL. Measured in this tree when both blocks were added: with the carve listed
@@ -1529,3 +1562,18 @@ extern "C" char stub_data_7[64] asm("lbl_803B7BE4") = {};
 // `stub_197`**, the stand-in for `fn_801FD67C`, which the new unit now defines for real - one
 // function stub out, one data stub in, so the stub total does not move.
 extern "C" char stub_data_8[64] asm("lbl_803B7BFC") = {};
+
+// The script-object element's **base** vtable, `lbl_803B7BCC` (0x803B7BCC, `symbols.txt:18315`,
+// retail `.data` size 0xC, all three words zero - the base has no virtuals and retail's copy
+// constructor overwrites it with the derived vtable two instructions later). Asked for by the port
+// because `src/MetroidPrime/ScriptObjects/Carve801FEAE0.cpp` (Matching, 0x801FEAE0..0x801FEB48)
+// stores **this** vptr into +0x0 first and then the class's own over it, so the carve cannot drop
+// the reference - and it is the address of this object, not its contents, that both builds need: the
+// matching build takes the word from dtk's own `auto_07_803B7AE0_data.o` (`powerpc-eabi-nm` shows
+// `D lbl_803B7BCC` in it), which the port does not carry. Zero-filled and 64 bytes rather than
+// retail's 0xC, like every other data stub here: on this path the object is only ever taken the
+// address of, never read.  **This block retires `stub_225`** (`fn_801FEAE0`), the stand-in for the
+// constructor that this carve now defines for real - one function stub out, one data stub in,
+// alongside `stub_232` (`fn_801FE8B8`) in for the new body's callee, so the file's total moves by
+// the one data object and not by the two functions.
+extern "C" char stub_data_9[64] asm("lbl_803B7BCC") = {};
