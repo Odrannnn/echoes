@@ -50,6 +50,13 @@ two read 176 in 76 while the tool already measured 185 in 79, so the totals here
 2026-10-02, after the `progress-twin-rel-sporb` item added `SporbDtors.cpp` (6 sites: `+0x584`,
 `+0xA0`, `+0x5C`, `+0x18`, `+0x238`, `+0x1F8`). The line before that edit read 185 in 79 in the
 from the tool rather than accumulated by hand).
+measured 2026-10-02, after the `progress-vtctl-rel-gunturret` item added module 28's trigger
+block - `CGunTurretBaseTriggers.cpp` (2 sites, `+0x7E8` and `+0x808`) - over one new file. **The
+bold total and the tool's total were different before that edit** (185 in 79 against the tool's
+186 in 80), because the bold number was written from the previous item's sentence rather than
+from the tool; both now read the same measured line, which is the whole point of the sentence
+below. This line read 176 in 76 while the tool already measured 185 in 79 before that edit, so
+the totals here are re-derived from the tool rather than accumulated by hand).
 
 **This line has been wrong before, five times over, and the failure was always the same one.**
 `tools/check_raw_offsets.py` compares the *per-file* counts in the headings and never this
@@ -766,6 +773,22 @@ Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-ac
 ## `src/MetroidPrime/ScriptObjects/GunTurretAccessors.cpp` (2 sites)
 
 Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/CGunTurretBaseTriggers.cpp` (2 sites)
+
+`+0x7E8` (`fn_28_9050` returns) and `+0x808` (`fn_28_9048` returns), the two byte accessors of
+module 28's trigger block, claimed with the `Attacked` forwarder next to them
+(`fn_28_9028`, `.text 0x9028..0x9058`). **Kind A, opaque receiver**, like `GunTurretAccessors.cpp`
+in the same module: each takes a `const void*`, so there is no `this` to write and the offset is
+retail's own `lbz r3,0x7e8(r3)` / `lbz r3,0x808(r3)`; what is different is that **these two are not
+part of the loader generator's fourteen-accessor block** - that one reads +0x54, +0x44F and the rest
+and sits at the head of the module, while these sit at 0x9028 above the class's own code - so they
+are this module's own two flag bytes, at offsets no other module's block uses. Blocker: the owner is
+`CGunTurretBase`, named by the module's own mangled `"TCastToPtr<14CGunTurretBase>__FP7CEntity"`
+(`fn_28_856C`, `fn_28_90C4`) and declared only inside `src/MetroidPrime/TypesMatch.cpp`, so there is
+no header to name them through. Modelling it is the same `CActor`/`CPatterned`/`CAi` hierarchy work
+that module 28's own entity loader `fn_28_7B98` (0x7B98, 0x420) is waiting on; when
+`CGunTurretBase` gets a header these two move into it and the offsets go with the class.
 
 ## `src/MetroidPrime/ScriptObjects/CScriptIngBlobSwarmRel.cpp` (3 sites)
 

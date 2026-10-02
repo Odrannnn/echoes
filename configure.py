@@ -2757,6 +2757,14 @@ config.libs = [
         "GunTurret",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/GunTurretAccessors.cpp"),
+            # 2 functions, .text 0x0008B58..0x0008B98: fn_28_8B58 and fn_28_8B78, the class's
+            # Render and PreRender overrides, each a bare forward to the CPatterned method of that
+            # name. Both are vtable slots, so dtk's FORCEACTIVE already holds them.
+            Object(Matching, "MetroidPrime/ScriptObjects/CGunTurretBaseForwarders.cpp"),
+            # 3 functions, .text 0x0009028..0x0009058: fn_28_9028, the Attacked forward to
+            # CPatterned::Attacked, and the byte accessors fn_28_9048 (+0x808) and fn_28_9050
+            # (+0x7e8). All three are vtable slots, so dtk's FORCEACTIVE already holds them.
+            Object(Matching, "MetroidPrime/ScriptObjects/CGunTurretBaseTriggers.cpp"),
         ],
     ),
     Rel(

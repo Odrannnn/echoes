@@ -1237,6 +1237,8 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/KraleeAccessors.cpp
     src/MetroidPrime/ScriptObjects/IngSpiderballGuardianAccessors.cpp
     src/MetroidPrime/ScriptObjects/GunTurretAccessors.cpp
+    src/MetroidPrime/ScriptObjects/CGunTurretBaseForwarders.cpp
+    src/MetroidPrime/ScriptObjects/CGunTurretBaseTriggers.cpp
     src/MetroidPrime/ScriptObjects/GlowbugAccessors.cpp
     src/MetroidPrime/ScriptObjects/EmperorIngStage2TentacleAccessors.cpp
     src/MetroidPrime/ScriptObjects/EmperorIngStage1Accessors.cpp
