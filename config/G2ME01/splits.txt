@@ -28,6 +28,9 @@ MetroidPrime/Carve80004010.c:
 MetroidPrime/Carve80004438.c:
 	.text       start:0x80004438 end:0x8000447C
 
+MetroidPrime/Carve8000447C.cpp:
+	.text       start:0x8000447C end:0x800045A0
+
 MetroidPrime/Carve800045A0.c:
 	.text       start:0x800045A0 end:0x80004744
 
