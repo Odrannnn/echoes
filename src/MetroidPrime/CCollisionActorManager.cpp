@@ -241,8 +241,8 @@ void CCollisionActorManager::Update(float dt, CStateManager& mgr, EUpdateOptions
       } else {
         const CTransform4f nextXf =
             GetWRLocatorTransform(*animData, desc.GetNextId(), worldXf, scaleXf);
-        actor->SetRotation(CQuaternion::FromMatrix(
-            CTransform4f::LookAt(origin, nextXf.GetTranslation(), pivotXf.GetColumn(kDZ))));
+        actor->SetRotation(CQuaternion::FromMatrix(CTransform4f::LookAt(
+            pivotXf.GetTranslation(), nextXf.GetTranslation(), pivotXf.GetColumn(kDZ))));
       }
     } else if (desc.GetType() == CJointCollisionDescription::kCT_SphereSubdivide) {
       if (desc.GetOrientationType() == CJointCollisionDescription::kOT_Pivot) {
@@ -250,9 +250,10 @@ void CCollisionActorManager::Update(float dt, CStateManager& mgr, EUpdateOptions
       } else {
         const CTransform4f nextXf =
             GetWRLocatorTransform(*animData, desc.GetNextId(), worldXf, scaleXf);
-        origin += desc.GetMaxSeparation() *
-                  CTransform4f::LookAt(origin, nextXf.GetTranslation(), pivotXf.GetColumn(kDZ))
-                      .GetColumn(kDY);
+        const float maxSep = desc.GetMaxSeparation();
+        origin += maxSep * CTransform4f::LookAt(origin, nextXf.GetTranslation(),
+                                                pivotXf.GetColumn(kDZ))
+                                   .GetColumn(kDY);
       }
     }
 
@@ -260,16 +261,17 @@ void CCollisionActorManager::Update(float dt, CStateManager& mgr, EUpdateOptions
       const CVector3f movement = actor->GetTransform().TransposeMultiply(origin);
       actor->MoveToOR(movement, dt);
     } else if (desc.GetType() == CJointCollisionDescription::kCT_Sphere)
-      actor->SetTranslation(origin + pivotXf.BuildMatrix3f() * desc.GetPivotPoint());
+      actor->SetTranslation(pivotXf.GetTranslation() +
+                            pivotXf.BuildMatrix3f() * desc.GetPivotPoint());
     else if (desc.GetType() == CJointCollisionDescription::kCT_OBBFromMayaPlugIn) {
       CTransform4f locatorXf = animData->GetLocatorTransform(desc.GetPivotId(), nullptr);
       locatorXf.SetTranslation(CVector3f::ByElementMultiply(owner->GetModelData()->GetScale(),
                                                             locatorXf.GetTranslation()));
-      const CTransform4f xf = worldXf * locatorXf *
-                              CTransform4f(desc.GetOrientation(), desc.GetPivotPoint());
+      const CTransform4f orientXf = CTransform4f(desc.GetOrientation(), desc.GetPivotPoint());
+      const CTransform4f xf = worldXf * locatorXf * orientXf;
       actor->SetTransform(xf);
     } else
-      actor->SetTranslation(origin);
+      actor->SetTranslation(pivotXf.GetTranslation());
   }
 }
 
