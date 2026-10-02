@@ -1197,6 +1197,14 @@ list(APPEND MP_GAME_SOURCES
     # already links from src/Kyoto/Math/CVector3f.cpp, so the port's undefined count is
     # unchanged.
     src/MetroidPrime/ScriptObjects/DigitalGuardianVecList.cpp
+    # Module 15's .text 0xC02C..0xC094 - one function, fn_15_C02C, the module's own
+    # `rstl::uninitialized_copy` over its 0x68-byte record. Listed for the same reason as the
+    # CMetareeSwarmDes.cpp entry above: it defines neither RELMain nor RELExit, so
+    # check_files_cmake.py's MODULE_ENTRY exemption is not needed, and its only relocation outside
+    # itself - the call to fn_15_32C0, which is module code at .text 0x32C0 with no PC-side
+    # definition - is behind the same `#ifdef __MWERKS__` guard. `powerpc-eabi-nm -u` on the host
+    # object prints nothing, so the port's undefined count is unchanged.
+    src/MetroidPrime/ScriptObjects/CElitePirateVecCopy.cpp
     # Module 15's .text 0x1AB50..0x1AB98 and 0x1ABD8..0x1ABE0 - one function each. Listed for the
     # same reason as the two DigitalGuardianAccessors entries above: neither defines RELMain nor
     # RELExit, both read raw offsets through the two pointers the ABI puts in r3 and r4, and

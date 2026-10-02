@@ -2127,9 +2127,31 @@ config.libs = [
     # (`stw r3, gLoader_ElitePirate; blr`), so no symbols.txt rename is needed. Everything from
     # fn_15_178 (0x178, 0xACC) up - the module's own entity loader and its class - is left
     # unclaimed, so dtk fills it from retail and the module's sha1 still holds.
+    #
+    # Added 2026-10-02 (goal item `progress-example-uninitializedcopyq24rstl146p`). 1 function,
+    # .text 0x0000C02C..0x0000C094: `fn_15_C02C`, this module's own
+    # `rstl::uninitialized_copy` over its 0x68-byte record, taken out of the middle of the
+    # unclaimed `auto_00_00000178_text` run. It is the first of the 25 copies of
+    # `uninitialized_copy<pointer_iterator<T>,T*>` that twin_scan found across 24 modules, and the
+    # first one ever built inside a module, so it is also the worked answer for the rest: the
+    # declaration is a one-word iterator class passed **by value** (a converting constructor is
+    # what makes the caller build the two-word temporaries the callee reloads through), the bound
+    # is re-read from `end` every iteration and must not be hoisted, the element is reached as
+    # `char*` and its copy constructor as an `extern "C"` name, and the stride is written as a
+    # literal. `fn_15_C02C` is called once from `fn_15_BF6C` (0xBF6C, the block's own `reserve`),
+    # so it is reachable from code inside the module and needs no `force_active:` entry - the
+    # ForgottenObject / ScriptCoin dead-strip trap is an orphan, and this is not one. The 0x178
+    # before it and the 0xC094 after it stay unclaimed and are filled from retail.
     Rel(
         "ElitePirate",
         [
+            # This one needs a different compiler from the module's default, for exactly the reason
+            # `CLumiteRelTail.cpp` and `CSandBossRelTail.cpp` do above: GC/1.3.2 sinks the
+            # `lwz r31,0(r3)` that reads the by-value `begin` iterator past the three callee-save
+            # `stw`/`mr` pairs (ours puts it sixth, retail second), and GC/2.7 emits it second,
+            # instruction for instruction with the default's output. 25 of 26 words either way.
+            # Same per-object override `CGameOptions.cpp` uses.
+            Object(Matching, "MetroidPrime/ScriptObjects/CElitePirateVecCopy.cpp", mw_version="GC/2.7"),
             Object(Matching, "MetroidPrime/ScriptObjects/CElitePirateRel.cpp"),
         ],
     ),
