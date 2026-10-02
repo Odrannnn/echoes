@@ -20,6 +20,35 @@
 #include "Kyoto/Text/CWordInstruction.hpp"
 #include "rstl/math.hpp"
 
+// 110, not the project's 125 (configure.py:283). It is what mwceppc's inliner measures a callee
+// against, and retail's own threshold for this unit is lower: only `create_node` crosses it.
+//
+// `rstl::list<rstl::ncrc_ptr<CInstruction> >::create_node` is an out-of-line retail symbol at
+// 0x802B7A24, 120 bytes, and `do_insert_before` (0x802B79B4) *calls* it - `bl` at 0x802B79DC into
+// a 112-byte body. At 125 mwceppc inlines it instead, so our `do_insert_before` is 176 bytes
+// against retail's 112 (33.29%) and the 120-byte symbol is absent from our object altogether
+// (`fuzzy_match_percent` is missing from the report entry, which is not the same as 0%). At 110 it
+// is emitted out of line and called: `do_insert_before` 33.29% -> 100.00%, `create_node` absent ->
+// 100.00%, and the unit goes 40/46 -> 42/46.
+//
+// Measured, whole unit, the other 42 functions unmoved in every row: 125 (the project default) and
+// 120, 119, 118, 117, 116, 115, 114, 113, 112, 111 -> 40/46; 110, 105, 100, 95, 90, 85, 80, 75, 70,
+// 65 -> 42/46; 60 -> 36/46. So mwceppc's estimate for `create_node` falls between 110 and 111, and
+// every value from 65 to 110 keeps it out of `do_insert_before` without moving anything else. 110 is
+// the one taken because it is the least perturbation of the project's 125; below 65 a second
+// callee's estimate crosses too, and 60 is already worse.
+//
+// This is a file-scoped pragma, which mwceppc takes as the file's value (see the same lever in
+// `src/MetroidPrime/CGameCollision.cpp:30`), so it can only move this translation unit - and the
+// unit is `NonMatching`, so its object is not in the link. It is the scoping that matters: the
+// equivalent change in `include/rstl/list.hpp`'s `create_node` (four `RSTL_PRECONDITION`s, which
+// are `((void)0)` and emit nothing but count toward the same estimate; measured in
+// docs/goal-notes/progress-prime1-ctextexecutebuffer.md) gets both symbols byte-for-byte and moves
+// *every* `rstl::list` in the tree, which breaks `Kyoto/Particles/CParticleDataFactory.cpp` - a
+// `Matching` unit where retail *inlines* `create_node` for `list<CElementAllocationChunk>` - with
+// "87 computed checksum(s) did NOT match".
+#pragma inline_max_size(110)
+
 CTextExecuteBuffer::CTextExecuteBuffer()
 : mCurrentBlock(nullptr)
 , mCurrentLine(nullptr)
