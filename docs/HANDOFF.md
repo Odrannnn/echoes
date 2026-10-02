@@ -50,7 +50,8 @@ over our overlapping carves.**
 
 - **36 `Matching` carves were deleted** because an upstream unit now owns their bytes
   (`git show --stat` on the merge lists them; all are `Carve8*.c`). Goal-queue items that name one of
-  them are stale and still need retiring - queue edits need the user's approval.
+  them were checked on 2026-10-02 (both queues, by file name and by address): one,
+  `match-cscriptwaypoint-base`, and it is already re-briefed for upstream's unit. None to retire.
 - **26 upstream units joined the port build** (`files.cmake`, "Upstream units new in the ninth
   sync"): `CActorParameters`, `CHintState`, `CHintManager`, `CEffect`, `CWeaponMgr`, thirteen
   `BodyState/CBS*`, and eight `ScriptObjects`. **17 more are excluded with a measured reason** in
