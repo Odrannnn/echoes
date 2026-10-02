@@ -493,6 +493,9 @@ MetroidPrime/BodyState/CBodyStateInfo.cpp:
 MetroidPrime/Carve800F15C8.c:
 	.text       start:0x800F15C8 end:0x800F15CC
 
+MetroidPrime/Carve800F1A10.c:
+	.text       start:0x800F1A10 end:0x800F1A18
+
 MetroidPrime/Carve800F1A18.c:
 	.text       start:0x800F1A18 end:0x800F1A24
 
