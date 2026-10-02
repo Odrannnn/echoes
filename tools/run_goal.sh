@@ -912,8 +912,15 @@ is a failed attempt. Write WALL: or STALE: only for what THIS run measured."
     # lanes on an exhausted Go workspace died in 2-3 s per run and charged 14 items a fail, ten
     # of which went to review on it. Release the item instead; consec_fail and the backoff below
     # still apply, so the lane slows down and then stops rather than spinning.
+    #
+    # So is opencode's own database failing a write ("Failed to execute statement" as the run's
+    # error event): it comes in bursts across lanes at once - twelve runs on 2026-10-02, with
+    # opencode.db at 4.8 GB under 13 lanes - and says nothing about the item either.
     if grep -q 'GoUsageLimitError' "$ALOG"; then
       say "usage limit reached for $(model_for "$agent") - releasing $ID without a fail"
+      Q release "$ID" | tee -a "$LOG"
+    elif grep -q '"type":"error".*"message":"Failed to execute statement"' "$ALOG"; then
+      say "opencode's database failed a statement - releasing $ID without a fail"
       Q release "$ID" | tee -a "$LOG"
     else
       Q fail "$ID"

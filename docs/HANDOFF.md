@@ -379,6 +379,16 @@ failing it; the backoff and the consecutive-failure stop still apply. The limit 
 Console workspace of the `oc_sk_` credential opencode sends for `opencode-go/*` models, not per
 `sk-` Go key, so a lane dying that fast wants `grep GoUsageLimitError` on its transcript first.
 
+**Nor is an opencode database error (2026-10-02).** Runs die with `Failed to execute statement` as
+their error event, in bursts across lanes at once: twelve that day, with
+`~/.local/share/opencode/opencode.db` at 4.8 GB under 13 lanes (contention is the likely cause, not
+a confirmed one). A run that left changes was judged anyway; one that left none was charged to its
+item. `run_goal.sh` now releases the item on that error too. Fails taken back by hand: four reset
+to 0 in the queue (`carve-8000447C`, `carve-80032674`, `carve-802188e4`,
+`progress-rel-head-commandopirate`) and `progress-prime1-cscriptactor` moved back from review at
+`fails=1` (backups `*.bak-dberr-*` in the goal dir). A lane runs the script it started with, so
+the change takes effect at each lane's next restart.
+
 **Queue triage, 2026-10-01.** `goal_seed.py` has run dry ("nothing to seed"): its three kinds (REL
 heads, Prime 1 donors, near-done `match` units) do not cover a DOL unit that has source but is far
 from done. 94 such units (2,080 unmatched functions, 77 with a Prime 1 counterpart) were queued by
