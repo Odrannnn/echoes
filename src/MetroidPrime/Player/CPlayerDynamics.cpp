@@ -2,7 +2,10 @@
 
 #include "Collision/CCollidableSphere.hpp"
 #include "Kyoto/Math/CRelAngle.hpp"
+#include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
+#include "MetroidPrime/Player/CPlayerCameraBob.hpp"
+#include "MetroidPrime/Player/CPlayerGun.hpp"
 #include "MetroidPrime/Player/CMorphBall.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptPlatform.hpp"
 #include "MetroidPrime/TCastTo.hpp"
@@ -250,6 +253,14 @@ bool CPlayer::SidewaysDashAllowed(float strafeInput, float forwardInput,
 // Retail lbl_803A9FB0: 8 floats indexed by `CPlayer::ESurfaceRestraints`.
 static const float skStrafeDistancesEchoes[] = {11.8f, 18.f, 15.f, 10.f,
                                                 10.f,   10.f, 10.f, 10.f};
+
+// Retail `UpdateCameraBob` (0x80185fcc) indexes this one, not the table above: `lis r4,-32709;
+// addi r3,r4,-24720` is 0x803A9F70, and the eight floats there are this run. Declared after
+// `skStrafeDistancesEchoes` because this unit's `.rodata` is unclaimed in `splits.txt`, and the
+// linker places it by matching the section's bytes against retail's image - so the section has to
+// be the byte-run that starts at retail's 0x803A9FB0, i.e. this table second.
+static const float skOrbitBobStrafeDistances[] = {11.8f, 11.8f, 11.8f, 5.f,
+                                                   6.f,    5.f,    5.f,   6.f};
 
 void CPlayer::FinishSidewaysDash() {
   if (mSidewaysDashing) {
@@ -645,8 +656,73 @@ CVector3f CPlayer::GetBallPosition() const {
 void CPlayer::SetEyeZBias(float bias) { mEyeZBias = bias; }
 
 float CPlayer::UpdateCameraBob(float dt, CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
-  return 0.f;
+  CPlayerCameraBob::ECameraBobState state;
+  const CVector3f velocity = GetVelocityWR();
+  float magnitude;
+  if (mOrbitState == kOS_NoOrbit) {
+    state = CPlayerCameraBob::kCBS_Walk;
+    const float forwardSpeed = CVector3f::Dot(velocity, GetTransform().GetForward());
+    magnitude = CMath::AbsF(forwardSpeed / GetActualFirstPersonMaxVelocity(dt));
+    if (magnitude < 0.01f) {
+      state = CPlayerCameraBob::kCBS_WalkNoBob;
+      magnitude = 0.f;
+    }
+  } else {
+    state = CPlayerCameraBob::kCBS_Orbit;
+    const float rightSpeed = CVector3f::Dot(velocity, GetTransform().GetRight());
+    const float forwardSpeed = CVector3f::Dot(velocity, GetTransform().GetForward());
+    const float maxSpeed = GetActualFirstPersonMaxVelocity(dt);
+    const float strafeSpeed = skOrbitBobStrafeDistances[GetSurfaceRestraint()];
+    const float maxMagnitude = CMath::SqrtF(strafeSpeed * strafeSpeed + maxSpeed * maxSpeed);
+    magnitude = CMath::SqrtF(rightSpeed * rightSpeed + forwardSpeed * forwardSpeed) / maxMagnitude;
+    magnitude *= CPlayerCameraBob::GetOrbitBobScale();
+    magnitude = rstl::min_val(CPlayerCameraBob::GetMaxOrbitBobScale(), magnitude);
+    if (magnitude < 0.01f) {
+      magnitude = 0.f;
+    }
+  }
+  if (mMovementState != NPlayer::kMS_OnGround) {
+    state = CPlayerCameraBob::kCBS_InAir;
+    magnitude = 0.f;
+  } else if (magnitude < 0.01f) {
+    if (static_cast< int >(mGun->GetFiredWeaponFlags()) != 0) {
+      state = CPlayerCameraBob::kCBS_GunFireNoBob;
+      magnitude = 0.f;
+    } else if (CMath::AbsF(GetAngularVelocityOR().GetAngle()) > 0.1f) {
+      state = CPlayerCameraBob::kCBS_TurningNoBob;
+      magnitude = 0.f;
+    }
+  }
+  if (mInFreeLook || mLookButtonHeld) {
+    state = CPlayerCameraBob::kCBS_FreeLookNoBob;
+    magnitude = 0.f;
+  }
+  if (mOrbitState == kOS_Grapple) {
+    state = CPlayerCameraBob::kCBS_GrappleNoBob;
+    magnitude = 0.f;
+  }
+  if (mScanState == kSS_ScanComplete) {
+    magnitude = 0.f;
+  }
+  if (mDoneSidewaysDashing) {
+    state = CPlayerCameraBob::kCBS_FreeLookNoBob;
+    magnitude *= 0.1f;
+    if (mMovementState == NPlayer::kMS_OnGround) {
+      mDoneSidewaysDashing = false;
+    }
+  }
+  if (mCameraManager->IsInCinematicCamera()) {
+    magnitude = 0.f;
+  }
+  magnitude *= mCameraManager->GetCameraBobMagnitude();
+  mCameraBob->SetPlayerVelocity(velocity);
+  mCameraBob->SetState(state, mgr);
+  mCameraBob->SetBobMagnitude(magnitude);
+  const float slowSpeedPeriodScale = CPlayerCameraBob::GetSlowSpeedPeriodScale();
+  const float timeScaleRange = 1.f - slowSpeedPeriodScale;
+  mCameraBob->SetBobTimeScale(timeScaleRange * magnitude + slowSpeedPeriodScale);
+  mCameraBob->Update(dt, mgr, *this);
+  return magnitude;
 }
 
 void CPlayer::fn_80185a88(float dt, CStateManager& mgr) {

@@ -22,6 +22,13 @@ public:
   // drawn, 3 holstering - the names below are in that order.
   enum EGunHolsterState { kGHS_Holstered, kGHS_Drawing, kGHS_Drawn, kGHS_Holstering };
 
+  // Retail's `CPlayerGunBase+0x39C`, measured: `CPlayerGun::UpdateNormalShotCycle` (0x801ccc18)
+  // reads it, ORs 1 or 4 into it depending on `CStateManager::IsMultiplayer`, and stores it back
+  // (0x801ccc30), so it is a bit mask of fired-weapon events, not a state. `CPlayer::UpdateCameraBob`
+  // (0x80186040) is the only other reader: `lwz r0,0x39C(r3); cmpwi r0,0`. Only that function
+  // calls this accessor, so no other unit's `.text` moves.
+  uint GetFiredWeaponFlags() const { return mFiredWeaponFlags; }
+
   CPlayerGunBase(const rstl::string& name, TUniqueId playerId, const CVector3f& scale,
                  int maxSplashes);
   ~CPlayerGunBase() override;
