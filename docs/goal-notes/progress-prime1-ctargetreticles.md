@@ -976,3 +976,12 @@ allocation (four functions, all measured to death across three runs) or genuinel
 Echoes-specific. **The next run should apply the opcode-diff-before-attacking-the-body check
 to the remaining 0-2% functions** - the two at 1.10% (`DrawCrosshairs`) and 0.79%
 (`CalculateClampedScale`) are the only ones whose bytes have never been compared to ours.
+
+## Sixth run (2026-10-02), lane 9 — PASS, 25 -> 27 / 44
+
+- `CCompoundTargetReticle::DrawCrosshairs`: 71.5% -> 100%. What it needed: `const_cast<TCachedToken<CModel>&>(mCrosshairs).IsLoaded();` first (lazy-load inline path), `const CColor&` (no copy), the model matrix built inline with no named transforms, and `DepthCompareUpdate(false, false)` (folds to a constant; `true,true` emits `ori`).
+- `CalculateClampedScale`: 99.56% -> 100%. Prime 1's shape plus named locals `scaledMin = viewportScale * clampMin` and `scaledMax = viewportScale * clampMax`, which fixes the f27-f30 register naming and the clamp layout.
+- Gate trap: the new callee `CGameCamera::GetPerspectiveMatrix` raised the strict undefined count 291 -> 292, and its callee `CGraphics::CalculatePerspectiveMatrix` just moved it. Regenerating the gap list doesn't help `link_check` strict. Fix: two port-only carve-outs, listed in `files.cmake`, both verbatim bodies.
+- Files: `src/MetroidPrime/CTargetReticles.cpp`, `src/MetroidPrime/Cameras/CGameCameraGetPerspectiveMatrix.cpp` (new), `src/Kyoto/Graphics/CGraphicsCalculatePerspectiveMatrix.cpp` (new), `files.cmake`.
+- Verified: `goal_check.sh` PASS (counts 12441 -> 12443, gate.sh ok, no asm added).
+- Lesson: a new callee that is undefined in the port link needs its whole undefined chain carved out, not just its first hop.

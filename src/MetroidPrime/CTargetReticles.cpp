@@ -351,7 +351,16 @@ void CCompoundTargetReticle::DrawSeeker(const CMatrix3f& rotation, const CStateM
 }
 
 void CCompoundTargetReticle::DrawCrosshairs(const CMatrix3f& rotation) const {
-  // TODO: crosshair scale, alpha and model rendering.
+  if (mNoDrawTicks <= 0 && mCrosshairsDrawScale > 0.f) {
+    const_cast< TCachedToken< CModel >& >(mCrosshairs).IsLoaded();
+    if (CModel* model = mCrosshairs.GetObject()) {
+      const CColor& color = gpTweakTargeting->GetCrosshairsColor();
+      gpRender->SetModelMatrix(CTransform4f(rotation, mTargetPosition) *
+                               CTransform4f::Scale(mCrosshairsDrawScale));
+      model->Draw(CModelFlags::Additive(color.WithAlphaModulatedBy(mCrosshairsDrawScale))
+                      .DepthCompareUpdate(false, false));
+    }
+  }
 }
 
 void CCompoundTargetReticle::DrawScanTargetGroup(const CMatrix3f& rotation,
@@ -421,8 +430,20 @@ bool CCompoundTargetReticle::IsGrappleTarget(TUniqueId id, const CStateManager& 
 float CCompoundTargetReticle::CalculateClampedScale(CVector3f position, float scale, float clampMin,
                                                     float clampMax, const CStateManager& mgr,
                                                     int playerIndex) {
-  // TODO: player viewport scaling and perspective-size clamp.
-  return scale;
+  static const float kViewportScales[3] = {1.f, 0.8f, 0.6f};
+  const float viewportScale = kViewportScales[mgr.fn_80036B6C()];
+  const float scaledMin = viewportScale * clampMin;
+  const float scaledMax = viewportScale * clampMax;
+  const CCameraManager* camMgr = mgr.GetCameraManager(playerIndex);
+  const CGameCamera& cam = *camMgr->GetCurrentCamera(mgr, true);
+  CTransform4f camXf = camMgr->GetCurrentCameraTransform(mgr, true);
+  CVector3f viewSpace = cam.GetTransform().TransposeMultiply(position);
+  float projX1 = cam.GetPerspectiveMatrix().MultiplyOneOverW(viewSpace).GetX();
+  float pixelScale =
+      cam.GetPerspectiveMatrix().MultiplyOneOverW(viewSpace + CVector3f(scale, 0.f, 0.f)).GetX() -
+      projX1;
+  pixelScale *= 640.f * viewportScale;
+  return scale * (CMath::Clamp(scaledMin, pixelScale, scaledMax) / pixelScale);
 }
 
 CTargetReticleRenderState::CTargetReticleRenderState(TUniqueId target, float radius,

@@ -339,6 +339,8 @@ src/MetroidPrime/PortLinkStubs.cpp
     # CGameCamera::SetAspectRatio, and CScriptCamera::MarkViewed /
     # CScriptActor::CheckActorRenderOnly: one body each out of three `NonMatching` units.
     src/MetroidPrime/Cameras/CGameCameraSetAspectRatio.cpp
+    # CGameCamera::GetPerspectiveMatrix, which CalculateClampedScale calls; same carve-out.
+    src/MetroidPrime/Cameras/CGameCameraGetPerspectiveMatrix.cpp
     src/MetroidPrime/ScriptObjects/CScriptCameraMarkViewed.cpp
     src/MetroidPrime/ScriptObjects/CScriptActorCheckActorRenderOnly.cpp
     # FogOverlay's (module 23) two empty virtual overrides, `fn_23_624` and `fn_23_628` - each a
@@ -375,6 +377,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     # DolphinCGraphics.cpp is retail's whole CGraphics and PORT_NOTES.md records why it is not
     # listed; this is the one body of it the port needs.
     src/Kyoto/Graphics/CGraphicsGetPerspectiveProjectionMatrix.cpp
+    src/Kyoto/Graphics/CGraphicsCalculatePerspectiveMatrix.cpp
     # --- host-port link wave, round 2 (2026-09-28): four `CAudioSys` streamed-audio thunks
     # over the SDK's DTK entry points, which `platform/sdk_stubs.cpp` does provide, and the
     # three `CGraphics` immediate-mode setters that touch only the vertex descriptor
