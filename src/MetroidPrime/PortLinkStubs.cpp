@@ -5,16 +5,24 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 196 of them: the ones referenced **only by
+ * file supplies 195 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   188 functions, 8 data objects (counted 2026-10-02, after the `Carve801FDAE8.cpp` carve:
+ *   186 functions, 9 data objects (counted 2026-10-02, after the `Carve801FD67C.cpp` carve:
+ *   `stub_197` (`fn_801FD67C`) was retired because that unit now defines the symbol for the port's
+ *   link too, and `stub_data_8` (`lbl_803B7BFC`) was added in its place - functions 187 -> 186, data
+ *   8 -> 9, and the total did not move, because `stub_227` (`fn_801FD6F0`), the callee this
+ *   carve's only other reference needs, was already here for `Carve801FD924.cpp`.  **The total in
+ *   that line was 196 before this change while the file actually held 195** - it had been carried
+ *   from an earlier carve that added a function stub without moving the numeral, so `grep -cE
+ *   'asm\("'` is the term to derive and the two others are the count of
+ *   `^extern "C" void stub_*() asm(` and of `^extern "C" char stub_data_*`. Before that, after the
+ *   `Carve801FDAE8.cpp` carve:
  *   `stub_199` (`fn_801FDAE8`) was retired because that unit now defines the symbol for the port's
  *   link too, and `stub_data_7` (`lbl_803B7BE4`) was added in its place - functions 189 -> 188, data
- *   7 -> 8, and the total did not move at 196, because `stub_227` (`fn_801FD6F0`), the callee this
- *   carve's only other reference needs, was already here for `Carve801FD924.cpp`.  **This line read
- *   194 / 187 / 7 before this change while the file actually held 196 / 189 / 7** - two function
+ *   7 -> 8.  **This line read
+ *   194 / 187 / 7 before that change while the file actually held 196 / 189 / 7** - two function
  *   stubs had been added without the numerals moving, so the total looked unmoved here when the
  *   function term in fact fell by one. Before that, after the `Carve801FD924.cpp` carve:
  *   `stub_198` (`fn_801FD924`) was retired because that unit now defines the symbol for the port's
@@ -54,11 +62,14 @@
  *
  * Breakdown: 86 REL loader, 65 game method, 36 unmangled fn_/lbl_, 1 CodeWarrior-mangled
  * `rstl::rmemory_allocator::allocate`, 8 vtable/typeinfo. (counted 2026-10-02, re-derived with the
- *   `Carve801FDAE8.cpp` change: 196 total, 36 unmangled is `grep -cE 'asm\("(fn_|lbl_)'` over the
- *   file, 8 is its `stub_data_*` count, and the game-method term is the residual
- *   `196 - 86 - 36 - 8 - 1`; `stub_data_6` and `stub_data_7` both name an `lbl_` symbol, so those
- *   two stubs are counted in both the unmangled term and the vtable/typeinfo one, which is why the
+ *   `Carve801FD67C.cpp` change: 195 total, 35 unmangled is `grep -cE 'asm\("(fn_|lbl_)'` over the
+ *   file, 9 is its `stub_data_*` count, and the game-method term is the residual
+ *   `195 - 86 - 35 - 9 - 1` = 64; `stub_data_6`, `stub_data_7` and `stub_data_8` all name an `lbl_`
+ *   symbol, so those
+ *   three stubs are counted in both the unmangled term and the vtable/typeinfo one, which is why the
  *   residual - not the game-method stubs themselves - is the term to derive. Before that, after the
+ *   `Carve801FDAE8.cpp` change: 196 total, 36 unmangled, 8 data, residual
+ *   `196 - 86 - 36 - 8 - 1` = 65. Before that, after the
  *   `Carve801FD924.cpp` change: 194 total, 34 unmangled, 7 data, residual
  *   `194 - 86 - 34 - 7 - 1` = 66 - those numerals were themselves stale by two, the file holding
  *   196 / 189 / 7 by the time this carve ran. Before that, after
@@ -1097,31 +1108,13 @@ extern "C" void stub_194() {}
 extern "C" void stub_196() asm("fn_801FBD68");
 extern "C" void stub_196() {}
 
-// fn_801FD67C - retail 0x801FD67C, 0x74 = 116 bytes (`config/G2ME01/symbols.txt:8273`), the
-// 36-byte element's deleting destructor: store the vtable 0x803B7BFC into +0x0, run `fn_801FD6F0`
-// over the member at +0x14, release the `rstl::basic_string` at +0x4, and `Free__7CMemoryFPCv`
-// only when the caller's flag is positive. Asked for by the port because
-// `src/MetroidPrime/ScriptObjects/Carve801FD638.c` (Matching, 0x801FD638..0x801FD67C) reproduces
-// `fn_801FD658` byte for byte and that body's `li r4,-1 / bl fn_801FD67C` at
-// 0x801FD660..0x801FD668 is in retail's bytes, so the carve cannot drop the call. This block also
-// **retires `stub_181`**: that stub stood in for `fn_801FD638`, which the new unit now defines for
-// real, and leaving both would be two definitions of one symbol in the port's flat link.
-//
-// For the DOL nothing is needed: 0x801FD67C is exactly 0x0 bytes past that unit's claim end, so it
-// stays retail's and dtk emits its own bytes from `auto_03_801FA3CC_text.o`; this file is not in
-// `configure.py`, so the stub cannot reach main.dol. The port link does not carry that object,
-// which is why its gap would grow by this symbol: measured in this tree without this block,
-// `python3 tools/link_gap.py --rebuild` prints
-// `gap grew: fn_801FD67C is not in port_link_gap_list.md`.
-//
-// This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
-// claim that fn_801FD67C is decompiled - it is not, and `docs/research/port_link_gap.md` keeps the
-// symbol listed as still missing. Claiming it instead only moves the same gap one function along:
-// its 0x74 bytes need the `.data` vtable `lbl_803B7BFC` as well as the bodies of `fn_801FD6F0`
-// (0x801FD6F0, 0x84) and `fn_801FD774`, which are themselves unclaimed. The same trade `stub_178`
-// and `stub_196` above make for their carves' callees.
-extern "C" void stub_197() asm("fn_801FD67C");
-extern "C" void stub_197() {}
+// **This block is gone: `stub_197` (`fn_801FD67C`) was retired** because
+// `src/MetroidPrime/ScriptObjects/Carve801FD67C.cpp` (Matching, 0x801FD67C..0x801FD6F0) now defines
+// that symbol for the port's link as well, and leaving both would be two definitions of one symbol
+// in the port's flat link.  `stub_data_8` (`lbl_803B7BFC`) was added below in its place, because
+// that unit restores this class's vptr in retail's bytes and so asks for it.  Functions 188 -> 187,
+// data 8 -> 9, and the total did not move at 196 - the same trade `stub_198` -> `stub_data_6` and
+// `stub_199` -> `stub_data_7` made for `Carve801FD924.cpp` and `Carve801FDAE8.cpp`.
 
 // fn_801FD6F0 - retail 0x801FD6F0, 0x84 = 132 bytes (`config/G2ME01/symbols.txt:8275`), the
 // 0x24-byte element's +0x14 member destructor: it walks `x04_count` elements of 0x14 bytes through
@@ -1419,3 +1412,16 @@ extern "C" char stub_data_6[64] asm("lbl_803B7BF0") = {};
 // `gap grew: lbl_803B7BE4 is not in port_link_gap_list.md`; with it in place the same command
 // prints `281  MISSING`, all accounted for.
 extern "C" char stub_data_7[64] asm("lbl_803B7BE4") = {};
+
+// The 0x24-byte script-object element's own vtable, `lbl_803B7BFC` (0x803B7BFC, `symbols.txt:18319`,
+// retail `.data` size 0xC, `{0, 0, &fn_801FF4BC}` - measured this run with
+// `objdump -s --start-address=0x803B7BF0 --stop-address=0x803B7C08 build/G2ME01/main.elf`). Asked for
+// by the port because `src/MetroidPrime/ScriptObjects/Carve801FD67C.cpp` (Matching,
+// 0x801FD67C..0x801FD6F0) restores this vptr in retail's bytes, so the carve cannot drop the
+// reference - and it is the address of this object, not its contents, that both builds need: the
+// matching build takes the word from dtk's own `auto_07_803B7AE0_data.o`, which the port does not
+// carry. Zero-filled and 64 bytes rather than retail's 0xC, like every other data stub here: on
+// this path the object is only ever taken the address of, never read.  This block **retires
+// `stub_197`**, the stand-in for `fn_801FD67C`, which the new unit now defines for real - one
+// function stub out, one data stub in, so the stub total does not move.
+extern "C" char stub_data_8[64] asm("lbl_803B7BFC") = {};
