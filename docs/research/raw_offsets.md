@@ -49,6 +49,9 @@ the `progress-twin-rel-ingboostballguardian` item's module 30 accessor block -
 two read 176 in 76 while the tool already measured 185 in 79, so the totals here are re-derived
 2026-10-02, after the `progress-twin-rel-sporb` item added `SporbDtors.cpp` (6 sites: `+0x584`,
 `+0xA0`, `+0x5C`, `+0x18`, `+0x238`, `+0x1F8`). The line before that edit read 185 in 79 in the
+`CIngBoostBallGuardianD2xx.cpp` (2 sites) and `CIngBoostBallGuardian13B7C.cpp` (1), three sites over
+two new files; before that the same day the `progress-twin-rel-ingboostballguardian` item added
+module 30's accessor
 from the tool rather than accumulated by hand).
 measured 2026-10-02, after the `progress-vtctl-rel-gunturret` item added module 28's trigger
 block - `CGunTurretBaseTriggers.cpp` (2 sites, `+0x7E8` and `+0x808`) - over one new file. **The
@@ -339,6 +342,25 @@ whole of module 30's accessor block, reached by offset because the class is not 
 `+0x1130` and `+0x115C` are past 0x1000 bytes into the object, so this cannot be written any other
 way until `fn_30_130` - the module's own entity loader - is decompiled and `CIngBoostBallGuardian`
 can be given a header.
+
+## `src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianD2xx.cpp` (2 sites)
+
+`+0xAE4` and `+0x11BC`, the switch word and the float `fn_30_D250` tests before it calls
+`CPatterned::AddToRenderer`. Free function over a `void*` for the reason in
+`CIngBoostBallGuardian194C.cpp` above: the receiver is the module's own entity, which this tree
+does not model, and the two offsets are members `CIngBoostBallGuardianPredicates.cpp` reaches the
+same way (`+0xAE4` three times there). Blocker: the same one - `fn_30_130`, the module's entity
+loader, before the class can have a header. The third function in the unit,
+`fn_30_D2C0`, spells no raw offset (it forwards its two arguments unchanged), and `fn_30_D230`,
+the fourth-shaped one, spells none either.
+
+## `src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian13B7C.cpp` (1 site)
+
+`+0x4F6`, the halfword `fn_30_13B7C` copies to its destination. Free function over a `const void*`
+for the reason above - and with the destination in r3 and the object in r4, the argument order is
+the measurement, not a member function's `this`. The other three functions in the unit reach the
+byte at `+0x5D8` and the record at `+0x570` through subscripts, which the checker does not key on.
+Blocker: the same missing `CIngBoostBallGuardian` class.
 
 ## `src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianRel.cpp` (1 site)
 

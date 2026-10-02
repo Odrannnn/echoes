@@ -1903,7 +1903,44 @@ config.libs = [
             # parentheses from the last MusyX call up to the entry it is looking for, so an entry
             # inside a Rel list reads one open paren too many and is looked for under
             # extern/musyx/src, where this source is not. The extra `)` balances it.)
-            Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian388C.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian388C.cpp", mw_version="GC/2.7")
+            Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian388C.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian388C.cpp", mw_version="GC/2.7"),
+            # Added 2026-10-02 (lane 11, `progress-vt-rel-ingboostballguardian`, the vtable-name
+            # trial). Six more ranges out of module 30's unclaimed gaps, twelve functions, every
+            # one a virtual `tools/rel_class_map.py` names off the DOL vtable's matching slot:
+            #   0xD230..0xD2E0 fn_30_D230 (slot 14, GetDamageVulnerability), fn_30_D250 (slot 8,
+            #            AddToRenderer), fn_30_D2C0 (slot 11, PreRenderAllViewports)
+            #   0x11E44..0x11E4C fn_30_11E44 (slot 29 of the second vtable, GetCollisionPrimitive)
+            #   0x13B7C..0x13BA4 fn_30_13B7C (the halfword at +0x4F6), fn_30_13B88 / fn_30_13B90
+            #            (slots 15 / 14, the two GetDamageVulnerability overloads, the same
+            #            address accessor), fn_30_13B98 (one bit of +0x5D8)
+            #   0x13C40..0x13C78 fn_30_13C40 (slot 13, GetHealthInfo), fn_30_13C5C (slot 12,
+            #            HealthInfo)
+            #   0x13E68..0x13ECC fn_30_13E68 (slot 8, AddToRenderer)
+            #   0x1464C..0x1466C fn_30_1464C (slot 17, Touch)
+            # Every range is byte-identical to retail's, checked one source at a time against
+            # build/G2ME01/IngBoostBallGuardian/obj/auto_00_0000C6CC_text.o and
+            # auto_00_00011CD8_text.o before the carve was wired in (the same fast loop the 388C
+            # entry above describes). The first vtable is `.data`+0x9C0 (119 slots, nearest DOL
+            # base 11CScriptDoor), the second `.data`+0xC44 (36 slots, nearest DOL base
+            # 11CScriptDock). **The symbols keep their `fn_30_*` names and that is measured, not
+            # convenience**: the vtables are dtk's `auto_04_00000000_data.o` and their relocations
+            # name `fn_30_*`, so a class-and-member spelling would emit the base's mangle *and* a
+            # second `__vt__` object in our own `.data` (the split claims `.text` only). The brief's
+            # names are used for the signatures - each prologue confirms them - and the flag tests
+            # at +0x5D8 and +0x11ED are the module's documented one-bit spellings
+            # (`CIngBoostBallGuardianBits.cpp` for the byte mask, `CIngBoostBallGuardian13E68.cpp`
+            # for why the `>> k & 1` spelling is required there).
+            # **No dead-strip hazard, measured**: none of the twelve is in ldscript.lcf's
+            # FORCEACTIVE list, but the eleven vtable slots are named by
+            # auto_04_00000000_data.o and fn_30_13B7C / fn_30_13B98 are named as undefined by
+            # auto_00_000038E0_text.o, so dtk's own objects hold every reference. No force_active:
+            # entry, no config.yml change, no symbols.txt rename.
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardianD2xx.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardian11E44.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardian13B7C.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardian13C40.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardian13E68.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardian1464C.cpp")
         ],
     ),
     # Added 2026-09-29. Blogg's head, .text 0x94..0x108: RELExit, RELMain and the loader

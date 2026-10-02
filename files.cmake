@@ -466,6 +466,16 @@ src/MetroidPrime/PortLinkStubs.cpp
     # block in configure.py for the range, the dead-strip measurement and why the entry there is
     # named with the module prefix and carries `source=`. Same empty host branch as the entry above.
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian388C.cpp
+    # Six more ranges out of module 30's unclaimed gaps, twelve functions in all, this time the
+    # module's own vtable overrides named by tools/rel_class_map.py (see the
+    # `Rel("IngBoostBallGuardian", ...)` block in configure.py for the ranges, the vtable slots and
+    # the dead-strip measurement). Same empty host branch as the entries above.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianD2xx.cpp
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian11E44.cpp
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian13B7C.cpp
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian13C40.cpp
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian13E68.cpp
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian1464C.cpp
     # DestructibleBarrier's (module 13) `rstl::auto_ptr<COBBTree>` deleting destructor at .text
     # 0x48AC..0x4910, the same shape as the AtomicAlpha entry above with this module's argument
     # (`__dt__8COBBTreeFv`). Its host branch is empty by design, for the same reason.

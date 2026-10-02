@@ -30,6 +30,24 @@ MetroidPrime/ScriptObjects/CIngBoostBallGuardianPredicates.cpp:
 MetroidPrime/ScriptObjects/CIngBoostBallGuardianC6AC.cpp:
 	.text       start:0x0000C6AC end:0x0000C6CC
 
+MetroidPrime/ScriptObjects/CIngBoostBallGuardianD2xx.cpp:
+	.text       start:0x0000D230 end:0x0000D2E0
+
+MetroidPrime/ScriptObjects/CIngBoostBallGuardian11E44.cpp:
+	.text       start:0x00011E44 end:0x00011E4C
+
+MetroidPrime/ScriptObjects/CIngBoostBallGuardian13B7C.cpp:
+	.text       start:0x00013B7C end:0x00013BA4
+
+MetroidPrime/ScriptObjects/CIngBoostBallGuardian13C40.cpp:
+	.text       start:0x00013C40 end:0x00013C78
+
+MetroidPrime/ScriptObjects/CIngBoostBallGuardian13E68.cpp:
+	.text       start:0x00013E68 end:0x00013ECC
+
+MetroidPrime/ScriptObjects/CIngBoostBallGuardian1464C.cpp:
+	.text       start:0x0001464C end:0x0001466C
+
 REL/global_destructor_chain.c:
 	.text       start:0x000164D0 end:0x00016544
 	.dtors      start:0x00000000 end:0x00000004 rename:.dtors$10
