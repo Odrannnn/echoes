@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    12616 / 28465 functions        (35.48% fuzzy, 29.30% of code, 13.01% fully linked)
+matched    12617 / 28465 functions        (35.48% fuzzy, 29.33% of code, 13.01% fully linked)
 linked     5977 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  11033 / 16726 functions        (main/*, including the SDK's)
+DOL units  11034 / 16726 functions        (main/*, including the SDK's)
 port link  291 undefined, 0 duplicates   (291 since the eighth upstream sync, 2026-10-01: upstream's
                                    CFrontEndGameMode, CRelFile and CDamageVulnerability units define what
                                    38 listed names asked for, and six new names opened -
