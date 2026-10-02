@@ -135,6 +135,9 @@ MetroidPrime/CStateManager.cpp:
 	.text       start:0x80036200 end:0x80044CA4
 	.sdata2     start:0x8041A808 end:0x8041A8B8
 
+MetroidPrime/Carve80044D48.c:
+	.text       start:0x80044D48 end:0x80044DD4
+
 MetroidPrime/Carve80044F88.c:
 	.text       start:0x80044F88 end:0x80045014
 
