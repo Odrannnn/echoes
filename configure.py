@@ -1581,6 +1581,12 @@ config.libs = [
         "IngSnatchingSwarm",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CIngSnatchingSwarmRel.cpp"),
+            # The module's state entry point, .text 0x348C..0x35F8: fn_33_348C alone, the two-case
+            # switch that clears the object down on state 0 and retires it on state 1. It sits
+            # directly below the state-table run and is the last contiguous range of
+            # auto_00_000000A8_text that does not need the CActor constructor chain (fn_33_41CC),
+            # so the claim stops here and the rest of that run is left to retail.
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngSnatchingSwarmUpdate.cpp"),
             # IngSnatchingSwarm's state-table run, .text 0x35F8..0x383C: eleven functions, the ten
             # named by the module's own `.data` record tables plus the box-snapshot copier above
             # them. A third contiguous claim, so it needs its own file and its own entry - one unit

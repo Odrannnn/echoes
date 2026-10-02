@@ -9,6 +9,9 @@ Sections:
 MetroidPrime/ScriptObjects/CIngSnatchingSwarmRel.cpp:
 	.text       start:0x00000000 end:0x000000A8
 
+MetroidPrime/ScriptObjects/CIngSnatchingSwarmUpdate.cpp:
+	.text       start:0x0000348C end:0x000035F8
+
 MetroidPrime/ScriptObjects/CIngSnatchingSwarmAi.cpp:
 	.text       start:0x000035F8 end:0x0000383C
 
