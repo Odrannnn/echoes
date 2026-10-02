@@ -473,12 +473,35 @@ float CMayaSpline::EvaluateAtUnclamped(float time) {
   return EvaluateInfinities(time, false);
 }
 
+// Two spellings here are load-bearing, both measured against retail's
+// `CreateFor` (0x8032914C, 440 B).
+//
+// 1. libc/float.h's `FLT_MAX` is `(*(float*)__float_max)`, so mwcceppc materialises
+//    the address of that global and negates the loaded value
+//    (`lis/addi -> lfs -> fneg`) instead of folding `-FLT_MAX`. Retail's .sdata2
+//    holds the negated literal (0xFF7FFFFF) and loads it in one `lfs`, so the
+//    amplitude limits are spelled as literals. Same finding, same workaround as
+//    src/MetroidPrime/PathFinding/CPathFindArea.cpp, src/Kyoto/Particles/CElementGen.cpp,
+//    src/MetroidPrime/CSteeringBehaviors.cpp and src/MetroidPrime/Player/CPlayerVisor.cpp.
+//
+// 2. Retail stores a distinct 0.f stack slot for every `const float&`
+//    knot-constructor argument - four of them, one per call - and passes the slot
+//    address (`stfs f0,20(r1) / addi r6,r1,20 / addi r7,r1,16 / stfs f0,16(r1)`, then
+//    the same again at 12(r1) and 8(r1) for the second knot). Passing the literal
+//    `0.f` lets mwcceppc prove the reference is unread and emit `li r6,0 / li r7,0`
+//    instead, which is 8 bytes short of retail's frame. Each argument therefore needs
+//    its own local. Naming them in two pairs rather than one shared local is what
+//    reproduces the slot order (MWCC allocates locals in reverse declaration order).
 CMayaSpline CMayaSpline::CreateFor(float timeA, float amplitudeA, float timeB, float amplitudeB) {
   rstl::vector< CMayaSplineKnot > knots;
   knots.reserve(2);
-  knots.push_back_unsafe(CMayaSplineKnot(timeA, amplitudeA, 2, 2, 0.f, 0.f));
-  knots.push_back_unsafe(CMayaSplineKnot(timeB, amplitudeB, 2, 2, 0.f, 0.f));
-  return CMayaSpline(knots, 0, 0, 0, -FLT_MAX, FLT_MAX);
+  float zero1 = 0.f;
+  float zero2 = 0.f;
+  knots.push_back_unsafe(CMayaSplineKnot(timeA, amplitudeA, 2, 2, zero1, zero2));
+  float zero3 = 0.f;
+  float zero4 = 0.f;
+  knots.push_back_unsafe(CMayaSplineKnot(timeB, amplitudeB, 2, 2, zero3, zero4));
+  return CMayaSpline(knots, 0, 0, 0, -3.40282347e+38f, 3.40282347e+38f);
 }
 
 const rstl::vector< CMayaSplineKnot >& CMayaSpline::GetKnots() const { return mKnots; }
