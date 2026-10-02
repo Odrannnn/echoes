@@ -102,10 +102,16 @@ void CTextExecuteBuffer::AddImage(const CFontImageDef& image) {
     StartNewLine();
   }
   if (mCurrentBlock && image.IsLoaded()) {
+    // Retail keeps two bools here: `tooWide` for the width test and `wrap` for the word count
+    // test, and only calls StartNewLine on the second.
     bool wrap = false;
+    bool tooWide = wrap;
     if (mState.IsWordWrapping() &&
         mCurrentLine->GetWidth() + image.GetWidth() > mCurrentBlock->GetOutputWidth()) {
-      wrap = mCurrentLine->GetWordCount() > 0;
+      tooWide = true;
+    }
+    if (tooWide && mCurrentLine->GetWordCount() > 0) {
+      wrap = true;
     }
     if (wrap) {
       StartNewLine();
@@ -217,14 +223,35 @@ void CTextExecuteBuffer::StartNewLine() {
   if (mCurrentLine) {
     TerminateLine(false);
   }
-  const rstl::ncrc_ptr< CInstruction > instruction = rs_new CLineInstruction(
-      0, 0, 0, mState.GetJustification(), mState.GetVerticalJustification(), mImageBaseline);
+  // The explicit bool conversions of mImageBaseline are not redundant: with a bare
+  // `mImageBaseline` MWCC sinks the `lbz` past the other five arguments (StartNewLine 75.66%,
+  // MoveWordLTR 90.20%); forcing the conversion loads it first, as retail does
+  // (83.27% and 97.01%, measured).
+  const rstl::ncrc_ptr< CInstruction > instruction =
+      rs_new CLineInstruction(0, 0, 0, mState.GetJustification(), mState.GetVerticalJustification(),
+                              mImageBaseline ? true : false);
   mCurrentWord = Add(instruction);
   mCurrentLine = static_cast< CLineInstruction* >(instruction.GetPtr());
   mSpaceDistance = 0;
   StartNewWord();
   mCurrentBlock->IncLines();
 }
+
+CLineInstruction::CLineInstruction(int words, int width, int height, EJustification justification,
+                                   EVerticalJustification verticalJustification,
+                                   bool imageBaseline)
+  : mWordCount(words)
+  , mCurrentX(width)
+  , mCurrentY(height)
+  , mLargestFontHeight(0)
+  , mLargestFontWidth(0)
+  , mLargestFontBaseline(0)
+  , mLargestImageHeight(0)
+  , mLargestImageWidth(0)
+  , mLargestImageBaseline(0)
+  , mJustification(justification)
+  , mVerticalJustification(verticalJustification)
+  , mImageBaseline(imageBaseline) {}
 
 void CTextExecuteBuffer::MoveWordLTR() {
   mCurrentLine->SubWidth(mCurrentX + mSpaceDistance);
@@ -237,7 +264,7 @@ void CTextExecuteBuffer::MoveWordLTR() {
 
   const rstl::ncrc_ptr< CInstruction > instruction =
       rs_new CLineInstruction(1, mCurrentX, mCurrentY, mState.GetJustification(),
-                              mState.GetVerticalJustification(), mImageBaseline);
+                              mState.GetVerticalJustification(), static_cast< bool >(mImageBaseline));
   mCurrentLine = static_cast< CLineInstruction* >(instruction.GetPtr());
   mInstructions.insert(mCurrentWord, instruction);
   mInstructions.insert(mCurrentWord, rs_new CWordInstruction());

@@ -6,20 +6,11 @@
 
 class CLineInstruction : public CInstruction {
 public:
+  // Declared only: retail calls this constructor out of line (0x802B7C74) from both
+  // CTextExecuteBuffer::StartNewLine and CTextExecuteBuffer::MoveWordLTR, so the body lives in
+  // src/Kyoto/Text/CTextExecuteBuffer.cpp rather than being inlined at each call site.
   CLineInstruction(int words, int width, int height, EJustification justification,
-                   EVerticalJustification verticalJustification, bool imageBaseline)
-  : mWordCount(words)
-  , mCurrentX(width)
-  , mCurrentY(height)
-  , mLargestFontHeight(0)
-  , mLargestFontWidth(0)
-  , mLargestFontBaseline(0)
-  , mLargestImageHeight(0)
-  , mLargestImageWidth(0)
-  , mLargestImageBaseline(0)
-  , mJustification(justification)
-  , mVerticalJustification(verticalJustification)
-  , mImageBaseline(imageBaseline) {}
+                   EVerticalJustification verticalJustification, bool imageBaseline);
 
   // CInstruction
   void Invoke(CFontRenderState& state, CTextRenderBuffer* buffer) const override;

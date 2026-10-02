@@ -143,3 +143,168 @@ units, so our object is further from the claimed range than before. The unit cou
   emits it at exactly 124 bytes since `BuildRenderBuffer` went in, it is only unpaired because
   `config/G2ME01/symbols.txt` has no name at 0x802B7098. A rename there is a one-line config change
   I did not make because it is a `config/` edit, not source, and the item asked for decompilation.
+
+---
+
+# Run of 2026-10-02 (lane 7), re-measured on top of the two earlier runs
+
+Three files changed: `include/Kyoto/Text/CLineInstruction.hpp`,
+`src/Kyoto/Text/CTextExecuteBuffer.cpp`, `config/G2ME01/symbols.txt`. No
+`configure.py`, no `files.cmake`, no `splits.txt`, no `tools/`, no asm.
+
+## Result, measured
+
+| | before (`build/goal/judge/report.base.json`) | after |
+|---|---|---|
+| unit `matched_functions` | **26 / 46** | **38 / 46** |
+| unit fuzzy | 78.82% | **95.18%** |
+| project `matched_functions` | 12386 | **12398** |
+| project linked | 5863 | 5863 (unchanged, correct for a `progress` item) |
+
+`python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json`:
+
+    matched  12386 -> 12398   linked 5863 -> 5863   (+12 functions at 100%, 0 units newly linked)
+    ... 12 x "+100%  main/Kyoto/Text/CTextExecuteBuffer :: <name>"
+    13 x "RENAMED ... (0.00% -> 100.00%)", 1 x "(0.00% -> 33.29%)"
+    no regression
+
+`./tools/decomp_build.sh` -> `All: 35.02% fuzzy, 28.69% matched, 12.90% linked (12398 / 28465 functions)`.
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`./tools/probe_sources.sh` = `752 files, 0 failed, 0 errors; link: LINKED (289 undefined, 0 duplicates)`;
+`python3 tools/check_symbol_names.py` = `0 declared names are missing from their object`;
+`python3 tools/check_decl_order.py --unit Kyoto/Text/CTextExecuteBuffer` = `ok`.
+`./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`** (every step ok, including
+`target rose: main/Kyoto/Text/CTextExecuteBuffer: 26 -> 38 / 46 functions`).
+
+## The previous run's "wall" on StartNewLine / MoveWordLTR was not a wall
+
+Both earlier runs recorded that these two were blocked because MWCC inlines
+`CLineInstruction`'s constructor at both call sites while retail calls an out-of-line copy
+(`fn_802B7C74`, 80 bytes, in this same object), and that the fix "belongs to
+`include/Kyoto/Text/CLineInstruction.hpp`, a `Matching` unit". That is the whole of the
+obstacle, and it is reachable: `CTextExecuteBuffer.cpp` is the **only** TU that constructs a
+`CLineInstruction` (grep over `src/` + `include/`: `CLineInstruction.cpp`, `CTextInstruction.cpp`,
+`CImageInstruction.cpp`, `CWordInstruction.cpp` include the header but never construct one).
+So the constructor was declared in the header and defined in `CTextExecuteBuffer.cpp`,
+between `StartNewLine` and `MoveWordLTR` (that position is what the reverse-source-order rule
+in `docs/goal-unit-prompt.md` requires). `Kyoto/Text/CLineInstruction.cpp` is unchanged and
+still MatchingFor 9/9; nothing that is linked references the symbol.
+
+Per function, this run (before% -> after%), all measured on this tree:
+
+| function | before | after | how |
+|---|---|---|---|
+| `MoveWordLTR` | 78.85% | **97.01%** | out-of-line ctor + `static_cast<bool>(mImageBaseline)`; 408/408 bytes now |
+| `StartNewLine` | 58.01% | **83.27%** | out-of-line ctor + `mImageBaseline ? true : false`; 268 bytes now (was 292) |
+| `AddImage` | 94.91% | **99.09%** | two bools, `tooWide` then `wrap`; 508/508 bytes now |
+| `Add` | 78.71% | 78.71% | unchanged, see below |
+| `WrapOneLTR` | 95.38% | 95.38% | unchanged, see below |
+
+### Codegen notes for the next run
+
+- **Retail loads `mImageBaseline` (0xC4) *first*, before the other five ctor arguments.** With a
+  bare `mImageBaseline` MWCC sinks the `lbz` to just before the `bl`; `MoveWordLTR` measures
+  90.20% that way against retail's 78.85% with the ctor inlined. `static_cast<bool>(...)` /
+  `x ? true : false` forces the load early and reaches 97.01%, at the cost of three extra
+  `neg / or / srwi` (MWCC re-normalises the byte to a canonical bool; retail does not).
+  Measured and rejected: named local read at the top of `MoveWordLTR` (r30 spill, 93.14%);
+  named local read just before the `rs_new` (84.61%); `const bool` on the parameter (90.20%
+  plain / 97.01% with the ternary); `int` parameter (97.01% but the mangled name changes to
+  `...Fiiii...`, which breaks the 0x802B7C74 name).
+- **`AddImage` uses two bools.** Retail (0x802B8664-0x802B8700): `li r28,0 / mr r29,r28`,
+  the width test sets `r29`, `clrlwi. r0,r29,24 / beq`, the word-count test sets `r28`, and
+  `StartNewLine` is called only on `r28`. That is
+  `bool wrap = false; bool tooWide = wrap; if (width-test) tooWide = true;
+  if (tooWide && GetWordCount() > 0) wrap = true; if (wrap) StartNewLine();` — 99.09%, sizes
+  equal. Declaring `tooWide` first measures the same 99.09%. Measured and rejected on top of
+  that: single reused `wrap` (82.51% in the earlier run), `> 1` instead of `> 0` (82.72%),
+  `!= 0` (93.45%), nested `if` only (96.32%), one flat `&&` chain (86.35%).
+  What is left is register numbering only: retail puts the bools in r28/r29 and the two
+  widths in r27/r26, we put the bools in r27/r26 and the widths in r28/r29, and retail emits
+  `mr r29, r28` where we emit `li r26, 0` (MWCC constant-folds `bool tooWide = wrap;`, retail
+  did not). 12 bytes of 508.
+- **`StartNewLine`'s frame is 0x30 in retail and 0x20 in ours** (268 vs 236 bytes) and retail
+  carries four extra instructions (`stw r3,0x18(r1)`, `lwz r4,0(r3)`, `addi r0,r4,1`,
+  `stw r0,0(r3)`, `addi r3,r1,0xc`, `bl fn_80025CC0`) around the second insert. That is
+  `StartNewWord`'s refcount bump materialised in the caller instead of behind `Add()`'s
+  inlined `push_back`, so closing it needs a different decomposition of `StartNewWord`/`Add`,
+  not a spelling change.
+
+## The 15 unnamed retail functions were the real ceiling
+
+This is the finding the next run should not have to rediscover. The unit's 46 functions include
+**15 that retail's own map file left unnamed** (`fn_802B6F84`, `fn_802B6FFC`, `fn_802B7070`,
+`fn_802B7098`, `fn_802B798C`, `fn_802B79B4`, `fn_802B7A24`, `fn_802B7C34`, `fn_802B7C74`,
+`fn_802B8850`, `fn_802B8CF8`, `fn_802B8DB8`, `fn_802B8DF8`, `fn_802B8EE8`, `fn_802B903C`).
+objdiff pairs functions **by name**, so all 15 sat at 0.00% with no `fuzzy_match_percent` at all
+however exact our bytes were - and no source edit can fix that, because `config/G2ME01/symbols.txt`
+is the only thing that names a retail function. Both earlier runs saw this (`fn_802B7098` was
+recorded as a "one-line config change I did not make"); the previous run's note also claimed
+retail's object contains only 56 functions we lack, and that our object grew - both true, and
+irrelevant to the ceiling.
+
+Measured here: **12 of those 15 are byte-identical to a function our own compiler emits** for
+the same entity. `build/G2ME01/obj/Kyoto/Text/CTextExecuteBuffer.o` is the retail object (dtk
+`split`); `build/G2ME01/src/...` is ours (the mwcc object); objdiff's `-1/--target` is the retail
+one, which is the opposite of what the field names in `objdiff.json` suggest. Renaming an entry
+can only ever *reveal* a difference, never hide one, so the renames below are measurements, not
+assertions: eleven reach 100.00% and one reaches 33.29%, and that one is left in because 33.29
+is what our `rstl::list` really produces for it.
+
+Each name was assigned by **caller matching**, not by guessing from the bytes: the retail
+function's callers in `build/G2ME01/asm/Kyoto/Text/CTextExecuteBuffer.s` were matched against the
+callers of each candidate in our object, and only then written into `symbols.txt`.
+
+| retail placeholder | -> name | called by (retail) | after |
+|---|---|---|---|
+| `fn_802B798C` | `push_back__Q24rstl66list<...ncrc_ptr<12CInstruction>...>FRC...` | `Add` | 100% |
+| `fn_802B79B4` | `do_insert_before__Q24rstl66list<...ncrc_ptr<12CInstruction>...>` | `fn_802B798C`, `fn_802B7C34` | 33.29% |
+| `fn_802B7C34` | `insert__Q24rstl66list<...ncrc_ptr<12CInstruction>...>` | `MoveWordLTR` | 100% |
+| `fn_802B7098` | `__dt__16CFontRenderStateFv` | the three `BuildRenderBuffer*` | 100% |
+| `fn_802B8850` | `__ct__17CImageInstructionFRC13CFontImageDef` | `AddImage` | 100% |
+| `fn_802B8CF8` | `__ct__17CBlockInstructionFiiii14ETextDirection14EJustification22EVerticalJustification` | `BeginBlock` | 100% |
+| `fn_802B8DB8` | `clear__Q24rstl66list<...ncrc_ptr<12CInstruction>...>Fv` | `Clear` | 100% |
+| `fn_802B8DF8` | `erase__Q24rstl66list<...ncrc_ptr<12CInstruction>...>` | `fn_802B8DB8` | 100% |
+| `fn_802B8EE8` | `__advance<Q34rstl66list<...ncrc_ptr<12CInstruction>...>8iterator,i>__4rstlF...` | `Add` | 100% |
+| `fn_802B903C` | `do_erase__Q24rstl66list<...ncrc_ptr<12CInstruction>...>` | `fn_802B8DF8` | 100% |
+| `fn_802B7070` | `push_back__Q24rstl52list<17CTextRenderBuffer,...>FRC17CTextRenderBuffer` | `BuildRenderBufferPages` | 100% |
+| `fn_802B6FFC` | `insert<Q34rstl52list<17CTextRenderBuffer,...>14const_iterator>__4rstlF...` | `fn_802B6F84` | 100% |
+| `fn_802B7C74` | `__ct__16CLineInstructionFiii14EJustification22EVerticalJustificationb` | `StartNewLine`, `MoveWordLTR` | 100% |
+
+Two honest caveats. First, several of these bodies are identical across instantiations
+(`push_back` for two different list types, for instance), so the *bytes* cannot distinguish
+them; the caller chain above is what pins each one down, and it is unique for every row.
+Second, `report_diff.py` prints its RENAMED rows in sorted order, so its `old -> new` arrows
+do not line up with the addresses - read the table, not the arrows.
+
+Two are still unnamed and still 0.00%, because we emit nothing mnemonically identical:
+`fn_802B7A24` (120 bytes, `create_node` for the instruction list; ours is a different size) and
+`fn_802B6F84` (120 bytes, called only by `BuildRenderBufferPages`). `do_insert_before` at 33.29%
+is a real difference: our `do_insert_before` for `list<ncrc_ptr<CInstruction>>` is 176 bytes
+against retail's 112.
+
+None of these twelve symbols is defined by any linked object (`find build/G2ME01/src -name '*.o'`
++ `nm` for each: only `CTextExecuteBuffer.o`, which `build.ninja` marks `linked False`), so the
+linker script gains no duplicate; `main.dol` still hashes to the retail sha1, which is the gate
+that would catch a rename that changed anything.
+
+## Still open, with the evidence
+
+- **`Add` (78.71%)** is an inline in `CTextExecuteBuffer.hpp` (`push_back` + `advance_iterator`).
+  Retail's body is 28 instructions and stores the `__advance` result to the return slot through a
+  stack-local iterator pair; ours is 23 and passes `this` where retail passes a local. Not
+  attempted beyond reading the disassembly. Prime 1 has no `Add` in its .cpp either.
+- **`WrapOneLTR` (95.38%)**: the four-instruction difference is register allocation in the two
+  word-wrap tests - retail keeps the line width in r24 and the block width in r28 across the
+  `MoveWordLTR()` call and reuses them; we reload through r5/r4. Hoisting `lineWidth`/`blockWidth`
+  into locals was already measured as worse by the previous run, and I did not repeat it.
+- **`AddImage` 99.09% / `MoveWordLTR` 97.01% / `StartNewLine` 83.27%** - register allocation and,
+  for `StartNewLine`, frame size only; the per-function spellings tried are in the sections above.
+- `tools/unit_fit.sh Kyoto/Text/CTextExecuteBuffer.cpp`: 89 functions in ours but not in the
+  retail unit object, 9360 bytes, sections over the claimed range by 9160 bytes. That is the
+  COMDAT weak template code `BuildRenderBuffer*` drags in; unchanged in kind from the previous
+  run's measurement, and the unit cannot flip while 8 of 46 functions are short of 100%.
+
+NEW: none. The remaining gaps in this unit are register allocation inside functions this run
+measured, which is not the kind of item a lane should be handed, and `fn_802B6F84`/`fn_802B7A24`
+need a new disassembly reading rather than a queue entry.
