@@ -1524,11 +1524,38 @@ config.libs = [
     # aligning fn_6_0 on IngPuddle's fn_32_8 leaves exactly two differing encodings, both `bl`, to
     # each module's own loader-setter import. Its setter import is the plain `fn_8022A5AC`, so no
     # symbols.txt rename is needed. Everything from fn_6_A0 (0xA0) up is left unclaimed, so dtk
-    # fills it from retail and the module's sha1 still holds.
+    # fills it from retail and the module's sha1 still holds, and the tail unit below cuts
+    # auto_00_000000A0_text in two around its own claim.
+    # The module's out-of-line template tail, .text 0x4150..0x42E8: six functions - the element
+    # array's copy constructor, its copy loop, `construct`/`construct_impl` for one element, the
+    # 0x24-byte element's copy constructor and the owner's deleting destructor. **The claim starts
+    # at 0x4150 and not at 0x40C4** where the seeder's run of adjacent twins starts: `fn_6_40C4`
+    # is a `~reserved_vector()` instantiation this compiler reproduces instruction for instruction
+    # but for two swapped loop registers, so it stays retail's (see
+    # docs/goal-notes/progress-twin-rel-sandworm.md for the spellings measured). dtk's
+    # auto_00_000000A0_text is cut in two around the claim. The six need the module's
+    # force_active: list in config/G2ME01/config.yml, for the reason CSandBossRelTail.cpp's header
+    # gives. **`mw_version="GC/2.7"` is load-bearing and measured**, the same per-object arrangement
+    # CSandBossRelTail.cpp uses: under the module's default GC/1.3.2 the unit is 64.71%, 4/6, with
+    # `fn_6_4150` at 76.47% (retail hoists `lwz r0,0(r4)` in front of the `stw r31,0xc(r1)` prologue
+    # save, 1.3.2 keeps it next to its store) and `fn_6_4244` at 84.16% (retail uses the two-deep
+    # `lfs f1`/`lfs f0` pipeline, 1.3.2 copies each float straight through `f0`). 2.7 emits retail's
+    # order and all six go to 100.00%.
+    #
+    # `CBacteriaSwarmRelTail2.cpp` (0x4020..0x4068) and `CBacteriaSwarmRelTail3.cpp`
+    # (0x5C00..0x5C48) are two more runs of the same two short shapes, over two other element
+    # types, and are separate units because one unit cannot claim two discontiguous ranges. Their
+    # element constructors, `fn_6_4068` (0x5C) and `fn_6_5C48` (0x90), are not twins - one copies a
+    # `reserved_vector` member, the other a `CTransform4f` - so both stay retail's and each claim
+    # stops one function short of them.
     Rel(
         "BacteriaSwarm",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CBacteriaSwarmRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CBacteriaSwarmRelTail2.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CBacteriaSwarmRelTail.cpp",
+                   mw_version="GC/2.7"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CBacteriaSwarmRelTail3.cpp"),
         ],
     ),
     # ChozoGhost's head, .text 0x350..0x488: the eleven accessors above the module's class code,

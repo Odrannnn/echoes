@@ -57,6 +57,20 @@ modules:
     hash: 11859125ea9ab676bf42431cc948ec8d08c86552
     splits: config/G2ME01/rels/BacteriaSwarm/splits.txt
     symbols: config/G2ME01/rels/BacteriaSwarm/symbols.txt
+    # The three CBacteriaSwarmRelTail*.cpp units' functions. Four of the six in
+    # CBacteriaSwarmRelTail.cpp are reachable only from that object, so without this mwldeppc
+    # dead-strips them and the module links short.
+    force_active:
+      - fn_6_4020
+      - fn_6_4040
+      - fn_6_4150
+      - fn_6_4194
+      - fn_6_41FC
+      - fn_6_421C
+      - fn_6_4244
+      - fn_6_4290
+      - fn_6_5C00
+      - fn_6_5C20
   # Module ID 7
   - object: files/RelProd/Blogg.rel
     hash: 2def4cc1f6d7898d534976efe607da2cc09708f5

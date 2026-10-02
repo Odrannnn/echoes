@@ -407,6 +407,19 @@ src/MetroidPrime/PortLinkStubs.cpp
     # entry above gives.
     src/MetroidPrime/ScriptObjects/CSandwormRelTail.cpp
     src/MetroidPrime/ScriptObjects/CSandwormRelTail2.cpp
+    # BacteriaSwarm's (module 6) out-of-line template tail, `fn_6_4150`..`fn_6_4290`: the element
+    # array's copy constructor, its copy loop, `construct`/`construct_impl` for one element, the
+    # 0x24-byte element's copy constructor and the owner's deleting destructor. Its host branch is
+    # empty by design (the bodies are inside `#ifdef __MWERKS__`), for the reason the entry above
+    # gives.
+    src/MetroidPrime/ScriptObjects/CBacteriaSwarmRelTail.cpp
+    # Two more runs of the same two short `construct`/`construct_impl` shapes in module 6,
+    # `fn_6_4020`..`fn_6_4040` (0x4020..0x4068) and `fn_6_5C00`..`fn_6_5C20` (0x5C00..0x5C48). Each is
+    # its own unit because one unit cannot claim two discontiguous ranges. Their host branches are
+    # empty by design (the bodies are inside `#ifdef __MWERKS__`), for the reason the entry above
+    # gives.
+    src/MetroidPrime/ScriptObjects/CBacteriaSwarmRelTail2.cpp
+    src/MetroidPrime/ScriptObjects/CBacteriaSwarmRelTail3.cpp
     # IngBoostBallGuardian's (module 30) five flag-byte accessors at 0xB788..0xB7E0. Its host
     # branch is empty by design (the bodies are inside `#ifdef __MWERKS__`), for the reason the
     # entry above gives: check_files_cmake.py requires every configure.py `Matching` object to be
