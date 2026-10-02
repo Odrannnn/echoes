@@ -740,6 +740,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FEEF0.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FF4A4.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FF5A0.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve801FF720.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/SpacePirate.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve80200E3C.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/Kralee.cpp"),

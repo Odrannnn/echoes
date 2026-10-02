@@ -5,11 +5,12 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 156 of them: the ones referenced **only by
+ * file supplies 158 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   152 functions, 4 data objects (counted 2026-10-02, after `fn_80008D68` was added by
+ *   154 functions, 4 data objects (counted 2026-10-02, after the two
+ *   `Carve801FF720.cpp` callees below were added; the count before that was 152, after `fn_80008D68` was added by
  *   hand below for `Carve800045A0.c`; the count before that was 151, after the three
  *   `Carve801FF5A0.cpp` callees were added by hand below, and 148 before those, itself
  *   after `fn_801FDC88` was added by hand, and 147 before that, measured
@@ -762,6 +763,28 @@ extern "C" void stub_181() {}
 // because the symbol is now defined here rather than MISSING.
 extern "C" void stub_182() asm("fn_80008D68");
 extern "C" void stub_182() {}
+
+// The two element callees of `src/MetroidPrime/ScriptObjects/Carve801FF720.cpp` (Matching,
+// 0x801FF720..0x801FF8A0), added by hand for the same reason `stub_178` above exists: the carve's
+// bytes *are* those `bl`s, so the calls cannot be dropped without losing the match, and the port's
+// link does not have the dtk `auto_*` objects that define them in the DOL. Measured: the probe
+// went LINKED -> NOT LINKED (293 undefined) with the carve listed and these two undefined
+// (`build/probe-logs/link_check.log`, `NEW  fn_801FD8E0` / `NEW  fn_801FEA98`).
+//
+//   fn_801FF838 (retail 0x801FF838) calls `fn_801FEA98` at 0x801FF868 - the 36-byte element's
+//     copy constructor, itself one `bl fn_801FEAB8` (0x20 bytes, `symbols.txt:8311`).
+//   fn_801FF7EC (retail 0x801FF7EC) calls `fn_801FD8E0` at 0x801FF810 - the same element's
+//     destructor, itself one `bl fn_801FD900` (0x20 bytes, `symbols.txt:8279`).
+//
+// Same trade as `stub_178` and as the three `Carve801FF5A0.cpp` callees above: empty bodies, no
+// claim that either is decompiled (neither is), and carving them instead only moves the gap one
+// function along because each is a forwarder. `docs/research/port_link_gap_list.md` keeps both
+// listed as still missing.
+extern "C" void stub_183() asm("fn_801FEA98");
+extern "C" void stub_183() {}
+
+extern "C" void stub_184() asm("fn_801FD8E0");
+extern "C" void stub_184() {}
 
 
 // Data objects. A vtable or typeinfo stub is zero-filled: harmless to take the
