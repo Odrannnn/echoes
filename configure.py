@@ -2143,10 +2143,29 @@ config.libs = [
             Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsCanRender.cpp"),
         ],
     ),
+    # SafeZone (module 66), four units. `CScriptSafeZone.cpp` is RELExit/RELMain, .text
+    # 0x2C..0x70, and has been `Matching` since the tail was wired; `CScriptSafeZonePrefix.cpp`
+    # is the head, .text 0x0..0x2C, and is `fn_66_0` alone - the whole range is one function, CActor's
+    # `GetHealthInfo` slot dispatching vtable offset 0x38, whose bytes are word for word those of
+    # `fn_71_0` / `fn_56_0` / `fn_20_0` in SnakeWeedSwarm / Sandworm / FishCloud. Both `.data`
+    # vtables (`.data:0x10`, 0xA0 bytes, and `.data:0xB8`, 0x7C bytes) store it at offset 0x3C
+    # above a `HealthInfo` slot at 0x38, so no `force_active:` entry is needed; the module's
+    # `23CScriptTriggerEllipsoid` and `6CActor` base classes come from
+    # `tools/rel_class_map.py`. The two accessors added 2026-10-02 are each a whole unit because
+    # the module's remaining code is one range: `fn_66_67C4` (0x67C4, 8 bytes, `self + 0x208`) and
+    # `fn_66_7748` (0x7748, 8 bytes, `self + 0x1E8`) are `addi / blr` pairs at vtable offsets 0x40
+    # and 0x3C of `lbl_66_data_B8`, and each is in the module's vtables, so neither needs
+    # `force_active:` either. `CScriptSafeZoneTail.cpp` (.text 0x70..0x67C4 plus `.ctors` 0x0..0x4)
+    # has no source, and 0x67CC..0x7748 and 0x7750..0x8C60 are left unclaimed: a unit that claims a
+    # range its own object does not reproduce takes those bytes out of the link and breaks the
+    # module's sha1, so everything still ours is claimed and dtk fills the rest from retail.
     Rel(
         "ScriptSafeZone",
         [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptSafeZonePrefix.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptSafeZone.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptSafeZoneVulnerability.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptSafeZoneHealth.cpp"),
         ],
     ),
     Rel(

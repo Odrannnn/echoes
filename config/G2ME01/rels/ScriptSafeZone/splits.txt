@@ -13,8 +13,14 @@ MetroidPrime/ScriptObjects/CScriptSafeZone.cpp:
 	.text       start:0x0000002C end:0x00000070
 
 MetroidPrime/ScriptObjects/CScriptSafeZoneTail.cpp:
-	.text       start:0x00000070 end:0x00008C60
+	.text       start:0x00000070 end:0x000067C4
 	.ctors      start:0x00000000 end:0x00000004
+
+MetroidPrime/ScriptObjects/CScriptSafeZoneVulnerability.cpp:
+	.text       start:0x000067C4 end:0x000067CC
+
+MetroidPrime/ScriptObjects/CScriptSafeZoneHealth.cpp:
+	.text       start:0x00007748 end:0x00007750
 
 REL/REL_Setup.cpp:
 	.text       start:0x00008C60 end:0x00008E04

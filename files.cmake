@@ -1201,6 +1201,9 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/CScriptRiftPortal.cpp
     src/MetroidPrime/ScriptObjects/CScriptRsfAudio.cpp
     src/MetroidPrime/ScriptObjects/CScriptSafeZone.cpp
+    src/MetroidPrime/ScriptObjects/CScriptSafeZonePrefix.cpp
+    src/MetroidPrime/ScriptObjects/CScriptSafeZoneVulnerability.cpp
+    src/MetroidPrime/ScriptObjects/CScriptSafeZoneHealth.cpp
     src/MetroidPrime/ScriptObjects/CScriptSkyRipple.cpp
     src/MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp
     src/MetroidPrime/ScriptObjects/EyeBallAccessors.cpp
