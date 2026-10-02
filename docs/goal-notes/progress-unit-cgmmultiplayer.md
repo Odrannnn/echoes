@@ -173,3 +173,203 @@ were already emitted, already byte-identical, and already in our object; only th
 pairs on* was a placeholder. The two source edits are spelling changes on values that already
 existed (`const_iterator` on a read-only loop; `idx` bound from `playerIndex`). No initialisation
 was dropped, no call removed, no stub introduced, no `asm` added.
+
+---
+
+# Run 2 (lane 4, 2026-10-02) — `RespawnPlayer` taken to 100%
+
+## Result
+
+**29 -> 30 of 34 functions matched.** `build/report.json`, unit
+`main/MetroidPrime/Player/CGMMultiplayer`: `matched_code` 64.69% -> **78.38%**, fuzzy
+91.13% -> 91.15%. Project-wide `matched` **12353 -> 12354**, `linked` 5863 -> 5863
+(unchanged, as expected for a `progress` item).
+
+`./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS progress-unit-cgmmultiplayer`**,
+all seven checks ok (`target rose: main/MetroidPrime/Player/CGMMultiplayer: 29 -> 30 / 34`).
+
+## The whole change is one line, and it is a spelling change
+
+`src/MetroidPrime/Player/CGMMultiplayer.cpp:139`
+
+```diff
+-  const TUniqueId spawnId = ChooseSpawnPoint(mgr, idx, mSpawnPoints[idx]);
++  const TUniqueId spawnId = ChooseSpawnPoint(mgr, playerIndex, mSpawnPoints[idx]);
+```
+
+`idx` is still used, for the `mSpawnPoints[idx]` index; the call's second argument now names the
+*parameter* `playerIndex` instead of the local that was bound from it. Both are the same value on
+every path. This is the fix for the residue the previous run left: two swapped argument
+`mr`s at `+0x2C`/`+0x30`.
+
+**`RespawnPlayer` is not just fuzzy-100% — all 178 instruction words are byte-identical to
+retail's.** Measured by extracting `.text` from `build/G2ME01/obj/MetroidPrime/Player/
+CGMMultiplayer.o` (retail) and `build/G2ME01/src/MetroidPrime/Player/CGMMultiplayer.o` (ours) and
+comparing the 0x2C8 bytes raw: **0 of 178 words differ.** objdiff's json still lists 7 textual
+differences, all pure relabels, and none of them is an instruction difference:
+
+- 5 branch targets, every one of them a constant `+0xFC` (our `.text` base is 0xFC past retail's,
+  because our object carries 28 extra COMDATs);
+- `bl fn_801968D4` vs `bl __as__12CPlayerStateFRC12CPlayerState` — one relocation, and
+  `fn_801968D4` is dtk's placeholder for that same `CPlayerState::operator=`;
+- `lfs f0, lbl_8041CB30@sda21` vs `lfs f0, @1045@sda21` — one `.rodata` address, two labels.
+
+That also means objdiff's strict `match_percent` stays at 99.86 forever while report.json's
+`fuzzy_match_percent` reads 100.00; the judge counts the latter.
+
+## The finding worth keeping: what moved `RespawnPlayer`, and why
+
+The argument registers for the virtual `ChooseSpawnPoint` call are `r4 = this`, `r5 = mgr`,
+`r6 = playerIndex`, and the loop-invariant values already sit in `r28 = mgr`, `r29 = playerIndex`.
+Both sides emitted the same three `mr`s in the same two groups; only the order *inside* the
+argument-setup group differed (`mr r5,r28 ; mr r6,r29` against `mr r6,r29 ; mr r5,r28`). Nothing
+about register *assignment* was wrong, so every variant that only renamed or rebound the local
+(`CStateManager& smgr`, `const TUniqueId req`, `self.`, `this->`, `uint` vs `const uint`, casts)
+reproduced the identical instruction stream — the mapping from incoming register to
+callee-saved register is what has to change, and a local whose only use is the argument does not
+change it.
+
+Using the parameter directly at the call site does change it: `idx` stays mapped to the `mSpawnPoints`
+load and `playerIndex` gets its own pseudo-register for the argument, and the two incoming registers
+then reach the argument registers in the order retail emits them.
+
+### Spellings measured this run for `RespawnPlayer` (all on this tree, base = 99.89%)
+
+| spelling | % |
+|---|---|
+| **`ChooseSpawnPoint(mgr, playerIndex, mSpawnPoints[idx])` with `idx` bound above** | **100.00** |
+| `idx` bound, used for both the index and the argument (previous run's best) | 99.89 |
+| `CGMMultiplayer& self = *this; ... self.ChooseSpawnPoint(mgr, idx, ...)` | 99.89 |
+| `this->ChooseSpawnPoint(mgr, idx, mSpawnPoints[idx])` | 99.89 |
+| `this->mSpawnPoints[idx]` | 99.89 |
+| `CStateManager& smgr = mgr;` then `ChooseSpawnPoint(smgr, idx, ...)` | 99.89 |
+| `CStateManager* const pmgr = &mgr;` then `ChooseSpawnPoint(*pmgr, idx, ...)` | 99.89 |
+| `const_cast<CStateManager&>(mgr)` | 99.89 |
+| `static_cast<TUniqueId>(mSpawnPoints[idx])` | 99.89 |
+| `TUniqueId spawnId = ...` (non-const) | 99.89 |
+| `const TUniqueId req = mSpawnPoints[idx];` then pass `req` | 99.17 |
+| `mgr` local first, then `idx`, then `req` | 99.17 |
+| `const int idx` cast to `uint` at the call | 99.30 |
+| `uint idx` (non-const) | 98.15 |
+| `TUniqueId spawnId` non-const *and* `uint idx` non-const | 98.15 |
+| `CStateManager& smgr = mgr;` with no `idx` at all | 98.15 |
+| `ChooseSpawnPoint(mgr, playerIndex, mSpawnPoints[playerIndex])`, no `idx` | 98.15 |
+| `static_cast<CGameMode*>(this)->ChooseSpawnPoint(...)` | build error (not in `CGameMode`) |
+| `const CStateManager& smgr = mgr;` | build error (`const CStateManager` -> `CStateManager&`) |
+
+**Do not repeat these.** The one that works is the only one in which the local and the parameter
+are both live and used for different things.
+
+## `NotifyListeners` is a register-allocation wall (measured this run, 20 spellings)
+
+The two streams are 50 instructions each and **structurally identical**; four instructions differ
+only in which callee-saved register each of three values landed in.
+
+| | r28 | r29 | r30 |
+|---|---|---|---|
+| retail | `event` (from `r7`) | `value` (from `r8`) | loop base (`addi rX, r3, 0x18`) |
+| ours | `value` (from `r8`) | loop base | `event` (from `r7`) |
+
+So ours allocates incoming registers in the order `r6, r4, r5, r8, base, r7, root` and retail in
+`r6, r4, r5, r7, r8, base, root`. Note this is a *permutation of the operands*, not of the
+assignment: swapping the two parameters in the header, or reversing them at the call site, would
+swap which incoming register feeds `r28` but would not produce retail's `mr r28,r7 ; mr r29,r8`, so
+those two are not a way in. Tried this run, all 95.00% or worse and all producing the identical
+prologue: local for `event`; local for `value` (91.02); locals for both (89.49); locals declared
+before the early-return guard (95.00); local for `mgr`; local for the listener pointer; local for
+`sourceIndex` (90.31); local for `targetIndex` used only in the loop test; `targetIndex == it->first`;
+`(*it).second->...`; `static_cast<const void*>(value)`; `const rstl::set<TListener>&` (81.31) and
+non-const `rstl::set<TListener>&` (90.98) for the loop bound; `const CGMMultiplayer& self = *this`
+(85.69). Previous run also tried and rejected: `rstl::set& listeners`, range-`for`, `&*begin()`
+pointer walk, explicit `end` variable, `while` loop, duplicated guard, `targetIndex != uint(-1)`
+wrapping the loop, `0xFFFFu`.
+
+WALL: NotifyListeners__14CGMMultiplayerFR13CStateManagerUiUiQ214CGMMultiplayer10EGameEventPCv 95.00% - 50/50 instructions identical, the four that differ are a 3-way permutation of r28/r29/r30 among {event, value, loop base}; 20 spellings this run all reproduced the same prologue, and the parameter order is fixed by five callers that are already at 100%
+
+## `ChooseSpawnPoint` (560 B, 85.29%) — untouched in the diff, but re-measured
+
+The previous run's four structural claims, re-measured on this tree. Two were wrong or inverted,
+one turned out not to be actionable.
+
+**Hoisting the object-list load is a red herring.** Retail loads `lwz r31, 0x810(r5)` in the
+prologue, before the three `mr`s that set up `candidates.reserve(16)`; ours loads
+`lwz r31, 0x810(r26)` immediately after the `bl reserve`. Moving
+`CObjectList& objects = mgr.ObjectListById(kOL_All);` above `candidates.reserve(16)` in the source
+changed **nothing**: 85.29% either way. It is a scheduling decision, not a statement-order one.
+
+**The player-index loop was described backwards.** Retail uses `r23` as a *pointer* induction
+variable and `r22` as the counter - `cmplw r22, r27`, `lwz r4, 0x14fc(r23)`, `addi r23, r23, 4`,
+`addi r22, r22, 1`. Ours uses `r23` as a byte offset off `r26` - `addi r0, r23, 0x14fc`,
+`lwzx r4, r26, r0`, with `r22` the counter. So it is **retail** that strength-reduces the address
+into a pointer and **ours** that keeps an indexed load; the previous note read it the other way
+round.
+
+**The `>=` spelling is real and is cheap to match.** Retail ends the distance test with
+`fcmpo cr0, f28, f0 ; blt <skip>`; ours emits `fcmpo cr0, f28, f0 ; cror eq,gt,eq ; bne <skip>` for
+`nearestDistance >= 7.f`. Writing `!(nearestDistance < 7.f)` instead gives retail's instruction
+sequence: **85.29% -> 86.04%**, the only ChooseSpawnPoint change measured this run that moves the
+number. **Not kept in the diff** - it is not needed by this item, and `!(a < b)` and `a >= b` differ
+for NaN (`blt` is taken for an unordered compare, `cror eq,gt,eq` is not), so it is a real semantic
+change bought for 4 bytes. Whoever matches this function needs it and should decide it then.
+
+**The inlined `push_back` is a shared-header difference.** Retail's is
+`lwz size ; lwz capacity ; cmpw ; bne grow ; slwi ; bl reserve`. Ours has a second path retail does
+not: `cmpw size, capacity ; blt grow ; cmpwi capacity, 0 ; ... li r4, 4 ; beq <grow-with-4>`. That
+is `rstl::vector<TUniqueId>::push_back` in a header, so this function cannot be finished from
+`CGMMultiplayer.cpp` alone.
+
+STALE: "retail indexes players through `addi r0,r23,5372 ; lwzx r4,r26,r0` where ours keeps a pointer in r23" (previous run, ChooseSpawnPoint) - measured on this tree it is the other way round: retail emits `lwz r4, 0x14fc(r23)` with r23 a pointer and r22 the counter, ours emits the `addi`+`lwzx` off r26; and hoisting `ObjectListById` above `reserve` is worth exactly 0.00%
+
+## `fn_80197910` is `create_node`, characterised (the previous run stopped at "no match")
+
+`build/G2ME01/src/.../CGMMultiplayer.o` (ours) does **not** define `fn_80197910` at all. It defines
+`create_node__Q24rstl234red_black_tree<Q24rstl29pair<Ui,P17CGameModeListener>,...>4node...`, 112
+bytes, weak COMDAT. Retail's `fn_80197910`, 104 bytes, is the same function: it `allocate(24)`s and
+stores the same six words (four incoming arguments plus `*(r8)` and `*(r8+4)`), and its instruction
+sequence was printed verbatim in the earlier run's objdiff listing. Two real differences:
+
+- ours has a null-ish guard retail does not: `addic. r5, r3, 0x10 ; beq <epilogue>` (i.e. "if
+  `n + 0x10 == 0`, skip the value copy"), and it uses `r5` for the `+0x10` address;
+- ours defers both `lwz` from `r31` until after all four argument stores; retail interleaves them.
+
+Both come from `include/rstl/red_black_tree.hpp`'s `create_node` / `rstl/construct.hpp`'s
+`construct_impl`, which every unit instantiating `red_black_tree` shares. Even once the bytes are
+right, objdiff pairs **by name**, so retail's `fn_80197910` would still need renaming to the mangled
+name (as run 1 did for 11 others). Not a `CGMMultiplayer` change.
+
+**Trap for the next run:** `build/G2ME01/obj/MetroidPrime/Player/CGMMultiplayer.o` is the **retail**
+object extracted from the DOL; `build/G2ME01/src/MetroidPrime/Player/CGMMultiplayer.o` is **ours**.
+Reading the former's symbol table makes it look as though our object defines `fn_80197910` and
+`fn_801968D4` under those names - it does not, and that misreading sends you looking for a rename
+that is not there.
+
+`fn_801968D4` is unchanged at 0.00% and still the `CPlayerState::operator=` layout question run 1
+described; renaming it to `__as__12CPlayerStateFRC12CPlayerState` would only pair it, and the bytes
+differ, so it would not become a match.
+
+## Gates (all re-measured on this tree)
+
+- `./tools/decomp_build.sh` -> `All: 34.87% fuzzy, 28.52% matched, 12.90% linked (12354 / 28465)`.
+- `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` - unchanged.
+- `./tools/goal_check.sh build/goal/item.json` -> **PASS**, seven checks ok, including
+  `gate.sh` (DOL sha1, all 86 RELs, report diff, module wiring, docs claims, port probe),
+  `check_symbol_names.py`, `counts: matched 12353 -> 12354  linked 5863 -> 5863`,
+  `no asm added`, and `no judge-owned path touched`.
+- No `config/`, `configure.py`, `splits.txt`, `files.cmake` or `tools/` change; `git status` shows
+  only `src/MetroidPrime/Player/CGMMultiplayer.cpp`. (`docs/HANDOFF.md` is rewritten by the judge;
+  I reverted my tree's copy so the diff stays one line.)
+
+## Nothing filed as `NEW:`
+
+The two remaining blockers in this unit are both rooted in shared headers
+(`rstl/red_black_tree.hpp` for `fn_80197910`, `CPlayerState` for `fn_801968D4`) and would need a
+`symbols.txt` rename in *this* unit on top, which makes them awkward to queue as another item's
+target - and `CPlayerState` is already the subject of a better-scoped item. They are characterised
+above instead, which is what the brief asks for in place of a placeholder `NEW:`.
+
+## A note on the reviewer's "count gamed" rule
+
+No initialisation was dropped, no call removed, no stub introduced, no `asm` added, and no shared
+header touched. The single edit replaces one spelling of a value with another spelling of the same
+value at one call site; `idx` is still computed and still used for the index. The function went
+from 712 bytes of near-retail to 712 bytes of *exactly* retail.

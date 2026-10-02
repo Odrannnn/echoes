@@ -136,7 +136,7 @@ TUniqueId CGMMultiplayer::ChooseSpawnPoint(CStateManager& mgr, uint playerIndex,
 
 void CGMMultiplayer::RespawnPlayer(CStateManager& mgr, uint playerIndex) {
   const uint idx = playerIndex;
-  const TUniqueId spawnId = ChooseSpawnPoint(mgr, idx, mSpawnPoints[idx]);
+  const TUniqueId spawnId = ChooseSpawnPoint(mgr, playerIndex, mSpawnPoints[idx]);
   if (spawnId == kInvalidUniqueId) {
     return;
   }
