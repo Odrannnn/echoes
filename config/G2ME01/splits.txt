@@ -1474,6 +1474,9 @@ MetroidPrime/ScriptLoader/AIMannedTurret.cpp:
 	.text       start:0x80227504 end:0x80227530
 	.sbss       start:0x80419560 end:0x80419568
 
+MetroidPrime/ScriptLoader/Carve80227530.c:
+	.text       start:0x80227530 end:0x80227540
+
 MetroidPrime/ScriptLoader/EmperorIngStage1.cpp:
 	.text       start:0x80227540 end:0x8022756C
 	.sbss       start:0x80419570 end:0x80419578
