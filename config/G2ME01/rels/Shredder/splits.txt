@@ -8,3 +8,7 @@ Sections:
 
 MetroidPrime/ScriptObjects/ShredderAccessors.cpp:
 	.text       start:0x00000000 end:0x000000C8
+
+REL/REL_Setup.cpp:
+	.text       start:0x00002940 end:0x00002AE4
+	.rodata     start:0x00000080 end:0x00000104

@@ -14,3 +14,7 @@ MetroidPrime/ScriptObjects/CRipperRelMain.cpp:
 
 MetroidPrime/ScriptObjects/CRipperForwarders.cpp:
 	.text       start:0x00000514 end:0x0000055C
+
+REL/REL_Setup.cpp:
+	.text       start:0x00001618 end:0x000017BC
+	.rodata     start:0x00000038 end:0x000000BC

@@ -8,3 +8,7 @@ Sections:
 
 MetroidPrime/ScriptObjects/OctapedeSegmentAccessors.cpp:
 	.text       start:0x00000000 end:0x0000009C
+
+REL/REL_Setup.cpp:
+	.text       start:0x000043B0 end:0x00004554
+	.rodata     start:0x000000A0 end:0x00000124

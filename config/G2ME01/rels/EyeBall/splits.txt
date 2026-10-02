@@ -8,3 +8,7 @@ Sections:
 
 MetroidPrime/ScriptObjects/EyeBallAccessors.cpp:
 	.text       start:0x00000000 end:0x000000D8
+
+REL/REL_Setup.cpp:
+	.text       start:0x000026D0 end:0x00002874
+	.rodata     start:0x000000B0 end:0x00000134

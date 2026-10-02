@@ -8,3 +8,7 @@ Sections:
 
 MetroidPrime/ScriptObjects/AtomicBetaAccessors.cpp:
 	.text       start:0x00000000 end:0x0000009C
+
+REL/REL_Setup.cpp:
+	.text       start:0x000024A0 end:0x00002644
+	.rodata     start:0x00000078 end:0x000000FC

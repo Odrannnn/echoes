@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    13132 / 28465 functions        (37.11% fuzzy, 30.55% of code, 13.49% fully linked)
-linked     6224 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+matched    13232 / 28465 functions        (37.11% fuzzy, 30.55% of code, 13.49% fully linked)
+linked     6324 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  11488 / 16726 functions        (main/*, including the SDK's)
 port link  287 undefined, 0 duplicates   (287 since the ninth upstream sync, 2026-10-02: 26 upstream
                                    units joined files.cmake, five listed names were renamed and three
@@ -22,7 +22,7 @@ port link  287 undefined, 0 duplicates   (287 since the ninth upstream sync, 202
                                    closed 23 names and opened 97 that nothing implements yet -
                                    docs/research/port_link_gap.md, "The four whole units". Before that:
                                    250 again since 2026-09-30: lane commits 33b784fb
-REL units   1644 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   1744 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 How these numbers got here - the first seven upstream syncs and the unit flips, each with what it
@@ -484,6 +484,28 @@ it now keeps the tip's comment there and settles the definitions line by line (t
 synthetic three-way only). Generating the `configure.py` / `splits.txt` / `files.cmake` entries
 from the carve files is **not built** - wait for the resolver's kept/released counts before
 restructuring three files every lane and every prompt names. (6) Sonnet removed, above.
+
+**Five more, 2026-10-02 late evening (what each came to).** (1) **Every module's `REL_Setup` tail is
+now claimed.** 22 modules had no `REL/REL_Setup.cpp` split; `tools/wire_rel_setup.py` claimed 20 of
+them with no agent run (the other two, `ScriptCoin` and `ScriptGui`, already link the tail from a
+unit of their own, so the tool's claim overlaps and was reverted): +100 matched, +100 linked, all 86
+module hashes held. The tool's first build is expected to fail six hashes (the entry points are not
+named yet); judge only after the second. (2) **Module twin items list runs**: `goal_seed.py --only
+twin` now lists, per module, runs of adjacent twins (one run is one claimable range), longest first,
+and only twins whose matched copy has a source of ours; the reason carries the trial's lessons.
+`twin_scan.py` twins carry `addr` for this (the report's address is unit-relative; the unit name or
+an `fn_` name gives the base). Dry run: 81 candidates. Still opt-in; none seeded with the new text.
+(3) **Retries already read the failed run's notes** (`run_goal.sh` tells the agent to read
+`notes/<id>.md` first), and (4) **a run that writes `WALL:` already goes to review** - nothing to
+build for either. Measured from the lane logs since 2026-10-01, by fails when picked: 0 fails 336
+landed / 102 FAIL / 59 WALL / 7 STALE (67%), 1 fail 33 / 13 / 9 / 8 (52%), 2 fails 5 / 1 / 1 / 3;
+runs that ended without a verdict line are not counted. **So a retry lands about half the time and
+the fails=1 backlog is worth running**, not a reason to retire items early. (5) **Worked examples
+for the commonest module shapes**: of 2,736 REL twins, 1,515 have a matched copy already built
+inside some module (`rel_example`); the other 1,221 share 175 twins, and the top eight cover 525
+(`CArchMsgParmUserInput::~` 210 functions in 50 modules, `IObjFactory::~` 73, `auto_ptr<CScannable
+ObjectInfo>::~` 63, `CPatterned::~` 48). Eight `progress-example-*` items were queued (not at the
+front), one module each, to land the first copy of each; **pass rate unmeasured**.
 
 **Queue triage, 2026-10-01.** `goal_seed.py` has run dry ("nothing to seed"): its three kinds (REL
 heads, Prime 1 donors, near-done `match` units) do not cover a DOL unit that has source but is far

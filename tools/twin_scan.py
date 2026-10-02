@@ -13,6 +13,7 @@ a matched one of the same shape, preferring a twin that has a source file of our
 """
 import collections
 import json
+import re
 import struct
 import sys
 from pathlib import Path
@@ -70,7 +71,9 @@ def scan(root):
     `missing` counts report units whose object could not be read. A twin in a REL module also
     carries rel_example: (unit, name, source) of a matched copy that is already built from our
     own source inside some REL module, or None - the nearest thing to a worked answer, since a
-    module's copy needs the module recipe as well as the body.
+    module's copy needs the module recipe as well as the body. addr is the function's address
+    in its section where the unit says where it starts (else unit-relative), which is what says
+    two twins of one unit are adjacent.
     """
     root = Path(root)
     od = json.loads((root / 'objdiff.json').read_text())
@@ -88,6 +91,14 @@ def scan(root):
             continue
         meta = u.get('metadata') or {}
         src = meta.get('source_path') or ''
+        # The report's address is relative to the unit's own section. dtk's units carry their
+        # start in the name, and an `fn_<module>_<hex>` function carries its own address.
+        m = re.search(r'auto_(?:fn_\d+_|\d+_)([0-9A-Fa-f]+)_text$', u['name'])
+        base = int(m.group(1), 16) if m else 0
+        for f in u.get('functions') or []:
+            m = None if base else re.fullmatch(r'fn_\d+_([0-9A-F]+)', f['name'])
+            if m:
+                base = int(m.group(1), 16) - int(f.get('address') or 0)
         for f in u.get('functions') or []:
             x = F.get(f['name'])
             if not x:
@@ -101,16 +112,16 @@ def scan(root):
                 if src and not u['name'].startswith('main/'):
                     rel_ex.setdefault(x[1], (u['name'], f['name'], src))
             else:
-                un.append((x[1], x[0], u, f['name'], src))
+                un.append((x[1], x[0], u, f['name'], src, base + int(f.get('address') or 0)))
     twins, rest = [], []
-    for shape, size, u, name, src in un:
+    for shape, size, u, name, src, addr in un:
         t = matched.get(shape)
         if not t:
             rest.append((hash(shape), size, u['name'], name, src,
                          bool((u.get('metadata') or {}).get('auto_generated'))))
             continue
         twins.append({
-            'unit': u['name'], 'name': name, 'size': size, 'source': src,
+            'unit': u['name'], 'name': name, 'size': size, 'source': src, 'addr': addr,
             'rel': not u['name'].startswith('main/'),
             'auto': bool((u.get('metadata') or {}).get('auto_generated')),
             'twin_unit': t[0], 'twin_name': t[1], 'twin_source': t[2],

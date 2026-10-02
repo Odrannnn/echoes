@@ -8,3 +8,7 @@ Sections:
 
 MetroidPrime/ScriptObjects/GunTurretAccessors.cpp:
 	.text       start:0x00000368 end:0x00000404
+
+REL/REL_Setup.cpp:
+	.text       start:0x00009C60 end:0x00009E04
+	.rodata     start:0x00000268 end:0x000002EC

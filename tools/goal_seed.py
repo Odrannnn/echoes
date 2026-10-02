@@ -477,19 +477,49 @@ def twin_candidates(report: dict) -> list[dict]:
             key = (f"progress-twin-{re.sub(r'[^a-z0-9]', '', Path(unit).name.lower())}", unit)
         groups.setdefault(key, []).append(t)
 
+    def entry(t):
+        return (f"{t['name'][:CARVE_NAME_MAX]} ({t['size']} B"
+                + (f", in {t['unit'].split('/', 1)[1]}" if t["rel"] else "")
+                + f") = `{t['twin_name'][:CARVE_NAME_MAX]}` in {t['twin_source']}"
+                + (f" [already landed in a module as `{t['rel_example'][1][:CARVE_NAME_MAX]}` in "
+                   f"{t['rel_example'][2]}]"
+                   if t["rel"] and t.get("rel_example") and t["rel_example"][2] != t["twin_source"] else ""))
+
     out = []
     for (id_, target), fns in groups.items():
-        fns.sort(key=lambda t: (-t["size"], t["name"]))  # the bytes are the yield; biggest first
-        listed = "; ".join(
-            f"{t['name'][:CARVE_NAME_MAX]} ({t['size']} B"
-            + (f", in {t['unit'].split('/', 1)[1]}" if t["rel"] else "")
-            + f") = `{t['twin_name'][:CARVE_NAME_MAX]}` in {t['twin_source']}"
-            + (f" [already landed in a module as `{t['rel_example'][1][:CARVE_NAME_MAX]}` in "
-               f"{t['rel_example'][2]}]"
-               if t["rel"] and t.get("rel_example") and t["rel_example"][2] != t["twin_source"] else "")
-            for t in fns[:TWIN_LIST_MAX])
-        more = f" (and {len(fns) - TWIN_LIST_MAX} more: python3 tools/twin_scan.py --list)" \
-            if len(fns) > TWIN_LIST_MAX else ""
+        if target.startswith("module:"):
+            # The 2026-10-02 trial (4 of 5 passed, 6 to 9 functions each): what landed from the
+            # list was adjacent twins claimed as one range, and the 80-odd entries of a module's
+            # full list were read and set aside. So a module's item lists runs, longest first,
+            # and only twins whose matched copy has a source file of ours.
+            src = sorted((t for t in fns if t["twin_source"]), key=lambda t: (t["unit"], t["addr"]))
+            runs: list[list[dict]] = []
+            for t in src:
+                if runs and runs[-1][-1]["unit"] == t["unit"] and runs[-1][-1]["addr"] + ((runs[-1][-1]["size"] + 3) & ~3) == t["addr"]:
+                    runs[-1].append(t)
+                else:
+                    runs.append([t])
+            runs.sort(key=lambda r: (-len(r), -sum(t["size"] for t in r)))
+            if not runs:
+                continue
+            shown, n = [], 0
+            for r in runs:
+                if n and n + len(r) > TWIN_LIST_MAX:
+                    break
+                r = r[:TWIN_LIST_MAX]
+                end = r[-1]["addr"] + r[-1]["size"]
+                shown.append(f"[.text 0x{r[0]['addr']:X}..0x{end:X}, {len(r)} adjacent] "
+                             + "; ".join(entry(t) for t in r))
+                n += len(r)
+            listed = " | ".join(shown)
+            more = (f" ({len(src) - n} more twins with a source and {len(fns) - len(src)} without "
+                    "one: python3 tools/twin_scan.py --list)") if len(fns) > n else ""
+            fns = src
+        else:
+            fns.sort(key=lambda t: (-t["size"], t["name"]))  # the bytes are the yield; biggest first
+            listed = "; ".join(entry(t) for t in fns[:TWIN_LIST_MAX])
+            more = f" (and {len(fns) - TWIN_LIST_MAX} more: python3 tools/twin_scan.py --list)" \
+                if len(fns) > TWIN_LIST_MAX else ""
         where = ("this REL module's matched_functions, summed over its units; follow the module "
                  "recipe in docs/RUNNING_THE_DECOMP.md and keep the module's sha1 equal to "
                  "config/G2ME01/config.yml") if target.startswith("module:") else \
@@ -501,7 +531,10 @@ def twin_candidates(report: dict) -> list[dict]:
             "reason": f"twin item: raise {where}. Re-measure first. {len(fns)} unmatched "
                       "function(s) here have the same instructions as an already matched function, "
                       "apart from call targets and data addresses - listed as `function (size) = "
-                      f"matched twin in its source file`, biggest first: {listed}{more}. For each, "
+                      "matched twin in its source file`, "
+                      + ("as runs of adjacent functions (one run is one claimable range), longest "
+                         "first" if target.startswith("module:") else "biggest first")
+                      + f": {listed}{more}. For each, "
                       "read the twin's source and write the same logic here with this copy's own "
                       "class, members, callees and data (from build/G2ME01/asm); the twin shows "
                       "the statement order and types that produce these instructions, so a "
@@ -510,10 +543,15 @@ def twin_candidates(report: dict) -> list[dict]:
                       "the way the twin's class does over inventing a new body. Where a line "
                       "says [already landed in a module as ...], that file is the same function "
                       "already built inside another REL module: copy how it is declared, placed "
-                      "and split there. One function "
+                      "and split there. From the first five module items (2026-10-02): the list "
+                      "is a map, not a work order - take one whole run as one new unit; a twin "
+                      "that is a member function only matches written as a member of a declared "
+                      "class, not as a free function over raw offsets; leave a destructor whose "
+                      "class this tree does not declare. One function "
                       "taken to 100% is a pass; write notes per function (before%, after%, "
                       "whether the twin's source matched unchanged). Seeded by goal_seed.py",
-            "sort": (-sum(t["size"] for t in fns),),
+            "sort": ((-max(len(r) for r in runs), -sum(t["size"] for t in fns))
+                     if target.startswith("module:") else (0, -sum(t["size"] for t in fns))),
         })
     out.sort(key=lambda c: c["sort"])
     return out
