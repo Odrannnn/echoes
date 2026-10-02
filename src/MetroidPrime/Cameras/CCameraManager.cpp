@@ -22,6 +22,8 @@
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptCamera.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptPathCamera.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptSpindleCamera.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptTrigger.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 #include "MetroidPrime/TCastTo.hpp"
@@ -392,15 +394,20 @@ void CCameraManager::CinematicCut(CStateManager& mgr) {
   // tools/gate.sh. 94% buys no matched function, so the gap is left documented rather than paid for.
 }
 
+// Retail 0x801AB8DC, 256 bytes: SetSurfaceCamera's shape with the id at +0x200 and the const
+// GetObjectById feeding `TCastToPtr<17CScriptPathCamera>` (0x8009952C). Same repeated `GetActive()`
+// guard as SetSurfaceCamera.
 void CCameraManager::SetPathCamera(TUniqueId uid, CStateManager& mgr) {
-  // TODO: validate the path-camera script actor, activate/reset its runtime camera, and notify
-  // triggers.
-  // Measured 2026-09-30 at retail 0x801AB8DC: identical to SetSpindleCamera (0x801AB794) apart
-  // from the two callees - the non-const ObjectById becomes the const GetObjectById (0x80041998)
-  // and the cast target is TCastToPtr<17CScriptPathCamera>(CEntity*) at 0x8009952C, not
-  // <20CScriptSpindleCamera> at 0x80098F44. Both callees live in TypesMatch.cpp, which is in the
-  // DOL build but deliberately out of the port build (files.cmake), so writing the body needs a
-  // PC-side definition for the cast as well.
+  if (mPathCamera != nullptr &&
+      !(mPathCamera->GetActive() &&
+        (!mPathCamera->GetActive() || mPathCamera->GetScriptCameraId() == uid))) {
+    if (TCastToConstPtr< CScriptPathCamera >(mgr.GetObjectById(uid))) {
+      mPathCamera->SetActive(true);
+      mPathCamera->SetScriptCameraId(uid);
+      mPathCamera->Reset(GetCurrentCameraTransform(mgr, false), mgr);
+      UpdateCameraTriggers(mPathCamera->GetUniqueIdRef(), mgr);
+    }
+  }
 }
 
 void CCameraManager::ClearPathCamera() {
@@ -409,15 +416,18 @@ void CCameraManager::ClearPathCamera() {
 }
 
 void CCameraManager::SetSpindleCamera(TUniqueId uid, CStateManager& mgr) {
-  // TODO: select/reset the runtime spindle camera from the script actor and notify triggers.
-  // Measured 2026-09-30 at retail 0x801AB794: the body is
-  //   if (!mSpindleCamera->GetActive() || mSpindleCamera->GetSpindleCameraId() != uid)
-  //     if (TCastToPtr<CScriptSpindleCamera>(mgr.ObjectById(uid))) { SetActive(true);
-  //       SetSpindleCameraId(uid); Reset(GetCurrentCameraTransform(mgr,false), mgr);
-  //       UpdateCameraTriggers(mSpindleCamera->GetUniqueId(), mgr); }
-  // That spelling measures 96.68%: retail emits a second, unreachable `beq` to the epilogue on the
-  // same condition. It also needs TCastToPtr<20CScriptSpindleCamera>__FP7CEntity (0x80098F44), which
-  // is not in the port's symbol set, so it was reverted rather than carried with a stand-in.
+  // Retail 0x801AB794. The guard repeats `GetActive()` on purpose: MWCC then emits one branch per
+  // operand off a single CSE'd load+mask, which is retail's second, unreachable `beq` (see
+  // SetSurfaceCamera for the measurement).
+  if (!(mSpindleCamera->GetActive() &&
+        (!mSpindleCamera->GetActive() || mSpindleCamera->GetSpindleCameraId() == uid))) {
+    if (TCastToPtr< CScriptSpindleCamera >(mgr.ObjectById(uid))) {
+      mSpindleCamera->SetActive(true);
+      mSpindleCamera->SetSpindleCameraId(uid);
+      mSpindleCamera->Reset(GetCurrentCameraTransform(mgr, false), mgr);
+      UpdateCameraTriggers(mSpindleCamera->GetUniqueIdRef(), mgr);
+    }
+  }
 }
 
 void CCameraManager::ClearSpindleCamera() {
@@ -425,13 +435,17 @@ void CCameraManager::ClearSpindleCamera() {
   mSpindleCamera->SetSpindleCameraId(kInvalidUniqueId);
 }
 
+// Retail 0x801AB674, 208 bytes. Takes the transform as a parameter, so there is no
+// GetCurrentCameraTransform call and the frame is 32 bytes. The id write is the out-of-line setter
+// at 0x80228910 (see CFixedCamera.hpp).
 void CCameraManager::SetFixedCamera(TUniqueId uid, const CTransform4f& xf, CStateManager& mgr) {
-  // TODO: activate/reset the fixed camera with this target ID and transform, then notify triggers.
-  // Measured 2026-09-30 at retail 0x801AB674: if (!mFixedCamera->GetActive() ||
-  // mFixedCamera->mScriptCameraId(at +0x20C) != uid) { SetActive(true); the out-of-line
-  // SetScriptCameraId at 0x80228910; Reset(xf, mgr) via vtable+0x80; UpdateCameraTriggers. Unlike
-  // the other two it takes the transform as a parameter, so there is no GetCurrentCameraTransform
-  // call and its frame is 32 bytes, not 96.
+  if (!(mFixedCamera->GetActive() &&
+        (!mFixedCamera->GetActive() || mFixedCamera->GetScriptCameraId() == uid))) {
+    mFixedCamera->SetActive(true);
+    mFixedCamera->SetScriptCameraId(uid);
+    mFixedCamera->Reset(xf, mgr);
+    UpdateCameraTriggers(mFixedCamera->GetUniqueIdRef(), mgr);
+  }
 }
 
 void CCameraManager::ClearFixedCamera() {
@@ -449,12 +463,13 @@ void CCameraManager::ClearFixedCamera() {
 // `GetCurrentCameraTransform` call returns into.
 void CCameraManager::SetSurfaceCamera(TUniqueId uid, CStateManager& mgr) {
   if (mSurfaceCamera != nullptr &&
-      (!mSurfaceCamera->GetActive() || mSurfaceCamera->GetScriptCameraId() != uid)) {
+      !(mSurfaceCamera->GetActive() &&
+        (!mSurfaceCamera->GetActive() || mSurfaceCamera->GetScriptCameraId() == uid))) {
     if (TCastToConstPtr< CUnknown85 >(mgr.GetObjectById(uid))) {
       mSurfaceCamera->SetActive(true);
       mSurfaceCamera->SetScriptCameraId(uid);
       mSurfaceCamera->Reset(GetCurrentCameraTransform(mgr, false), mgr);
-      UpdateCameraTriggers(mSurfaceCamera->GetUniqueId(), mgr);
+      UpdateCameraTriggers(mSurfaceCamera->GetUniqueIdRef(), mgr);
     }
   }
   // 96.82%, not 100%: one instruction. Retail emits a **second, unreachable `beq` to the epilogue**

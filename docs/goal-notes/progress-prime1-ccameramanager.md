@@ -1376,3 +1376,197 @@ Newly measured this run, for whoever wants them:
   RemoveLowPassFilter`, `UpdateFilters`, then a `mCameras` walk calling vtable+0x20. It needs
   three new port symbols (`fn_801E7D14`, `DisableFilter`, `RemoveLowPassFilter`) and **no new
   class**, which makes it the cheapest remaining 488-byte body.
+
+---
+
+# Ninth run (lane 4, 2026-10-01)
+
+Re-measured first on a fresh tree: the unit stood at **41 / 66 matched, 43.893154% fuzzy**, project
+**11415 / 28465** (`build/goal/judge/report.base.json`). Every earlier run's number reproduces
+(`SetSurfaceCamera` 96.815%, `SetPlayerCamera` 93.238%, `SetupInterpolation` 97.843%, `AddCamera`
+84.50%, `fn_801AD79C` 96.765%, `SetCinematicPaused` 97.143%, `fn_801ABD68` 96.667%; the four
+unpaired `rstl` COMDATs are still unpaired).
+
+**Result: `SetSurfaceCamera` 96.815% -> 98.337%, the unit's fuzzy 43.893% -> 43.92%. The unit's
+`matched_functions` did NOT rise (41 -> 41), so `./tools/goal_check.sh build/goal/item.json` ->
+**`goal_check: FAIL`** on exactly one check, `target did not rise`.** Everything else is clean:
+`build/goal/check-gate.log` -> **`GATE PASS 421b3c7c+1 changed`**, per-function diff
+`matched 11415 -> 11415 linked 5523 -> 5523 (+0 functions at 100%, 0 units newly linked)` and
+**no WORSE/GONE/UNLINKED/FELL line anywhere in the tree**; `no judge-owned path touched`;
+`no asm added`; `check_symbol_names.py` 0 missing; `check_decl_order.py --unit` = ok. Only changed
+path is `src/MetroidPrime/Cameras/CCameraManager.cpp` (`docs/HANDOFF.md` is rewritten by
+`tools/gate.sh`, which owns it).
+
+**The run's real result is a mechanism, not a count.** Runs 2, 4 and 8 each recorded the
+surface/spindle/fixed setters' dead branch as a measured wall and told the next run to go looking
+for it. It is now decoded, and it is a *source* rule, not allocator state.
+
+## THE ANSWER TO THE DEAD-BRANCH WALL (gates SetSpindleCamera, SetPathCamera, SetFixedCamera)
+
+Retail's four setters emit, on **one** `rlwinm.` flags, **two** branches:
+
+```
+801ab570:  rlwinm. r0,r0,25,31,31
+801ab574:  beq     801ab58c   <- into the body
+801ab578:  beq     801ab624   <- to the epilogue, UNREACHABLE
+801ab57c:  lhz     r3,512(r3)
+```
+
+> **MWCC emits both edges of a test when the same predicate appears TWICE in a short-circuit
+> chain. It CSEs the `lbz`+`rlwinm.` (one load, one mask) but still emits a branch per operand.**
+
+Six runs and 16 spellings failed because every one of them wrote the predicate **once**. Measured
+proof, from a throwaway probe TU compiled with mwcceppc's own flags (`tools/dis.sh`'s cflags taken
+from `build.ninja`), 40 variants:
+
+| spelling | branches on the `rlwinm.` |
+|---|---|
+| `!A \|\| B` | **one** (`beq`) - what all six runs wrote |
+| `!A \|\| (!A && B)` | **two**: `beq` body, `bne` epilogue |
+| `!(A \|\| (!A && B))` | **two**, same polarity: `bne` epilogue, `bne` body |
+| `A && (!A \|\| B)` | **two**, same polarity |
+| `!(A && (!A \|\| B))` | **two**, `beq` body, `beq` epilogue <- **retail** |
+
+The member that is byte-identical to retail's guard is
+
+```cpp
+  if (mSurfaceCamera != nullptr &&
+      !(mSurfaceCamera->GetActive() &&
+        (!mSurfaceCamera->GetActive() || mSurfaceCamera->GetScriptCameraId() != uid))) {
+```
+
+De Morgan turns it into `!active || (active && id != uid)` == `!active || id != uid`, i.e. exactly
+the guard the six runs wrote by hand. **The inner `!active` is redundant to a reader and is the
+entire trick.** 96.815% -> **98.337%**, and the emitted `0x801AB560-0x801AB588` is now
+instruction-for-instruction retail's, dead branch included.
+
+**Measured and rejected, do not retry (all one branch, i.e. the old wall):** the `||`-De-Morgan
+form `!(GetActive() && id == uid)`; two separate early returns; the id test hoisted ahead of the
+active test (also reorders the `lhz`/`cmplw`); `!` of `!`; `&&` with `== false` / `!= true` spelled
+out; `? :` with `true` in either arm; `switch` on the active byte; `while(1)`/`do-while(0)` with a
+`break`; a comma expression; a `bool` temp; `A ? B : true`; three-way `||` with a re-test; the
+`(A || B) || (A && B)` tautology; `!(A && B && 1)`; and `A || B || C` in every sign order. **16 of
+the 40 probe variants produce one branch and are all dead ends.**
+
+**How to apply it to the other three:** `SetSpindleCamera` (0x801AB794), `SetPathCamera`
+(0x801AB8DC) and `SetFixedCamera` (0x801AB674) have the identical prologue - I read
+`SetFixedCamera` this run and it is the same three-branch shape with the id at **`+0x20C`**, no
+null test, and no `GetCurrentCameraTransform` call (it takes the transform as a parameter, so its
+frame is 32 bytes). Wrap each of their guards the same way. They are still at 1.6-1.9% because
+their bodies are never written, so this is the first thing to try on them - **and it is not
+sufficient on its own**: each still needs its body written, and each ends in the same
+`UpdateCameraTriggers(GetUniqueId(), mgr)` call, so each will hit the by-ref wall below at ~98%.
+
+## What is left in SetSurfaceCamera, and why the count did not move
+
+**One instruction, and it is run 7's by-ref `TUniqueId` temporary wall - not anything about this
+guard.** Retail's tail is
+
+```
+801ab614:  addi    r4,r1,8
+801ab618:  lhz     r0,8(r6)
+801ab61c:  sth     r0,8(r1)     <- one store
+801ab620:  bl      UpdateCameraTriggers
+```
+
+Ours is identical **plus `sth r0,20(r1)`** - the named local's own stack home, which retail does not
+have because retail has no named local. The named local is nevertheless *required*: passing
+`mSurfaceCamera->GetUniqueId()` inline allocates argument slot 20 instead of 8 and scores **98.28%**;
+the local gets retail's slot and scores **98.337%**.
+
+Measured this run, none better, **do not retry**: hoisting the read above `Reset` (**90.98%** -
+it reorders the `lhz` past the virtual call), a `const TUniqueId&` binding (98.28%),
+`static_cast<const TUniqueId&>(camId)` (98.34%, byte-identical codegen to the shipped spelling),
+`static_cast<const TUniqueId&>(mSurfaceCamera->GetUniqueId())` (98.28%),
+`TUniqueId* const pId = &...GetUniqueId(); UpdateCameraTriggers(*pId, mgr)` (98.28%),
+`*&camId` (98.34%, identical), a `CSurfaceCamera* const cam` local (98.28%), and a non-`const`
+local (98.34%). **So this function cannot reach 100% from our headers**, and neither can
+`UpdateCameraTriggers` itself (run 7 measured 20 spellings on the same wall for the same reason).
+
+## Reusable rules this run added
+
+1. **A predicate that appears twice in a short-circuit chain makes MWCC emit one branch per
+   operand, off a single CSE'd load+mask. A predicate that appears once gets one branch.** This is
+   a source-level property, is the answer to a wall six runs recorded as unreachable, and it
+   explains retail's "unreachable" `beq` - the edge is unreachable *after* optimisation but not
+   *before* it. Look for it anywhere a decompiler's output has a dead branch.
+2. **De Morgan is a codegen tool, not just a readability one.** `!(A && (!A || B))` is
+   semantically identical to `!A || B` and compiles to different code. When a function is one
+   instruction short and the instruction is a *branch*, try the De Morgan form with the predicate
+   **duplicated**, not the tidy one.
+3. **A throwaway probe TU compiled with the unit's own cflags settles "can MWCC emit X?" in about
+   40 seconds, and 40 variants cost one compile.** `tools/fast_try.sh`'s loop cannot answer this
+   class of question at all, because every variant needs a full unit edit plus an objdiff run.
+   Take the flags from `build.ninja`'s `mwcc_sjis` rule. This is the same idea as run 7's
+   `tools/size_probe_gs.cpp`, applied to codegen rather than layout.
+4. **Search retail for the *shape*, not just the function.** `objdump -d build/G2ME01/main.elf`,
+   then look for a flags-setting instruction followed by two conditional branches to different
+   targets: **exactly 4 functions in the whole DOL have it** (`SetFixedCamera`, `SetPathCamera`,
+   `SetSpindleCamera`, `SetSurfaceCamera`, all this unit), and 0 of them are matched here. A shape
+   this rare is either a bug or a deliberate source idiom - here, idiom 1 above.
+5. **A count that does not move is a FAIL even when everything else is green**, so "the gate passes"
+   is not a substitute for `goal_check`. The gate passing here is what makes the diff worth
+   keeping: it is a real, measured, regression-free improvement in the unit that a later run can
+   finish.
+
+## Files touched
+
+- `src/MetroidPrime/Cameras/CCameraManager.cpp` - `SetSurfaceCamera`'s guard (the duplicated-
+  predicate form above), the named `camId` local, and comments recording the mechanism, the 16
+  rejected one-branch spellings and the 8 rejected by-ref spellings with their scores. No header,
+  no layout, no new callee: the port's undefined count is unmoved.
+
+## NEW
+
+(none filed. Everything measured this run is inside this item's own unit, so a separate item could
+not raise a count for it independently. The dead-branch rule is a lesson, not a target, and
+`SetSpindleCamera`/`SetPathCamera`/`SetFixedCamera` are in this same unit - they are the obvious
+next thing for the next run of this item, together with their unwritten bodies.)
+
+---
+
+# Tenth run (lane 9, 2026-10-02)
+
+**Result: unit `matched_functions` 41 -> 45 / 66** (`build/goal/judge/report.base.json` -> `build/report.json`),
+project 12437 -> 12441. `./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`** (gate
+PASS, no asm, no judge path touched, `check_symbol_names.py` clean). Run 9's work had NOT landed on this
+tree (SetSurfaceCamera was 96.82%), so this run re-applied and finished it.
+
+| function | before | after |
+|---|---|---|
+| `SetSurfaceCamera` | 96.815 | **100.000** |
+| `SetSpindleCamera` | 1.61 | **100.000** |
+| `SetPathCamera` | 1.56 | **100.000** |
+| `SetFixedCamera` | 1.92 | **100.000** |
+
+## What closed the "wall" (corrects run 9's snippet and the by-ref wall)
+
+1. **Run 9's quoted guard had the wrong polarity.** `!(A && (!A || id != uid))` gives 99.92% (one
+   `bne` where retail has `beq`). The byte-identical guard is
+   `!(A && (!A || id == uid))` (body entered when `!A || id != uid`, bails when already active on this id).
+2. **The by-ref `TUniqueId` temporary "wall" (runs 7-9: SetSurfaceCamera / UpdateCameraTriggers callers) is
+   solved by `CEntity::GetUniqueIdRef()`** (already in `CEntity.hpp`, added for CGMMultiplayer):
+   `UpdateCameraTriggers(cam->GetUniqueIdRef(), mgr)` binds the member and emits retail's single
+   `lhz/sth 8(r1)`, with no named local and no extra slot. Run 9's rejected spellings all started from
+   the by-value `GetUniqueId()`; none tried the reference accessor. The same may unblock
+   `SetPlayerCamera` (93.24%, "one frame slot"): try `GetCurrentCameraId` sret passed straight through,
+   and `UpdateCameraTriggers` itself (94.45%).
+3. Path camera uses `TCastToConstPtr<CScriptPathCamera>(mgr.GetObjectById(uid))` (const lookup, as
+   SetSurfaceCamera); spindle uses non-const `ObjectById` + `TCastToPtr<CScriptSpindleCamera>`.
+4. `SetFixedCamera` has no null test and no `GetCurrentCameraTransform`; the id setter is out of line
+   (retail 0x80228910).
+
+## Files touched
+
+- `src/MetroidPrime/Cameras/CCameraManager.cpp` - the four setters above (+ includes).
+- `include/MetroidPrime/Cameras/CFixedCamera.hpp` - `mUnknown200[0xC]`, `mScriptCameraId` (+0x20C),
+  getter, out-of-line `SetScriptCameraId` (declared only, like CSurfaceCamera's).
+- `src/MetroidPrime/PortGlobals.cpp` - port definitions: `PORT_CAST_TO_PTR` for
+  `CScriptSpindleCamera` and `CScriptPathCamera`, `CFixedCamera::SetScriptCameraId` (real body, one
+  store), includes. Undefined count not raised (gate PASS).
+
+## Still open
+
+`SetPlayerCamera` 93.24%, `UpdateCameraTriggers` 94.45% (retry with `GetUniqueIdRef()`), `SetupInterpolation`
+97.84%, `SetCinematicPaused` 97.14%, `fn_801ABD68` 96.67%, `fn_801AD79C` 96.76%, `AddCamera` 84.5%, and the
+unwritten Echoes-only bodies (`EnterCinematic`, `Reset`, `StopCinematics`, ...).

@@ -91,6 +91,8 @@
 #include "MetroidPrime/ScriptObjects/CScriptTrigger.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptCameraShaker.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptPathCamera.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptSpindleCamera.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptWaypoint.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 #include "Collision/CMaterialFilter.hpp"
@@ -106,6 +108,7 @@
 #include "MetroidPrime/CHintManager.hpp"
 #include "MetroidPrime/CUnknown85.hpp"
 #include "MetroidPrime/CGameHint.hpp"
+#include "MetroidPrime/Cameras/CFixedCamera.hpp"
 #include "MetroidPrime/Cameras/CSurfaceCamera.hpp"
 #include "Kyoto/Particles/CElementGen.hpp"
 
@@ -824,6 +827,11 @@ PORT_CAST_TO_PTR(CCollisionActor, kET_CollisionActor)
 // Type 85 is `CUnknown85` in src/MetroidPrime/TypesMatch.cpp, which is deliberately out of the port
 // build; `CCameraManager::SetSurfaceCamera` needs the cast. See include/MetroidPrime/CUnknown85.hpp.
 PORT_CAST_TO_PTR(CUnknown85, 85)
+// `CCameraManager::SetSpindleCamera` casts the script actor to CScriptSpindleCamera
+// (`TCastToPtr<20CScriptSpindleCamera>` 0x80098F44); TypesMatch.cpp is out of the port build.
+PORT_CAST_TO_PTR(CScriptSpindleCamera, kET_ScriptSpindleCamera)
+// `CCameraManager::SetPathCamera`: `TCastToPtr<17CScriptPathCamera>` 0x8009952C.
+PORT_CAST_TO_PTR(CScriptPathCamera, kET_ScriptPathCamera)
 // Type 46 is `CUnknown46`, retail's control-hint actor (the `LoadControlHint` / `CTLH` loader);
 // `fn_8022A5B4` in `PortCHintManager.cpp` casts every active hint to it. `tools/dis.sh 0x80099B68
 // 0x24` is the ordinary wrapper with `li r4,46`, and it is here for the same reason as the two
@@ -1788,6 +1796,12 @@ void CScriptTrigger::UpdateCameraInhabitant(TUniqueId id, CStateManager& mgr) {
 void CSurfaceCamera::SetScriptCameraId(TUniqueId id) {
   ReportedCameraManagerStandIn("CSurfaceCamera::SetScriptCameraId");
 }
+
+// `CFixedCamera`'s out-of-line script-id setter, retail 0x80228910 (12 bytes: `sth r0,524(r3)` plus
+// an epilogue, from the call site in `CCameraManager::SetFixedCamera`). Declared and left undefined
+// in `CFixedCamera.hpp` for the same reason as `CSurfaceCamera::SetScriptCameraId`; unlike that
+// stand-in this one is the real body, since the member's offset is known.
+void CFixedCamera::SetScriptCameraId(TUniqueId id) { mScriptCameraId = id; }
 
 // CAreaOctTree::Node's two out-of-line accessors.
 //
