@@ -33,10 +33,14 @@ struct is_trivially_destructible {
 // is the 0x54-byte `fn_8024E860` at 0x8024E860 - the same 21 instructions as the instantiations
 // that *are* declared trivially destructible. The primary template above says false, so
 // `destroy_impl(begin, end)`'s loop survives into the instantiation and costs 48 bytes.
-template <>
-struct is_trivially_destructible< unsigned long long > {
-  enum { value = true };
-};
+//
+// It is trivially *constructible* too, for the copy side: retail's copy constructor
+// `fn_8024EAE0` (0x8024EAE0) and its `reserve` `fn_8024F62C` (0x8024F62C) copy with no
+// per-element null test, which the placement new of the primary template's `construct_impl`
+// emits (`cmplwi rX,0 / beq` inside the loop), and the copy constructor's loop is unrolled
+// eight elements per iteration. Without the trait both are a plain loop: 8 bytes too long in
+// `reserve` and 152 bytes too short in the copy constructor.
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(unsigned long long)
 
 template < typename T >
 struct is_trivially_destructible< T* > {

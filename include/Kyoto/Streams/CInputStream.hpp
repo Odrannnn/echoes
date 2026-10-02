@@ -156,12 +156,18 @@ inline unsigned long CInputStream::Get< unsigned long >(const TType< unsigned lo
 
 // Port: on an LP64 host `u64` is `unsigned long`, which already has its (retail, 32-bit)
 // specialization above; `ReadInt64` covers the 64-bit read there.
+//
+// Retail reads a `u64` as one 8-byte load and advances the read pointer once. The witness is
+// `rstl::vector<u64>::vector(CInputStream&, const Alloc&)` (retail 0x8024F3A8), whose element
+// loop is `lwz r4,8(r30) / addi r0,r4,8 / stw r0,8(r30) / lwz r7,0(r4) / lwz r8,4(r4)` per
+// element - one bump of 8 and two loads off the same pointer. Two `ReadInt32`s instead give two
+// bumps of 4 and a load off each, which is 336 bytes against retail's 644 (the loop unrolls
+// twice rather than eight times). `ReadInt64` is that one-bump read; on the host it goes through
+// `cinput_stream_read_be32` twice, which is why the two spellings are kept apart.
 #if !(defined(TARGET_PC) && __SIZEOF_LONG__ == 8)
 template <>
 inline u64 CInputStream::Get< u64 >(const TType< u64 >& type) {
-  const uint high = ReadInt32();
-  const uint low = ReadInt32();
-  return (static_cast< u64 >(high) << 32) | low;
+  return ReadInt64();
 }
 #endif
 

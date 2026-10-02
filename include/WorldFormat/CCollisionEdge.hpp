@@ -4,6 +4,14 @@
 #include "Kyoto/Streams/CInputStream.hpp"
 #include "rstl/construct.hpp"
 
+// Retail reads a `CCollisionEdge` from a stream out of line: its per-element helper
+// `fn_8024747C` (0x8024747C, 0x2C bytes) is called from
+// `rstl::vector<CCollisionEdge>::vector(CInputStream&, const Alloc&)` (retail 0x8024F0FC)
+// with a stack temporary as the destination, and the temporary is then copied into the slot -
+// 184 bytes. Defined in the class, this constructor is implicitly inline, mwcceppc inlines it
+// and no symbol survives, so the stream constructor is 464 bytes instead. `#pragma dont_inline`
+// around the class was measured and changes nothing (still 464, no out-of-line copy emitted);
+// the call only appears if the constructor is defined out of class.
 class CCollisionEdge {
 public:
   CCollisionEdge(ushort index1, ushort index2) : mIndex1(index1), mIndex2(index2) {}
@@ -28,11 +36,14 @@ CHECK_SIZEOF(CCollisionEdge, 4)
 // (`rstl::vector<ushort>`'s, called from the same destructor at `this + 0x50`). Without this
 // specialisation the primary template says false, `destroy_impl(begin, end)`'s loop survives,
 // and the instantiation is 0x84 bytes instead.
+//
+// The same holds for the copy: retail's copy constructor `fn_8024E998` (0x8024E998) copies with no
+// per-element null test and unrolls eight elements per iteration, and its `reserve`
+// `fn_8024F6D8` (0x8024F6D8) is 172 bytes against our 180 for the same reason - the placement new
+// of the primary template's `construct_impl` tests the destination inside the loop. The class has
+// an implicit copy assignment operator, so the trait's `*dest = src` is the whole of `T(src)`.
 namespace rstl {
-template <>
-struct is_trivially_destructible< CCollisionEdge > {
-  enum { value = true };
-};
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CCollisionEdge)
 } // namespace rstl
 
 #endif // _CCOLLISIONEDGE
