@@ -26,8 +26,46 @@ bool CBallCamera::CheckFailsafeFromMorphBallState(CStateManager& mgr) {
 }
 
 bool CBallCamera::TransitionFromMorphBallState(CStateManager& mgr) {
-  // TODO: build the from-ball spline from player and first-person camera transforms.
-  return false;
+  // Retail reaches the camera manager through the inlined `CStateManager::GetCameraManager`
+  // (0x801AA0F8: lwz 476(r30) / slwi / add / lwz 5404) and calls `CurrentCamera` twice, once for
+  // the transform and once for the scan-object indicator; `CGameCamera::GetCameraManager` is
+  // out of line in another unit here, so it is spelled through the state manager directly.
+  const CTransform4f playerXf = Player(mgr).GetTransform();
+  const CTransform4f camXf =
+      const_cast< CCameraManager* >(mgr.GetCameraManager(GetControllerNumber()))
+          ->CurrentCamera(mgr, false)
+          ->GetTransform();
+  const CVector3f lookPos =
+      const_cast< CCameraManager* >(mgr.GetCameraManager(GetControllerNumber()))
+          ->CurrentCamera(mgr, false)
+          ->GetScanObjectIndicatorPosition(mgr);
+  mFromBallTransition->mLookPos = lookPos;
+  mFromBallTransition->mPlayerXf = playerXf;
+  const CVector3f eye = Player(mgr).GetEyePosition();
+  const CVector3f camPos = camXf.GetTranslation();
+  const float dist = (lookPos - camPos).Magnitude();
+  // The sweep runs backwards along the player's facing vector, not the camera's offset, and
+  // the 0.6 f is a `.sdata2` constant (0x8041CD00). The collision radius is 0.3 f (0x8041CD04).
+  const CVector3f endPoint = (0.6f * -dist) * playerXf.GetForward() + eye;
+  float distance;
+  // `endPoint` is const and the corrected point is a separate variable: retail keeps the sweep
+  // target in f25-f27 across the call and never re-stores it in the taken branch.
+  CVector3f point = endPoint;
+  if (DetectCollision(eye, endPoint, 0.3f, distance, mgr, GetControllerNumber())) {
+    point = -distance * playerXf.GetForward() + eye;
+  } else {
+    distance = dist;
+  }
+  rstl::vector< CVector3f > points;
+  points.reserve(4);
+  points.push_back_unsafe(camPos);
+  points.push_back_unsafe(point);
+  points.push_back_unsafe(eye);
+  points.push_back_unsafe(eye);
+  mFromBallTransition->mSpline.Initialise(points);
+  mFromBallTransition->mSpline.SetDuration(0.9999f);
+  mFromBallTransition->mSpline.CalculateLength();
+  return CheckFailsafeFromMorphBallState(mgr);
 }
 
 bool CBallCamera::UpdateTransitionFromBallCamera(CStateManager& mgr) {

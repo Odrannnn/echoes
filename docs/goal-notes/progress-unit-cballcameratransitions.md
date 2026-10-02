@@ -291,3 +291,202 @@ the better one is the intended function at 100.00%. `docs/HANDOFF.md` was update
 
 NEW: none. The one function this item wanted is done; the four remaining are large multi-item
 jobs and `fn_801AA3EC` is the same wall run 1 measured.
+
+---
+
+# Run 3 (2026-10-02, lane 2)
+
+`TransitionFromMorphBallState` (retail 0x801AA008, 860 bytes) is **now at 100.00%**
+(`build/report.json`). The unit goes **3/8 -> 4/8** matched and stays `NonMatching`. Nothing
+anywhere got worse and the diff adds no `asm`. `./tools/goal_check.sh build/goal/item.json`
+prints `PASS`.
+
+## What the function is
+
+Nothing like the name suggests: it is a *spline builder*, written from the disassembly, not
+inferred. Measured out of `tools/dis.sh 0x801AA008 0x35C` and `.sdata2` at `_SDA2_BASE_ =
+0x804223C0`:
+
+```cpp
+const CTransform4f playerXf = Player(mgr).GetTransform();          // CPlayer/CGameCamera +0x24
+const CTransform4f camXf    = <mgr>.CurrentCamera(mgr,false)->GetTransform();  // CCamera +0x24
+const CVector3f    lookPos  = <mgr>.CurrentCamera(mgr,false)->GetScanObjectIndicatorPosition(mgr);
+mFromBallTransition->mLookPos  = lookPos;     // +0x30
+mFromBallTransition->mPlayerXf = playerXf;    // +0x00, via CTransform4f::operator=
+const CVector3f eye    = Player(mgr).GetEyePosition();   // returns through a hidden pointer
+const CVector3f camPos = camXf.GetTranslation();
+const float     dist   = (lookPos - camPos).Magnitude();
+const CVector3f endPoint = (0.6f * -dist) * playerXf.GetForward() + eye;   // 0.6f = 0x8041CD00
+float distance;
+CVector3f point = endPoint;
+if (DetectCollision(eye, endPoint, 0.3f, distance, mgr, GetControllerNumber())) {  // 0.3f = 0x8041CD04
+  point = -distance * playerXf.GetForward() + eye;
+} else {
+  distance = dist;
+}
+rstl::vector<CVector3f> points;  points.reserve(4);
+points.push_back_unsafe(camPos); points.push_back_unsafe(point);
+points.push_back_unsafe(eye);    points.push_back_unsafe(eye);
+mFromBallTransition->mSpline.Initialise(points);
+mFromBallTransition->mSpline.SetDuration(0.9999f);   // store straight to +0x74, i.e. mSpline+0x38
+mFromBallTransition->mSpline.CalculateLength();
+return CheckFailsafeFromMorphBallState(mgr);
+```
+
+How the pieces were identified, all measured:
+
+- `lwz r0,476(r3) / slwi r0,r0,2 / add r3,r4,r0 / lwz r3,5404(r3)` is
+  `CStateManager::mCameraManagers[mControllerIdx]` - `mControllerIdx` is `CGameCamera`'s field at
+  0x1DC (`GetControllerNumber()`) and the manager array is `CStateManager`'s, 0x20 past the
+  player array that `CGameCamera::Player` reads (0x14FC vs 0x151C, measured from the two).
+- The vtable slot `+0x5C` (index 23) is `CActor::GetScanObjectIndicatorPosition(CStateManager const&)`
+  for every camera class - dumped out of `__vt__11CGameCamera` (0x803B66A0) and
+  `__vt__11CBallCamera` (0x803B6478) in `.data`. The call passes `&out` in r3, the camera in r4 and
+  the manager in r5, i.e. a hidden return pointer for a 12-byte `CVector3f`.
+- `CMotionSpline` is `{vtable, vector x3 (16 bytes each), mLength +0x34, mDuration +0x38,
+  mClosedLoop bit +0x3C, mType +0x40}`, 0x44 bytes - read out of `__ct__13CMotionSplineFbfQ13...`
+  at 0x80334BC4 and confirmed by `ValidateLength` (0x80332BC0) reading 52(r3) = 0x34.
+- `mSpline` is at 0x3C inside `SFromBallTransition` (0x30 transform + 0x0C look position), so
+  retail's `stfs f0,116(r3)` is the duration. The constant is `0.9999f` (`.sdata2` 0x8041CCEC,
+  bits 0x3F7FF3D1).
+
+## The five things that took the whole budget
+
+Every one is a *source shape* fact, and each is worth a few percent on its own. `tools/g2try.sh`
+and objdiff's byte percentage hide all five.
+
+1. **`push_back_unsafe`, not `push_back`.** With `reserve(4)` and exactly four pushes, retail's
+   inlined push has **no capacity test** at all (`lwz r3,52 / lwz r5,60 / mulli / addi / stw /
+   add / stfs x3`) - 55.73% -> 80.01% on this one change. `rstl::vector::push_back_unsafe` in
+   `include/rstl/vector.hpp` emits exactly that. The precedent for the container is
+   `CScriptSpindleCamera.cpp:80`.
+2. **The camera manager has to be spelled through `CStateManager`, not `CGameCamera`.** Retail
+   inlines `GetCameraManager` (the 0x1DC/0x151C read above); `CGameCamera::GetCameraManager` is
+   declared in the header and defined in `CGameCamera.cpp`, so in this tree the call is a real
+   `bl`. `const_cast<CCameraManager*>(mgr.GetCameraManager(GetControllerNumber()))` uses the
+   *inline* `CStateManager::GetCameraManager` and reproduces retail's instruction order exactly,
+   including the `mr r4,r31 / li r5,0` sitting in the middle of the inlined body. 91.11% ->
+   97.72% on its own. Do **not** make `CGameCamera::GetCameraManager` inline: it is a **100% matched
+   function** of `main/MetroidPrime/Cameras/CGameCamera` (20 B) and inlining it would delete it.
+3. **The sweep vector is `playerXf.GetForward()`, not the camera position.** The tell is the
+   offsets: retail loads 140/156/172 for the sweep and 100/116/132 for the delta, and 140/156/172
+   is `136 + {4, 20, 36}` = the *second column* of the `CTransform4f` copy of the player's
+   transform (`m01, m11, m21`). Reading it as `camXf.GetTranslation()` is a plausible-looking
+   wrong answer that sits at 99.81% and is only caught by the offsets. 99.81% -> 100.00%.
+4. **`(scale * vector) + eye`, not `eye + (scale * vector)`.** Retail's three adds are
+   `fadds f27,f6,f0` - product first, eye second. Semantically identical; the operand order is
+   the whole difference between 99.16% and 99.81%.
+5. **`endPoint` is const and the corrected point is a *second* variable.** Retail keeps the sweep
+   target in f25-f27 across the `DetectCollision` call and does **not** re-store it in the taken
+   branch, while the not-taken branch just stores the magnitude. Reassigning one variable makes
+   MWCC treat it as a memory object and emit a second store; `const CVector3f endPoint` plus
+   `CVector3f point = endPoint;` is what produces retail's shape. 84.78% vs 80.17% for the
+   reassignment form (measured with the same everything else).
+
+## Spellings measured this run, do not re-sweep them
+
+`tools/fast_try.sh` for the score, plus a per-instruction differ (see below). All are the same
+function; `dist`/`delta`/`camPos` are the only things that move. The frame size is in brackets -
+retail's is 304 and a 240/256 frame means the FPR save set is already wrong.
+
+| spelling | score (frame) |
+|---|---|
+| `eye, delta, dist, endPoint`, `push_back_unsafe` | 80.01% (240) |
+| `delta` declared before `eye` | 71.73% (240) |
+| `dist` between `delta` and `eye` | 68.31% (240) |
+| `delta` via `operator=` | 78.61% (240) |
+| `points` declared before the `if` | 74.94% (240) |
+| `endPoint` with `endPoint += ...` | 78.20% (240) |
+| `const float scale = 0.6f * -dist` as its own temp | 79.95% (240) |
+| `if (!DetectCollision(..)) {distance=dist;} else {endPoint=..}` | 79.19% (240) |
+| `const bool hit = DetectCollision(..); if (hit)` | 80.17% (240) |
+| everything inlined, `distance = 0.f` in the else | 82.43% (288) |
+| everything inlined, `distance = <the expression>` recomputed | 77.49% (304) |
+| `const endPoint` + `CVector3f point = endPoint` | 84.78% (256) |
+| + `const CVector3f camPos` after `dist` | 89.60% (304) |
+| + `camPos` before `dist`, `endPoint` reloads the translation | 99.37% (304) |
+| + `(scale * xf.GetTranslation()) + eye` | 99.81% (304) |
+| + `GetForward()` instead of `GetTranslation()` | **100.00%** (304) |
+| same but `camPos` after `dist` | 99.16% (304) |
+| same but `eye + (scale * ..)` | 99.53% (304) |
+| same but the `if` branch keeps `camPos` | 96.20% (304) |
+| same but `dist` inline (no `camPos`) | 92.01% (256) |
+
+**The stack-slot order is not controllable from the source.** For a long stretch of this run the
+bump allocator put the `rstl::vector` at `+36` where retail has it at `+48`, and no declaration
+order moved it - the order of `{delta, eye, lookPos, vector, endPoint, eyeCopy}` was identical
+across nine permutations. What finally fixed it was giving `camPos` its own name (item 5 and the
+`camPos` rows above): that is what puts three `CVector3f` slots ahead of the 16-byte one. If a
+future function here has a `CVector3f` whose address is never taken, suspect the same thing.
+
+## The link gate, and what it cost
+
+`probe_sources.sh` reported `292 undefined against a baseline of 291 (GREW)` after the first
+version of this function: three new names, all opened by calls in `CBallCameraTransitions.o`,
+which `files.cmake` *does* list, and none of the three reachable from a port TU:
+
+- `CBallCamera::DetectCollision` - body at `CBallCamera.cpp:343`, still the `return false` TODO,
+  and that unit is excluded;
+- `CMotionSpline::Initialise` (retail 0x803349D4, 0x174 B) and `CMotionSpline::CalculateLength`
+  (retail 0x80332C7C, 0x604 B) - **no definition anywhere in `src/`**, in any unit.
+
+All three are now announced stand-ins in `src/MetroidPrime/PortGlobals.cpp` beside the existing
+`GetCameraManager` / `Player` / `TeleportCamera` copies, each with the reason in place, using the
+file's existing `ReportedCameraManagerStandIn` helper. `CalculateLength` deliberately leaves
+`mLength` at the `0.0f` its constructor writes (the `.sdata2` word at 0x8041ECAC), so the
+failsafe's `length / 24.f` is 0 and not a NaN. Measured after: **289 undefined, 0 duplicates,
+LINKED** - a net **-2** against the 291 baseline, and `tools/link_gap.py` reports `284 MISSING,
+all accounted for`.
+
+`include/Kyoto/Math/CMotionSpline.hpp` gained one line, an inline
+`void SetDuration(float) { mDuration = duration; }`. Retail's transition builders overwrite the
+duration in place and the field is private, so the port needs a way to spell that; it is inline,
+so it adds no symbol to any object.
+
+## Gates
+
+```
+sha1sum build/G2ME01/main.dol         6ef9b491d0cc08bc81a124fdedb8bfaec34d0010  (unchanged)
+./tools/probe_sources.sh              752 files, 0 failed; LINKED, 289 undefined, 0 duplicates
+python3 tools/check_symbol_names.py   0 missing names
+python3 tools/check_files_cmake.py    every configured DOL object listed or excluded
+python3 tools/check_decl_order.py     1 unit checked, none out of retail order
+tools/link_gap.py                     284 MISSING, all accounted for
+./tools/decomp_build.sh               All: 34.94% fuzzy, 28.62% matched (12373 / 28465)
+./tools/goal_check.sh build/goal/item.json   PASS
+```
+
+`goal_check.sh` line by line: gate ok, `matched 12372 -> 12373`, `linked 5863 -> 5863`,
+`target rose: main/MetroidPrime/Cameras/CBallCameraTransitions: 3 -> 4 / 8 functions`, no asm.
+`docs/HANDOFF.md` was rewritten by `tools/check_docs_claims.py`'s own sync, not by hand.
+
+## Tooling this run used, and it is worth rebuilding
+
+`tools/g2try.sh` cannot be used on this unit: it disassembles `build/G2ME01/obj/<unit>.o`, which
+is a *relocatable* object whose `.text` starts at 0, so `--start-address=0x801AA008` matches
+nothing and it reports `retail insns: 0`. A per-instruction differ is what made this tractable;
+it was at `.tmp/opencode/nrm.py` (retail function offset = `retail_vaddr - unit .text base`,
+`objdump -r` to turn each `lfs fX,N(r2)` into the `.sdata2` float it really loads, branch targets
+normalised) with `.tmp/opencode/sweep.py` driving a variants file through `tools/fast_try.sh`.
+`.tmp` is not committed, so the next run has to write them again. The one thing worth keeping is
+the method: objdiff's percentage is a *byte* match, and 80% vs 100% here was entirely
+register-numbering and stack-offset noise that only an instruction-by-instruction diff exposes.
+
+## Still not done
+
+- `TransitionToMorphBallState` 908 B (0.62%), `UpdateTransitionFromBallCamera` 1360 B (0.41%),
+  `UpdateTransitionToBallCamera(float, CStateManager&)` 2088 B (0.27%) - all still
+  `return false;` stubs, untouched. Each is a separate item's budget; the 2088-byte one is the
+  largest single item in the queue. `TransitionToMorphBallState` is the cheapest and is this
+  function's mirror image (same camera lookups, same 0.6/0.3 constants, `mToBallTransition`
+  instead of `mFromBallTransition`), so it is the one to take next.
+- `fn_801AA3EC` 216 B, still 0.00%. **Run 1's `WALL:` on it stands and I did not re-attack it** -
+  six spellings, all recorded there. It also cannot be *paired* by objdiff under the name
+  `__sinit_CBallCameraTransitions_cpp`, so reaching 216 bytes is necessary but not sufficient.
+- `.bss` 0x803DB4A0..0x803DB4B8 is still unclaimed and `__sinit_CBallCameraTransitions_cpp` is
+  still an extra 192-byte symbol (`tools/unit_fit.sh`). Unchanged, and still the thing that stops
+  a *flip* rather than a match. `reserve` / `~vector` for `rstl::vector<CVector3f>` are COMDAT
+  weak copies the retail linker discards, so they are harmless on their own.
+
+NEW: none. The one function this item wanted is done; the three that remain are large multi-item
+jobs in the same unit the driver already re-queues, and `fn_801AA3EC` is the wall run 1 measured.

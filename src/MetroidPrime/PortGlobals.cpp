@@ -1646,6 +1646,39 @@ void CCameraColliderGroup::TeleportColliders(CVector3f position) {
   }
 }
 
+// Writing `CBallCamera::TransitionFromMorphBallState` (retail 0x801AA008, 860 bytes) in
+// `CBallCameraTransitions.cpp` - a unit `files.cmake` *does* list - put three more calls into that
+// object, and none of the three bodies is reachable from a port TU:
+//
+//   * `CBallCamera::DetectCollision` is at `CBallCamera.cpp:343`, still the `return false` TODO
+//     stub the decompilation has, and that unit is excluded from `files.cmake`;
+//   * `CMotionSpline::Initialise` (retail 0x803349D4, 0x174 bytes) and
+//     `CMotionSpline::CalculateLength` (retail 0x80332C7C, 0x604 bytes) have **no** definition
+//     anywhere in `src/` at all, in any unit.
+//
+// So all three are stand-ins, announced on first call like `CHintManager::Update` above: not
+// decompilation, and not claimed to match retail. `DetectCollision` answers "no collision", which
+// is what its own unit answers, and deliberately leaves `distance` alone rather than inventing a
+// sweep length. `CalculateLength` leaves `mLength` at the 0.0 its constructor wrote (measured:
+// the constant at 0x8041ECAC), so `GetLength()` reads 0 and the failsafe's `length / 24.f` is 0
+// rather than a NaN.
+bool CBallCamera::DetectCollision(const CVector3f& from, const CVector3f& to, float radius,
+                                  float& distance, const CStateManager& mgr, int controllerIdx) {
+  ReportedCameraManagerStandIn(
+      "CBallCamera::DetectCollision(CVector3f const&, CVector3f const&, float, float&, "
+      "CStateManager const&, int)");
+  return false;
+}
+
+void CMotionSpline::Initialise(const rstl::vector< CVector3f >& points) {
+  ReportedCameraManagerStandIn(
+      "CMotionSpline::Initialise(rstl::vector<CVector3f> const&)");
+}
+
+void CMotionSpline::CalculateLength() {
+  ReportedCameraManagerStandIn("CMotionSpline::CalculateLength()");
+}
+
 // `CHintManager::RemoveHint` (retail 0x801B94B8, 0xAC bytes) sits in an unclaimed gap of the DOL -
 // `config/G2ME01/splits.txt` has `Carve801B94B4.c .text 0x801B94B4..0x801B94B8` and the next claim
 // starts after it - so no unit owns it. `CPlayer::ResetPlayerHintState` (0x8022BE74) calls it, and

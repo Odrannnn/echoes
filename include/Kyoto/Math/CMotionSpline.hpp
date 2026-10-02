@@ -34,6 +34,9 @@ public:
 
   float GetLength() const { return mLength; }
   float GetDuration() const { return mDuration; }
+  // Retail's transition builders overwrite the duration in place (retail 0x801AA2E4 stores
+  // straight to the field at +0x38), so the port needs a way to spell that too.
+  void SetDuration(float duration) { mDuration = duration; }
   int GetControlPointCount() const { return mControlPoints.size(); }
   int GetKnotCount() const { return mKnots.size(); }
   bool IsClosedLoop() const { return mClosedLoop; }
