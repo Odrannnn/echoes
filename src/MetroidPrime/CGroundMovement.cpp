@@ -76,7 +76,7 @@ bool CGroundMovement::ResolveUpDown(CAreaCollisionCache& cache, CStateManager& m
       }
     }
     if (!floor) {
-      mgr.SendScriptMsg(CScriptMsg(kInvalidUniqueId, kInvalidUniqueId, actor.GetUniqueId(),
+      mgr.SendScriptMsg(CScriptMsg(kInvalidUniqueId, actor.GetUniqueId(), kInvalidUniqueId,
                                    kSM_LandOnNotFloor, kSS_InvalidState));
     }
     return false;
@@ -125,7 +125,7 @@ bool CGroundMovement::MoveGroundColliderZ(CAreaCollisionCache& cache, CStateMana
     }
   }
   if (!floor) {
-    mgr.SendScriptMsg(CScriptMsg(kInvalidUniqueId, kInvalidUniqueId, actor.GetUniqueId(),
+    mgr.SendScriptMsg(CScriptMsg(kInvalidUniqueId, actor.GetUniqueId(), kInvalidUniqueId,
                                  kSM_LandOnNotFloor, kSS_InvalidState));
   }
 

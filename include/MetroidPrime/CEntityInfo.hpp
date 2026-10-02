@@ -291,7 +291,15 @@ public:
   , m_msg(kSM_None)
   , m_state(kSS_InvalidState) {}
 
-  CScriptMsg(TUniqueId unk, TUniqueId originator, TUniqueId id, EScriptObjectMessage msg,
+  // The two id parameters are declared `id` before `originator` - the opposite of the member
+  // order - because that is the order retail's own code used, and mwcceppc keeps it: it issues
+  // the load for the *third* argument first and gives it the higher of the two registers, so with
+  // (unk, originator, id) at the call site retail's `CEntity::AcceptScriptMsg` and
+  // `CEntity::SendScriptMsgs` came out with the two `lhz` in the wrong order and two registers
+  // swapped (99.87% and 96.74%). With the declaration below they are byte-identical to retail.
+  // The *members* keep retail's layout, so `GetId()`/`GetOriginator()` are unaffected; every
+  // five-argument construction in `src/` passes ids in this order. Do not "tidy" this back.
+  CScriptMsg(TUniqueId unk, TUniqueId id, TUniqueId originator, EScriptObjectMessage msg,
              EScriptObjectState state)
   : m_unk(unk), m_originator(originator), m_id(id), m_msg(msg), m_state(state) {}
 

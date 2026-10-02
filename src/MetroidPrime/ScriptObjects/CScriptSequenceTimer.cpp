@@ -77,8 +77,8 @@ void CScriptSequenceTimer::fn_801e1c1c(float changeTo, CStateManager& mgr) {
           CStateManager::TIdList::const_iterator current = search.first;
           CStateManager::TIdList::const_iterator end = search.second;
           while (current != end) {
-            mgr.SendScriptMsg(CScriptMsg(GetUniqueId(), m_scriptMsg.GetOriginator(),
-                                         current->second, con.msg, con.state));
+            mgr.SendScriptMsg(CScriptMsg(GetUniqueId(), current->second,
+                                         m_scriptMsg.GetOriginator(), con.msg, con.state));
             ++current;
           }
         }

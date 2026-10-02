@@ -952,15 +952,14 @@ void CStateManager::DeleteObjectRequest(TUniqueId id) {
 
 void CStateManager::SendScriptMsg(TUniqueId dest, TUniqueId src, EScriptObjectMessage msg,
                                   TUniqueId other) {
-  // CScriptMsg's third id is the destination (DeliverScriptMsg resolves ObjectById(GetId())).
-  SendScriptMsg(CScriptMsg(src, other, dest, msg, kSS_InvalidState));
+  // CScriptMsg's `m_id` is the destination (DeliverScriptMsg resolves ObjectById(GetId())).
+  SendScriptMsg(CScriptMsg(src, dest, other, msg, kSS_InvalidState));
 }
 
 void CStateManager::SendScriptMsg(CEntity* dest, TUniqueId src, EScriptObjectMessage msg,
                                   TUniqueId other) {
   if (dest) {
-    SendScriptMsg(
-        CScriptMsg(src, other, dest->GetUniqueId(), msg, kSS_InvalidState));
+    SendScriptMsg(CScriptMsg(src, dest->GetUniqueId(), other, msg, kSS_InvalidState));
   }
 }
 

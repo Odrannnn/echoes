@@ -49,9 +49,9 @@ void CBSHurled::Start(CBodyController& bc, CStateManager& mgr) {
   mAnimSeries = parm0.GetInt32Value();
 
   if (CPhysicsActor* actor = TCastToPtr< CPhysicsActor >(&owner)) {
-    mgr.DeliverScriptMsg(CScriptMsg(kInvalidUniqueId, kInvalidUniqueId, owner.GetUniqueId(),
+    mgr.DeliverScriptMsg(CScriptMsg(kInvalidUniqueId, owner.GetUniqueId(), kInvalidUniqueId,
                                     kSM_Falling, kSS_InvalidState));
-    mgr.DeliverScriptMsg(CScriptMsg(kInvalidUniqueId, kInvalidUniqueId, owner.GetUniqueId(),
+    mgr.DeliverScriptMsg(CScriptMsg(kInvalidUniqueId, owner.GetUniqueId(), kInvalidUniqueId,
                                     kSM_Jumped, kSS_InvalidState));
     if (!close_enough(cmd->GetLaunchVelocity(), CVector3f::Zero(), 0.0001f)) {
       actor->SetConstantForceWR(actor->GetMass() * cmd->GetLaunchVelocity());

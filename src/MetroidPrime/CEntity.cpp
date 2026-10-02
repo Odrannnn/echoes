@@ -45,7 +45,7 @@ void CEntity::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
     break;
   case kSM_ToggleActive: {
     EScriptObjectMessage next = mActive ? kSM_Deactivate : kSM_Activate;
-    CScriptMsg newMsg(msg.GetUnk(), msg.GetOriginator(), msg.GetId(), next, msg.GetState());
+    CScriptMsg newMsg(msg.GetUnk(), msg.GetId(), msg.GetOriginator(), next, msg.GetState());
     AcceptScriptMsg(mgr, newMsg);
     break;
   }
@@ -64,7 +64,7 @@ void CEntity::SendScriptMsgs(EScriptObjectState state, CStateManager& mgr, TUniq
       // retail passes the argument: its fifth slot is the register the parameter came in, with
       // no reload of `it->state`.
       while (current != end) {
-        mgr.SendScriptMsg(CScriptMsg(GetUniqueId(), id, current->second, it->msg, state));
+        mgr.SendScriptMsg(CScriptMsg(GetUniqueId(), current->second, id, it->msg, state));
         ++current;
       }
     }

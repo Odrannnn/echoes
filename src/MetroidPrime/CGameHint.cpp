@@ -53,7 +53,7 @@ void CGameHint::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
   case kSM_Decrement:
   case kSM_Increment:
     if (CGameCamera* camera = TCastToPtr< CGameCamera >(mgr.ObjectById(msg.GetOriginator()))) {
-      forwarded = CScriptMsg(msg.GetUnk(), camera->Player(mgr).GetUniqueId(), msg.GetId(),
+      forwarded = CScriptMsg(msg.GetUnk(), msg.GetId(), camera->Player(mgr).GetUniqueId(),
                              msg.GetMessage(), msg.GetState());
     }
     break;

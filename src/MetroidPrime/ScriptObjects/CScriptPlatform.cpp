@@ -257,12 +257,12 @@ void CScriptPlatform::AddRider(rstl::vector< SRiders >& riders, TUniqueId id,
         // Retail repeats this guard after computing the rider transform.
         if (ridee != nullptr) {
           mgr.DeliverScriptMsg(CScriptMsg(
-              ridee->GetUniqueId(), kInvalidUniqueId, actor->GetUniqueId(),
+              ridee->GetUniqueId(), actor->GetUniqueId(), kInvalidUniqueId,
               static_cast< EScriptObjectMessage >(0x584f4e50), kSS_InvalidState));
         }
       }
     } else {
-      mgr.DeliverScriptMsg(CScriptMsg(kInvalidUniqueId, kInvalidUniqueId, id,
+      mgr.DeliverScriptMsg(CScriptMsg(kInvalidUniqueId, id, kInvalidUniqueId,
                                       static_cast< EScriptObjectMessage >(0x584f4e50),
                                       kSS_InvalidState));
     }
@@ -305,7 +305,7 @@ void CScriptPlatform::DecayRiders(rstl::vector< SRiders >& riders, float dt, CSt
       if ((*it).mDecayTimer.data() <= 0.f) {
         TUniqueId riderId = (*it).mUid;
         it = fn_800A1004(riders, it);
-        mgr.DeliverScriptMsg(CScriptMsg(kInvalidUniqueId, kInvalidUniqueId, riderId,
+        mgr.DeliverScriptMsg(CScriptMsg(kInvalidUniqueId, riderId, kInvalidUniqueId,
                                         static_cast< EScriptObjectMessage >(0x584f4e50),
                                         kSS_InvalidState));
         continue;
