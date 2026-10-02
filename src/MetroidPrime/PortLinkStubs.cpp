@@ -771,15 +771,15 @@ extern "C" void stub_178() {}
 //
 // Same trade as `stub_178`: empty bodies, no claim that any of the three is decompiled (none is),
 // and carving them instead only moves the gap one function along because each is a forwarder.
-// `docs/research/port_link_gap.md` keeps all three listed as still missing.
+// `docs/research/port_link_gap.md` keeps all three listed as still missing. `fn_801FD638`, the
+// third of them, was a stub here from 2026-10-02 until
+// `src/MetroidPrime/ScriptObjects/Carve801FD638.c` matched it for real, so this trade now stands
+// for two of the three symbols.
 extern "C" void stub_179() asm("allocate__Q24rstl17rmemory_allocatorFi");
 extern "C" void stub_179() {}
 
 extern "C" void stub_180() asm("fn_801FEE40");
 extern "C" void stub_180() {}
-
-extern "C" void stub_181() asm("fn_801FD638");
-extern "C" void stub_181() {}
 
 // fn_80008D68 - retail 0x80008D68, 0x80 = 128 bytes (`config/G2ME01/symbols.txt:180`), the
 // recursive node teardown of the 3-node string-keyed tree: destroy both subtrees, release the
@@ -1051,6 +1051,32 @@ extern "C" void stub_194() {}
 // it and fn_801FFE4C at once and can drop this block.
 extern "C" void stub_196() asm("fn_801FBD68");
 extern "C" void stub_196() {}
+
+// fn_801FD67C - retail 0x801FD67C, 0x74 = 116 bytes (`config/G2ME01/symbols.txt:8273`), the
+// 36-byte element's deleting destructor: store the vtable 0x803B7BFC into +0x0, run `fn_801FD6F0`
+// over the member at +0x14, release the `rstl::basic_string` at +0x4, and `Free__7CMemoryFPCv`
+// only when the caller's flag is positive. Asked for by the port because
+// `src/MetroidPrime/ScriptObjects/Carve801FD638.c` (Matching, 0x801FD638..0x801FD67C) reproduces
+// `fn_801FD658` byte for byte and that body's `li r4,-1 / bl fn_801FD67C` at
+// 0x801FD660..0x801FD668 is in retail's bytes, so the carve cannot drop the call. This block also
+// **retires `stub_181`**: that stub stood in for `fn_801FD638`, which the new unit now defines for
+// real, and leaving both would be two definitions of one symbol in the port's flat link.
+//
+// For the DOL nothing is needed: 0x801FD67C is exactly 0x0 bytes past that unit's claim end, so it
+// stays retail's and dtk emits its own bytes from `auto_03_801FA3CC_text.o`; this file is not in
+// `configure.py`, so the stub cannot reach main.dol. The port link does not carry that object,
+// which is why its gap would grow by this symbol: measured in this tree without this block,
+// `python3 tools/link_gap.py --rebuild` prints
+// `gap grew: fn_801FD67C is not in port_link_gap_list.md`.
+//
+// This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
+// claim that fn_801FD67C is decompiled - it is not, and `docs/research/port_link_gap.md` keeps the
+// symbol listed as still missing. Claiming it instead only moves the same gap one function along:
+// its 0x74 bytes need the `.data` vtable `lbl_803B7BFC` as well as the bodies of `fn_801FD6F0`
+// (0x801FD6F0, 0x84) and `fn_801FD774`, which are themselves unclaimed. The same trade `stub_178`
+// and `stub_196` above make for their carves' callees.
+extern "C" void stub_197() asm("fn_801FD67C");
+extern "C" void stub_197() {}
 
 
 // Data objects. A vtable or typeinfo stub is zero-filled: harmless to take the
