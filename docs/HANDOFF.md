@@ -412,7 +412,7 @@ deriving them, or deleting them, is the real fix. (2) *Twins.* `tools/twin_scan.
 3,725 of the 14,997 unmatched functions over 8 bytes byte-shape-identical to an already matched one:
 888 DOL, 2,837 REL, 2,088 over 64 bytes, 329,012 bytes; 1,678 more are duplicates of each other.
 Top modules: DigitalGuardian 90, DarkSamus 84, EmperorIngStage1 82, SandBoss 81. `goal_seed.py`'s
-`code_shape()` only does this for DOL `auto_*` carves. *Built, not seeded:* `twin_scan.py` now
+`code_shape()` only does this for DOL `auto_*` carves. *Built, five seeded as a trial:* `twin_scan.py` now
 exposes `scan()` and `--list` (one line per twin with the matched function and its source; all 3,725
 have a twin with a source file of ours), and `goal_seed.py --only twin` proposes one `progress` item
 per DOL unit with source and per REL module that already links our code (`module:<Name>`), naming
@@ -422,8 +422,11 @@ Dry run on the main checkout's report: 140 items (79 modules / 2,754 functions, 
 2,672 functions and 5 DOL units / 8. Not covered: 439 twins in DOL `auto_*` units (the carve kind
 takes the `fn_` runs), 83 in modules with no head yet, 4 in CAi/CPatterned. **Pass rate unmeasured -
 no twin item has run.** A shape twin is a different function with the same instructions (`RELExit`
-pairs with `dspDoneCallback`), so the twin's source is a template, not always the same code. Seeding
-edits the queue, so it needs the user's approval; try a few before `--max 100`.
+pairs with `dspDoneCallback`), so the twin's source is a template, not always the same code. Seeded
+2026-10-02 with the user's approval, behind 155 queued items: `progress-twin-rel-digitalguardian`,
+`-sandboss`, `-ingboostballguardian`, `-emperoringstage1`, `-darksamus`. Read their verdicts and
+`docs/goal-notes/progress-twin-rel-*.md` before seeding the other 77; more seeding needs approval
+again. The lanes were left running, so (1) is still not live.
 
 **Queue triage, 2026-10-01.** `goal_seed.py` has run dry ("nothing to seed"): its three kinds (REL
 heads, Prime 1 donors, near-done `match` units) do not cover a DOL unit that has source but is far
