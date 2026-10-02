@@ -477,6 +477,30 @@ src/MetroidPrime/PortLinkStubs.cpp
     # callees, `fn_49_2F2C` and `fn_49_2FBC`, are the module's unclaimed middle, so a host body
     # would make the port link names it does not have.
     src/MetroidPrime/ScriptObjects/CPlantScarabSwarmTail.cpp
+    # Grenchler's (module 27) .text 0xD104..0xD178: fn_27_D104, fn_27_D10C (the empty
+    # FluidFXThink override) and fn_27_D110. Its host branch is empty by design (the bodies are
+    # inside `#ifdef __MWERKS__`), for the reason the PlantScarabSwarm entry above gives: the
+    # range calls the module's own unclaimed `fn_27_B8F0` and loads `lbl_27_rodata_1C4`, which
+    # the port does not link.
+    src/MetroidPrime/ScriptObjects/CGrenchlerD104.cpp
+    # Grenchler's (module 27) .text 0x8F34..0x9018: fn_27_8F34 (a deleting destructor whose
+    # `rstl::string` at +0x2C is its only non-trivial member), three one-bit virtual predicates
+    # and fn_27_8FC0. Its host branch is empty by design (the bodies are inside
+    # `#ifdef __MWERKS__`), for the reason the PlantScarabSwarm entry above gives: the range calls
+    # the module's own unclaimed `fn_27_990C`, so a host body would make the port link a name it
+    # does not have.
+    src/MetroidPrime/ScriptObjects/CGrenchler8F34.cpp
+    # Grenchler's (module 27) .text 0xAC5C..0xACF0: fn_27_AC5C (a virtual that dispatches through
+    # the object's own vtable slot 0x54) and fn_27_AC9C. Its host branch is empty by design (the
+    # bodies are inside `#ifdef __MWERKS__`), for the reason the PlantScarabSwarm entry above
+    # gives: both call the module's own unclaimed code.
+    src/MetroidPrime/ScriptObjects/CGrenchlerAC5C.cpp
+    # Grenchler's (module 27) .text 0x1E74..0x1FAC: fn_27_1E74 and fn_27_1ED0 (the module's two
+    # smallest deleting destructors) and the four virtual predicates fn_27_1F18, fn_27_1F44,
+    # fn_27_1F64 and fn_27_1F80. Its host branch is empty by design (the bodies are inside
+    # `#ifdef __MWERKS__`), for the reason the PlantScarabSwarm entry above gives: the range calls
+    # the DOL's `Stuck` spelling and loads the module's `lbl_27_rodata_168`.
+    src/MetroidPrime/ScriptObjects/CGrenchler1F18.cpp
     # CRumbleManager::StopRumble. Its own file because CRumbleManager.cpp is a
     # `MatchingFor("G2ME01")` unit and must not be edited; see the file's header.
     src/MetroidPrime/CRumbleManagerStopRumble.cpp

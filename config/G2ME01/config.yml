@@ -190,6 +190,22 @@ modules:
   - object: files/RelProd/Grenchler.rel
     hash: de128c91f467b5b61b4de4a2ed6b217044a975c5
     splits: config/G2ME01/rels/Grenchler/splits.txt
+    # Grenchler's `CGrenchlerD104.cpp` (.text 0xD104..0xD178) defines one function nothing in the
+    # module calls: `fn_27_D104` (0xD104, 0x8) is a leaf reading the word at +0x254 with no `bl`
+    # and no data relocation anywhere in the module - dtk's own FORCEACTIVE list does not carry it
+    # while it does carry the vtable-only `fn_27_D10C` - so mwldeppc dead-strips it and the module
+    # linked exactly its 8 bytes short (121460 against retail's 121468) with all three functions
+    # at 100%. dtk reads this list into the link script's FORCEACTIVE.
+    #
+    # `CGrenchler8F34.cpp` (.text 0x8F34..0x9018) needs one of its five for the same reason and
+    # that is measured too: `fn_27_8F34` (0x8F34, 0x5C) is a deleting destructor no `bl` and no
+    # relocation anywhere in the module reaches, and the module linked exactly its 0x5C bytes
+    # short (0x158F4 of .text against retail's 0x15950) with all five at 100%. The other four are
+    # reachable: `fn_27_8FC0` from 0xFFF4 and the three predicates from `.data:0xA54`'s slots,
+    # which the module's own FORCEACTIVE already carries.
+    force_active:
+      - fn_27_D104
+      - fn_27_8F34
     symbols: config/G2ME01/rels/Grenchler/symbols.txt
   # Module ID 28
   - object: files/RelProd/GunTurret.rel

@@ -9,6 +9,18 @@ Sections:
 MetroidPrime/ScriptObjects/CGrenchlerRel.cpp:
 	.text       start:0x00000000 end:0x00000168
 
+MetroidPrime/ScriptObjects/CGrenchler1F18.cpp:
+	.text       start:0x00001E74 end:0x00001FAC
+
+MetroidPrime/ScriptObjects/CGrenchler8F34.cpp:
+	.text       start:0x00008F34 end:0x00009018
+
+MetroidPrime/ScriptObjects/CGrenchlerAC5C.cpp:
+	.text       start:0x0000AC5C end:0x0000ACF0
+
+MetroidPrime/ScriptObjects/CGrenchlerD104.cpp:
+	.text       start:0x0000D104 end:0x0000D178
+
 REL/global_destructor_chain.c:
 	.text       start:0x00015738 end:0x000157AC
 	.dtors      start:0x00000000 end:0x00000004 rename:.dtors$10

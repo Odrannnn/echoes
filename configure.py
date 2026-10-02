@@ -3053,9 +3053,51 @@ config.libs = [
         # its methods; all stay retail - behavioural class code needing the CActor/CPatterned
         # hierarchy. Not in `files.cmake`, for the reason the other heads measure: it calls
         # `fn_27_168` and `fn_80218A38`, which the port cannot link.
+        #
+        # Added 2026-10-02 (lane 13, item `progress-vtctl-rel-grenchler`). A second unit,
+        # `.text 0xD104..0xD178` out of the module's unclaimed middle: `fn_27_D104` (the word at
+        # +0x254), `fn_27_D10C` (the empty `FluidFXThink` override - vtable slot 23 of
+        # `.data:0xA54`, named by `tools/rel_class_map.py Grenchler`) and `fn_27_D110` (a
+        # four-term predicate that calls the module's own `fn_27_B8F0`). The three are contiguous
+        # per `config/G2ME01/rels/Grenchler/symbols.txt`; the 0x1F9C bytes of
+        # `auto_00_00000168_text` around them stay unclaimed, so dtk fills them from retail and
+        # the module's sha1 still holds. **Nothing needs a `force_active:` entry**: `fn_27_D10C`
+        # is already in the module's `ldscript.lcf` FORCEACTIVE block (it is a vtable slot with no
+        # call site) and `fn_27_D104`/`fn_27_D110` are called from retail's own bytes above. See
+        # the source's header for the per-function evidence.
+        #
+        # A third unit added the same day (item `progress-vtctl-rel-grenchler`), `.text
+        # 0x8F34..0x9018` out of the same unclaimed middle: `fn_27_8F34` (a deleting destructor
+        # whose `rstl::string` at +0x2C is its only non-trivial member), `fn_27_8F90`,
+        # `fn_27_8F9C` and `fn_27_8FB4` (three one-bit virtual predicates the module's vtables
+        # name at slots 81, 82 and 112) and `fn_27_8FC0` (`GetDamageVulnerability`'s result
+        # handed to the module's own `fn_27_990C`, then a bit cleared). Contiguous per
+        # `symbols.txt:171-176`; nothing needs `force_active:` - the module links to retail's
+        # exact size. See the source's header.
+        #
+        # A fourth unit added the same day (same item), `.text 0x1E74..0x1FAC`: the module's two
+        # smallest deleting destructors (`fn_27_1E74`, which stores `.data:0xEA0` and then the
+        # base's `.data:0xEAC` through a second `if (self)`, and `fn_27_1ED0`) and four virtual
+        # predicates (`fn_27_1F18`, `fn_27_1F44` - the module's `CPatterned::Stuck` override -
+        # `fn_27_1F64` and `fn_27_1F80`, whose float comparisons are `>` because retail extracts
+        # the GT bit). Contiguous per `symbols.txt`; the four predicates are already in the
+        # module's FORCEACTIVE block and the two destructors are referenced by the two data
+        # objects, so no `force_active:` entry. See the source's header.
+        #
+        # A fifth unit added the same day (same item), `.text 0xAC5C..0xACF0`: the two virtuals
+        # `tools/rel_class_map.py Grenchler` reads at slots 18 and 21 - `fn_27_AC5C`, which
+        # dispatches through the object's own slot 0x54 (`fn_27_AB94`, the module's
+        # `GetAimPosition`) with a `0.0f` from `.rodata:0x180`, and `fn_27_AC9C`, which returns
+        # the `CVector3f` at +0xF0C when the word at +0xA78 is 0xE and otherwise calls
+        # `CActor::GetScanObjectIndicatorPosition`. Contiguous per `symbols.txt`; both are already
+        # in the module's FORCEACTIVE block, so no `force_active:` entry. See the source's header.
         "Grenchler",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CGrenchlerRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CGrenchler1F18.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CGrenchler8F34.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CGrenchlerAC5C.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CGrenchlerD104.cpp"),
         ],
     ),
     Rel(
