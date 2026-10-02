@@ -159,3 +159,186 @@ that reached 100% are unchanged.
 **Costs nothing.** `goal_check.sh build/goal/item.json` -> `PASS` with the same counts as the
 rejected attempt: global matched 11842 -> 11849, unit 19 -> 26 / 71, linked held at 5727.
 `check_raw_offsets.py` -> `ok: 166 raw-offset site(s) in 70 file(s)`.
+
+## Run 2 (2026-10-02, lane L2): 26 -> 33 of 71. `goal_check.sh` -> `PASS`.
+
+Measured on this tree before touching anything: `build/report.json` had
+`main/MetroidPrime/ScriptObjects/CScriptTeamAiMgr` at **26/71** `matched_functions`, unit fuzzy
+67.37%, global `matched` 12332 / `linked` 5863. It now reads **33/71**, unit fuzzy **70.59%**,
+global `matched` **12339**, `linked` held at 5863 (the unit stays `NonMatching`; `configure.py` was
+not touched and `flip_test.sh` was not run). `tools/report_diff.py` prints `no regression`; no
+`asm` added; the change is confined to `src/MetroidPrime/ScriptObjects/CScriptTeamAiMgr.cpp`.
+
+Judge output, verbatim:
+
+    ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+    ok    counts: matched 12332 -> 12339   linked 5863 -> 5863
+    ok    target rose: main/MetroidPrime/ScriptObjects/CScriptTeamAiMgr: 26 -> 33 / 71 functions
+    goal_check: PASS progress-unit-cscriptteamaimgr
+
+### The seven functions that reached 100% this run
+
+| function | before | after | the change that did it |
+|---|---|---|---|
+| `RemoveInvalidTeamActions` | 97.71% | **100%** | `} while (removed == true);` |
+| `ChoosePlayer` | 97.63% | **100%** | `bestScore` declared before `target`; `i < static_cast<uint>(mgr.GetNumPlayers())` |
+| `UpdateRoles` | 93.65% | **100%** | `mgr.GetPlayer(0)->` written out twice instead of bound to a `const CPlayer&` |
+| `SpacingSort` | 79.49% | **100%** | `position + tierDistance * ...` inside **both** arms of the `?:` |
+| `IsTeamMemberInRange` | 96.72% | **100%** | `const TUniqueId ownerId(it->mOwnerId);` used by both the test and the lookup |
+| `HasTeamAiRole` | 93.34% | **100%** | positive `if (found != end) return ...; return false;` instead of `&&` |
+| `AnyMembersInCircle` | 83.58% | **100%** | the same `ownerId` copy, plus a named `delta` local |
+
+### Raised and kept (all measured, none regressed)
+
+| function | before | after |
+|---|---|---|
+| `IsMeleeAttacking` | 79.78% | 99.12% |
+| `CanStartMeleeAttack` | 81.65% | 99.21% |
+| `CanStartProjectileAttack` | 81.65% | 99.21% |
+| `IsPartOfTeam` | 92.27% | 99.24% |
+| `StartMeleeAttack` | 92.91% | 98.73% |
+| `StartProjectileAttack` | 92.91% | 98.73% |
+| `PositionTeam` | 90.99% | 97.98% |
+| `FindBestIndividualAttackTarget` | 96.28% | 97.30% |
+| `TouchingAnyTeammates` | 87.75% | 88.88% |
+
+Unchanged: `JoinTeam` 94.84%, `QuitTeam` 99.88%, `SetMemberTargetId` 98.06%, `StartTeamAction`
+86.93%, `EndTeamAction` 95.14%, `GetTeamActionCount` 99.33%, `IsPerformingTeamAction` 99.47%.
+
+## The codegen rules this run established
+
+These are general, not unit-specific, and each one is a source-level difference - not register
+allocation. That contradicts the previous run's conclusion that nothing structural was left.
+
+1. **Operand order in a `!=`/`==` against `end()` decides whether mwcceppc re-evaluates it.**
+   mwcceppc evaluates a binary operator's operands right to left. Written
+   `binary_find(begin, end, v) != mRoles.end()`, the `end()` is evaluated *before* the call, kept
+   live in a callee-saved register, and the tail compares against that register. Retail instead
+   re-reads `mCount`/`mItems` after the call and rebuilds the pointer
+   (`lwz r0,76(r31) / lwz r3,84(r31) / mulli r0,r0,44 / add r0,r3,r0`, main.elf 0x801728C8), which
+   is only correct - and only reachable - if the expression is evaluated *after* the call.
+   **Put `end()` on the left.** `IsPartOfTeam` 92.27 -> 99.24, `IsMeleeAttacking` 79.78 -> 99.12,
+   `CanStartMeleeAttack`/`CanStartProjectileAttack` 81.65 -> 93.89,
+   `StartMeleeAttack`/`StartProjectileAttack` 92.91 -> 98.73. `binary_find`'s own inner `end` is a
+   parameter copy and is unaffected, which is why the first compare still matches.
+2. **The block that is the branch *target* goes last.** `return A && B;` hoists the `false` arm
+   above the test; retail wants it after. `if (cond) { return true; } return false;` with the
+   positive condition puts it last: `HasTeamAiRole` 93.34 -> 100, `CanStartMeleeAttack` and
+   `CanStartProjectileAttack` 93.89 -> 99.21. Polarity matters - the *positive* test is the one
+   retail writes (`cmplw r4,r0 / beq -> li r3,0`, so `false` is the branch target).
+3. **`while (b)` is not `while (b == true)`.** A bare truth test on a `bool` lets mwcceppc fold the
+   test into the producing instruction's record bit (`clrlwi. r0,r31,24 / bne`). Retail materialises
+   the byte and compares it against 1 (`clrlwi / cmplwi r0,1 / beq`, main.elf 0x80172248). Same for
+   a `bool` returned in a register: `expanded.DoBoundsOverlap(*memberBounds) == true` in
+   `TouchingAnyTeammates` (87.75 -> 88.46, the rest of that function is a frame-size difference).
+4. **`cmpw`/`cmplw` is the *left* operand's signedness, and the cast belongs on the bound, not the
+   counter.** `static_cast<uint>(mgr.GetNumPlayers())` in the loop condition gives the unsigned
+   `cmplw`/`cmplwi` retail has while leaving the counter an `int`, so the loop stays
+   pointer-walking. Making the *counter* a `uint` gets the same encoding and throws the loop back
+   to an indexed `lwzx` form - measured 96.03% against 100% for the cast on the bound.
+   `ChoosePlayer` 97.63 -> 100, `FindBestIndividualAttackTarget` 96.28 -> 97.30,
+   `PositionTeam`'s `static_cast<int>(mData.mPositionMode) == 1` 90.99 -> 97.98.
+5. **An explicit `TUniqueId` copy-construct is not elided; reading the member twice is.** Retail
+   emits a redundant 16-bit narrowing plus a dead second temp for the compared value:
+   `lhz r4,0(r30) / lhz r0,0(r29) / clrlwi r3,r4,16 / sth r4,12(r1) / cmplw r3,r0`. Writing
+   `const TUniqueId ownerId(it->mOwnerId);` and using `ownerId` in **both** the test and the lookup
+   reproduces all three; reading `it->mOwnerId` twice folds the compare to a bare `cmplw` and
+   shifts the rest of the frame down 4 bytes. `AnyMembersInCircle` 83.58 -> 96.04 (and then 100%),
+   `IsTeamMemberInRange` 96.72 -> 100%. It is the *same statement* that matters: keeping
+   `it->mOwnerId` in the call and `ownerId` in the test does not work (95.85%), and it is wrong for
+   `TouchingAnyTeammates`, where retail has **no** mask - that loop must keep `it->mOwnerId`.
+6. **Bind nothing across a call retail re-reads.** Retail loads `mgr->mPlayers[0]`
+   (`lwz r5,5372(r30)`) at both use sites in `UpdateRoles`/`PositionTeam`, so the source holds no
+   player reference; a `const CPlayer& player = *mgr.GetPlayer(0);` costs a third callee-saved
+   register and an extra `stw r29,148(r1)`. `UpdateRoles` 93.65 -> 100, `PositionTeam` with it
+   90.99 -> 97.40.
+7. **Do not hoist a common subexpression out of a `?:` if retail duplicated it.** In `SpacingSort`
+   retail computes `position + tierDistance * <vector>` separately in both arms of the ternary (two
+   identical `fmuls`/`fadds`/`stfs` runs). Hoisting it into a `CVector3f` temporary forces the
+   ternary result to be materialised in the frame and emits the multiply once after the join.
+   79.49 -> 100%.
+8. **A named local can beat a temporary inside the call, or the reverse, per function.**
+   `(actor->GetTranslation() - position).MagSquared()` leaves the difference spilled as three
+   `stfs` with the adds unfused; `const CVector3f delta = ...; delta.MagSquared()` contracts into
+   two `fmadds` and spills nothing (`AnyMembersInCircle` 96.04 -> 100). The *identical* expression
+   in `IsTeamMemberInRange` does spill in retail, and there the temporary form is right.
+9. **Declaration order is the order of the initialising loads.** Retail reads the `FLT_MAX`
+   constant before the `kInvalidUniqueId` SDA21 pair, so `float bestScore` is declared first
+   (`ChoosePlayer` 97.63 -> 99.21 with this alone, -> 100% with rule 4).
+
+## Spellings measured and rejected this run (do not retry)
+
+- **`cmpw` operand order is not source-controllable** (confirmed, extending the previous run's
+  finding). Retail's `cmpw r0,r5` against our `cmpw r5,r0` for `it->mAction == action` survives:
+  swapping the operands, `static_cast<int>` on both sides, an unsigned counter in the loop, and
+  `const ETeamAction a = it->mAction; if (a == action)` (99.33% -> 95.33%, the local changes the
+  register allocation). Same for the tail of `StartMeleeAttack` (`cmplw r0,r3` vs `cmplw r3,r0`).
+  Affects `GetTeamActionCount` (99.33), `IsPerformingTeamAction` (99.47), `EndTeamAction` (95.14).
+- **`it->mOwnerId.Value() != x.Value()`** gives a 22-bit `clrlwi` on *both* sides where retail has
+  a 16-bit one on the left only, and it is a real semantic change (10-bit compare), so it is
+  rejected even though it scores 98.95% on `IsTeamMemberInRange`.
+- **`const TUniqueId e = mMeleeAttackers.end(); ... != e;`** (hoisting `end()` into a local) is
+  strictly worse: 79.78 -> 79.37. It is the evaluation *order*, not the expression, that matters.
+- **`mRoles.end() != found && found->HasTeamAiRole()`** is 93.27%, worse than both the `&&` (93.34%)
+  and the positive-`if` (100%) forms.
+- **`for (uint i = 0; ...)` in `ChoosePlayer`**: 96.03% against 100% for
+  `static_cast<uint>` on the bound (rule 4). The previous run recorded 88.99% for the same
+  experiment before the declaration-order fix; both are worse than the cast.
+- **`if (mode != 1) { loop } else { SpacingSort }`** (88.41%) and **`if (mode == 1) { SpacingSort;
+  return; } loop`** (97.98%, same as the `else` form) - the last 2% of `PositionTeam` is which arm
+  retail makes the fall-through of `beq`, and neither spelling reaches it.
+- **`found->mTargetId = TUniqueId(targetId)`, `= TUniqueId(targetId.value)`,
+  `const TUniqueId newTarget(targetId);` at the point of use, and `TUniqueId newTarget;` declared
+  first and assigned inside the `if`** all leave `SetMemberTargetId` at exactly 98.06%. Retail's
+  extra `sth r0,8(r1)` is a dead 16-bit store of the by-value `TUniqueId` that none of these
+  produce.
+- **`const CVector3f minPoint = ...; const CVector3f maxPoint = ...;` in `TouchingAnyTeammates`**
+  is a real but small gain (88.46 -> 88.88); retail keeps two more `CVector3f` copies of
+  `expansion` in the frame than any spelling tried, and its frame is 32 bytes larger.
+
+## What is left, and why
+
+The 16 functions still below 100% now split cleanly, and the split is different from the previous
+run's:
+
+- **A `cmpw`/`cmplw` operand-order wall** - `GetTeamActionCount` 99.33%, `IsPerformingTeamAction`
+  99.47%, `EndTeamAction` 95.14% (which also has an erase-temp reload), and the last 1.27% of
+  `StartMeleeAttack`/`StartProjectileAttack`. One instruction each, and four spellings do not move
+  it.
+- **Pure register allocation, same instruction sequence.** `QuitTeam` 99.88% (three stack slots
+  allocated in a different order), `IsPartOfTeam` 99.24%, `IsMeleeAttacking` 99.12%,
+  `CanStartMeleeAttack`/`CanStartProjectileAttack` 99.21% (in all four the recomputed `end` lands in
+  r3/r4 where retail puts it in r0/r3), `StartMeleeAttack`/`StartProjectileAttack` 98.73% (plus the
+  `lower_bound` temps allocated 8 bytes low), `SetMemberTargetId` 98.06%,
+  `FindBestIndividualAttackTarget` 97.30% (retail's callee-saved set starts at r25, ours at r24).
+- **Block order / fall-through choice.** `PositionTeam` 97.98% (retail makes the `SpacingSort` arm
+  the `beq` fall-through), `JoinTeam` 94.84% (retail branches on `size >= capacity`, we branch on
+  `size < capacity`; every temp is 4 bytes low as a result), `StartTeamAction` 86.93% (retail
+  stores `-1` into a pointer temp before overwriting it with the `action` argument pointer - no
+  spelling tried produces that dead initialisation).
+- **A frame-size difference.** `TouchingAnyTeammates` 88.88%: retail's frame is 256 bytes against
+  our 224 and it keeps two more `CVector3f` copies of the expansion vector alive across the
+  `CAABox` constructor call (six extra `stfs`).
+
+## WALL
+
+WALL: GetTeamActionCount 99.33% - one `cmpw` operand order, four spellings tried, not source-controllable.
+WALL: IsPerformingTeamAction 99.47% - same `cmpw` operand order as GetTeamActionCount.
+WALL: SetMemberTargetId 98.06% - needs a dead 16-bit store of the by-value `TUniqueId` temp; four spellings leave the code identical.
+WALL: TouchingAnyTeammates 88.88% - retail's frame is 32 bytes larger and holds two extra CVector3f copies of `expansion`; three spellings tried.
+
+## Reproducing
+
+```sh
+export MP_TOOLCHAIN_DIR=/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort
+./tools/decomp_build.sh MetroidPrime/ScriptObjects/CScriptTeamAiMgr.cpp   # per-unit, ~30 s
+./tools/fast_try.sh MetroidPrime/ScriptObjects/CScriptTeamAiMgr            # per-function scores, ~1 s
+./tools/lanediff.sh MetroidPrime/ScriptObjects/CScriptTeamAiMgr <symbol>   # the per-function diff
+python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+./tools/goal_check.sh build/goal/item.json
+```
+
+`fast_try.sh` is the loop to use: it rebuilds only this object and regenerates `build/report.json`
+for the whole tree in about a second, which is fast enough to sweep spellings. The `lanediff.sh`
+mnemonics are not the score - `cmplw` vs `cmpw` and `bdnz bb0` vs `bdnz adc` are the same bytes,
+while a real `cmp`/`cmpl` difference is one byte in the XO field - so read the scores, not the diff.

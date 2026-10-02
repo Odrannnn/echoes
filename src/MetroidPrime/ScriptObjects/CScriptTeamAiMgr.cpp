@@ -212,17 +212,32 @@ bool CScriptTeamAiMgr::HasTeamAiRole(TUniqueId id) const {
   const CTeamAiRole role(id);
   rstl::vector< CTeamAiRole >::const_iterator found =
       rstl::binary_find(mRoles.begin(), mRoles.end(), role);
-  return found != mRoles.end() && found->HasTeamAiRole();
+  // Spelled as a positive `if` with the `false` arm last, not `found != mRoles.end() &&
+  // found->HasTeamAiRole()`. Retail (main.elf 0x80172E50) puts the not-found `li r3,0` after the
+  // `HasTeamAiRole` chain and branches to it; the `&&` form hoists the `li r3,0` above the test
+  // and reaches only 93.34%.
+  if (found != mRoles.end()) {
+    return found->HasTeamAiRole();
+  }
+  return false;
 }
 
+// `end()` is the LEFT operand of the final `!=` on purpose, in this function and in every other
+// one below. mwcceppc evaluates a binary operator's operands right to left, so with the call on
+// the left it evaluates `end()` first, keeps it live in a callee-saved register across the
+// `lower_bound` call, and the tail compares against that stale register. Retail instead re-reads
+// `mCount`/`mItems` after the call and rebuilds the end pointer
+// (`lwz r0,76(r31) / lwz r3,84(r31) / mulli r0,r0,44 / add r0,r3,r0`), which is only correct -
+// and only reachable - if the expression is evaluated after the call. Swapping the operands is
+// what makes it: 92.27% -> 99.24% here, 79.78% -> 99.12% in `IsMeleeAttacking`.
 bool CScriptTeamAiMgr::IsPartOfTeam(TUniqueId id) const {
   const CTeamAiRole role(id);
-  return rstl::binary_find(mRoles.begin(), mRoles.end(), role) != mRoles.end();
+  return mRoles.end() != rstl::binary_find(mRoles.begin(), mRoles.end(), role);
 }
 
 bool CScriptTeamAiMgr::IsMeleeAttacking(TUniqueId id) const {
-  return rstl::binary_find(mMeleeAttackers.begin(), mMeleeAttackers.end(), id) !=
-         mMeleeAttackers.end();
+  return mMeleeAttackers.end() !=
+         rstl::binary_find(mMeleeAttackers.begin(), mMeleeAttackers.end(), id);
 }
 
 bool CScriptTeamAiMgr::CanStartMeleeAttack(TUniqueId id) const {
@@ -230,15 +245,26 @@ bool CScriptTeamAiMgr::CanStartMeleeAttack(TUniqueId id) const {
       mMeleeAttackers.size() < mData.mMaxMeleeAttackerCount) {
     return true;
   }
-  return rstl::binary_find(mMeleeAttackers.begin(), mMeleeAttackers.end(), id) !=
-         mMeleeAttackers.end();
+  // `end()` first (see `IsPartOfTeam`), and the `true` arm positive with the `false` arm last:
+  // retail's tail is `cmplw r4,r0 / beq -> li r3,0 / li r3,1 / b`, i.e. the "not found" block sits
+  // after the found one. A single `return end != binary_find(...)` puts them the other way round
+  // (81.65% -> 99.10%).
+  if (mMeleeAttackers.end() !=
+      rstl::binary_find(mMeleeAttackers.begin(), mMeleeAttackers.end(), id)) {
+    return true;
+  }
+  return false;
 }
 
 bool CScriptTeamAiMgr::StartMeleeAttack(TUniqueId id) {
   if (mTimeSinceMelee >= mData.mMeleeTimeInterval &&
       mMeleeAttackers.size() < mData.mMaxMeleeAttackerCount && HasTeamAiRole(id)) {
-    if (rstl::binary_find(mMeleeAttackers.begin(), mMeleeAttackers.end(), id) ==
-        mMeleeAttackers.end()) {
+    // `end()` on the left, for the evaluation-order reason in `IsPartOfTeam`; here it is what
+    // makes the tail re-read `mCount`/`mItems` instead of reusing the stored end copy
+    // (92.91% -> 98.73%). Still 1.27% short: the tail compare is retail's `cmplw r0,r3` where we
+    // emit `cmplw r3,r0` - see the `cmpw` operand-order wall in the notes.
+    if (mMeleeAttackers.end() ==
+        rstl::binary_find(mMeleeAttackers.begin(), mMeleeAttackers.end(), id)) {
       mMeleeAttackers.reserve(mMeleeAttackers.size() + 1);
       mMeleeAttackers.insert(rstl::lower_bound(mMeleeAttackers.begin(), mMeleeAttackers.end(), id),
                              id);
@@ -262,15 +288,18 @@ bool CScriptTeamAiMgr::CanStartProjectileAttack(TUniqueId id) const {
       mProjectileAttackers.size() < mData.mMaxProjectileAttackerCount) {
     return true;
   }
-  return rstl::binary_find(mProjectileAttackers.begin(), mProjectileAttackers.end(), id) !=
-         mProjectileAttackers.end();
+  if (mProjectileAttackers.end() !=
+      rstl::binary_find(mProjectileAttackers.begin(), mProjectileAttackers.end(), id)) {
+    return true;
+  }
+  return false;
 }
 
 bool CScriptTeamAiMgr::StartProjectileAttack(TUniqueId id) {
   if (mTimeSinceProjectile >= mData.mProjectileTimeInterval &&
       mProjectileAttackers.size() < mData.mMaxProjectileAttackerCount && HasTeamAiRole(id)) {
-    if (rstl::binary_find(mProjectileAttackers.begin(), mProjectileAttackers.end(), id) ==
-        mProjectileAttackers.end()) {
+    if (mProjectileAttackers.end() ==
+        rstl::binary_find(mProjectileAttackers.begin(), mProjectileAttackers.end(), id)) {
       mProjectileAttackers.reserve(mProjectileAttackers.size() + 1);
       mProjectileAttackers.insert(
           rstl::lower_bound(mProjectileAttackers.begin(), mProjectileAttackers.end(), id), id);
@@ -307,10 +336,13 @@ bool CScriptTeamAiMgr::ShouldUpdateRoles(float dt) {
 
 void CScriptTeamAiMgr::UpdateRoles(CStateManager& mgr) {
   ResetRoles(mgr);
-  const CPlayer& player = *mgr.GetPlayer(0);
-  const CVector3f aim = player.GetAimPosition(mgr, 0.f);
-  const CVector3f position =
-      aim + mPlayerForwardProjectionDistance * player.GetTransform().GetForward().AsNormalized();
+  // `mgr.GetPlayer(0)` is written out twice rather than bound to a `const CPlayer&`. Retail
+  // re-reads `mgr->mPlayers[0]` (`lwz r5,5372(r30)`) at both use sites, so it holds no player
+  // reference across the aim call; binding one costs a third callee-saved register and an extra
+  // `stw r29,148(r1)` in the prologue (93.65% -> 100%).
+  const CVector3f aim = mgr.GetPlayer(0)->GetAimPosition(mgr, 0.f);
+  const CVector3f position = aim + mPlayerForwardProjectionDistance *
+                                  mgr.GetPlayer(0)->GetTransform().GetForward().AsNormalized();
   rstl::sort(mRoles.begin(), mRoles.end(), CRoleSorter(position, 1));
   AssignRoles(CTeamAiRole::kTAR_Melee, mData.mMeleeCount);
   AssignRoles(CTeamAiRole::kTAR_Projectile, mData.mProjectileCount);
@@ -359,15 +391,18 @@ void CScriptTeamAiMgr::SetPlayerForwardProjectionDistance(float distance) {
 }
 
 void CScriptTeamAiMgr::PositionTeam(CStateManager& mgr) {
-  const CPlayer& player = *mgr.GetPlayer(0);
-  const CVector3f aim = player.GetAimPosition(mgr, 0.f);
-  const CVector3f position =
-      aim + mPlayerForwardProjectionDistance * player.GetTransform().GetForward().AsNormalized();
+  const CVector3f aim = mgr.GetPlayer(0)->GetAimPosition(mgr, 0.f);
+  const CVector3f position = aim + mPlayerForwardProjectionDistance *
+                                  mgr.GetPlayer(0)->GetTransform().GetForward().AsNormalized();
   // Retail tests `cmpwi r0,1 / beq SpacingSort / bge loop / b loop` (main.elf
   // 0x801739F4-0x80173A04): only mode == 1 reaches SpacingSort, and mode >= 2 reaches the
   // per-member GetOrigin loop. `>= 1` emits `cmplwi r0,1 / blt loop` and routes every mode >= 1 to
-  // SpacingSort, which is a different behaviour.
-  if (mData.mPositionMode == 1) {
+  // SpacingSort, which is a different behaviour. The `static_cast<int>` is the signedness of the
+  // compare, not the predicate: `mPositionMode` is a `uint`, and a `uint` left operand makes
+  // mwcceppc emit the unsigned `cmplwi r0,1` where retail has the signed `cmpwi r0,1`
+  // (90.99% -> 97.98%). The last 2% is block order: retail emits the `SpacingSort` arm as the
+  // fall-through of `beq`, we emit the member loop.
+  if (static_cast<int>(mData.mPositionMode) == 1) {
     SpacingSort(mgr, position);
   } else {
     for (rstl::vector< CTeamAiRole >::iterator it = mRoles.begin(); it != mRoles.end(); ++it) {
@@ -405,9 +440,14 @@ void CScriptTeamAiMgr::SpacingSort(CStateManager& mgr, const CVector3f& position
             TCastToPtr< CPatterned >(mgr.GetObjectByIdFromListAll(TUniqueId(role.mOwnerId)))) {
       CVector3f delta = ai->GetTranslation() - position;
       delta.SetZ(0.f);
-      CVector3f newPosition =
-          position + tierDistance * (delta.CanBeNormalized() ? delta.AsNormalized()
-                                                             : ai->GetTransform().GetForward());
+      // The `position + tierDistance * ...` product is inside both arms of the `?:`, not hoisted
+      // into a `CVector3f` temporary. Retail computes and stores the whole product separately in
+      // each arm (two identical `fmuls`/`fadds`/`stfs` runs); with a shared temporary the ternary
+      // result has to be materialised in the frame and the multiply emitted once after the join
+      // (79.49% -> 100%).
+      CVector3f newPosition = delta.CanBeNormalized()
+          ? position + tierDistance * delta.AsNormalized()
+          : position + tierDistance * ai->GetTransform().GetForward();
       newPosition.SetZ(ai->GetTranslation().GetZ());
       role.mPosition = newPosition;
       if (++tierSize > maxTierSize) {
@@ -435,8 +475,14 @@ void CScriptTeamAiMgr::UpdateTeamCaptain() {
 bool CScriptTeamAiMgr::IsTeamMemberInRange(const CStateManager& mgr, const CActor& actor,
                                            float range) const {
   for (rstl::vector< CTeamAiRole >::const_iterator it = mRoles.begin(); it != mRoles.end(); ++it) {
-    if (it->mOwnerId != actor.GetUniqueId()) {
-      if (const CActor* member = TCastToConstPtr< CActor >(mgr.GetObjectById(it->mOwnerId))) {
+    // `TUniqueId ownerId(it->mOwnerId)`, used by both the test and the lookup. The explicit copy
+    // is what makes retail's `clrlwi r3,r4,16` (the 16-bit narrowing of the compared value) and its
+    // second, dead, `sth r4,12(r1)` appear; with `it->mOwnerId` read twice mwcceppc folds the
+    // compare to a bare `cmplw` and the whole rest of the frame shifts down 4 bytes
+    // (96.72% -> 100%).
+    const TUniqueId ownerId(it->mOwnerId);
+    if (ownerId != actor.GetUniqueId()) {
+      if (const CActor* member = TCastToConstPtr< CActor >(mgr.GetObjectById(ownerId))) {
         if ((actor.GetTranslation() - member->GetTranslation()).MagSquared() < range * range) {
           return true;
         }
@@ -450,7 +496,10 @@ TUniqueId CScriptTeamAiMgr::FindBestIndividualAttackTarget(CStateManager& mgr, c
   int targetCounts[4] = {0, 0, 0, 0};
   for (rstl::vector< CTeamAiRole >::const_iterator it = mRoles.begin(); it != mRoles.end(); ++it) {
     if (it->mOwnerId != ai.GetUniqueId()) {
-      for (int player = 0; player < mgr.GetNumPlayers(); ++player) {
+      // The bound, not the counter, is what carries the signedness: `static_cast<uint>` here is
+      // what makes mwcceppc emit the unsigned `cmplwi`/`cmplw` retail uses. Making the counter a
+      // `uint` instead gets the encoding but throws the loop back to an indexed `lwzx` form.
+      for (int player = 0; player < static_cast<uint>(mgr.GetNumPlayers()); ++player) {
         if (it->mTargetId == mgr.GetPlayer(player)->GetUniqueId()) {
           ++targetCounts[player];
           break;
@@ -461,7 +510,7 @@ TUniqueId CScriptTeamAiMgr::FindBestIndividualAttackTarget(CStateManager& mgr, c
 
   TUniqueId target = kInvalidUniqueId;
   float bestScore = 1000.f;
-  for (int i = 0; i < mgr.GetNumPlayers(); ++i) {
+  for (int i = 0; i < static_cast<uint>(mgr.GetNumPlayers()); ++i) {
     if (mgr.GetPlayerState(i)->IsPlayerAlive()) {
       const float penalty = 100.f * targetCounts[i];
       if (penalty < bestScore) {
@@ -478,11 +527,15 @@ TUniqueId CScriptTeamAiMgr::FindBestIndividualAttackTarget(CStateManager& mgr, c
 }
 
 TUniqueId CScriptTeamAiMgr::ChoosePlayer(const CStateManager& mgr, const CActor& actor) {
-  TUniqueId target = kInvalidUniqueId;
+  // Declaration order matters: retail loads the `FLT_MAX` constant (`lfs f27,lbl_8041C828`)
+  // before the `kInvalidUniqueId` SDA21 pair, so `bestScore` is declared first. Swapping them
+  // costs the two loads their order and the function 1.6% (97.63% -> 99.21%).
   float bestScore = FLT_MAX;
+  TUniqueId target = kInvalidUniqueId;
   const CVector3f forward = actor.GetTransform().GetForward();
   const CVector3f actorPosition = actor.GetTranslation();
-  for (int i = 0; i < mgr.GetNumPlayers(); ++i) {
+  // See `FindBestIndividualAttackTarget`: the unsigned cast is on the bound, not the counter.
+  for (int i = 0; i < static_cast<uint>(mgr.GetNumPlayers()); ++i) {
     const CPlayer& player = *mgr.GetPlayer(i);
     const CVector3f delta = player.GetTranslation() - actorPosition;
     const float distanceSquared = delta.MagSquared();
@@ -572,15 +625,27 @@ void CScriptTeamAiMgr::RemoveInvalidTeamActions(CStateManager& mgr) {
         break;
       }
     }
-  } while (removed);
+    // `== true`, not a bare `removed`. Retail's do-while tail is
+    // `clrlwi r0,r31,24 / cmplwi r0,1 / beq` (main.elf 0x80172248-0x8017224C): it materialises
+    // the byte and compares it against 1. A bare `while (removed)` lets mwcceppc fold the test
+    // into the producing instruction's record bit and emits `clrlwi. / bne` instead, which is
+    // one instruction shorter and leaves the function at 97.71%.
+  } while (removed == true);
 }
 
 bool CScriptTeamAiMgr::AnyMembersInCircle(CStateManager& mgr, const CVector3f& position,
                                           float radius, TUniqueId excludeId) const {
   for (rstl::vector< CTeamAiRole >::const_iterator it = mRoles.begin(); it != mRoles.end(); ++it) {
-    if (it->mOwnerId != excludeId) {
-      const CActor* actor = TCastToPtr< CActor >(mgr.GetObjectByIdFromListAll(it->mOwnerId));
-      if ((actor->GetTranslation() - position).MagSquared() < radius * radius) {
+    // Both halves of this are load-bearing, see `IsTeamMemberInRange` for the `ownerId` copy
+    // (83.58% -> 96.04%) and below for the named `delta` (96.04% -> 100%).
+    const TUniqueId ownerId(it->mOwnerId);
+    if (ownerId != excludeId) {
+      const CActor* actor = TCastToPtr< CActor >(mgr.GetObjectByIdFromListAll(ownerId));
+      // The difference is a named local, not a temporary inside the call. Retail contracts the
+      // magnitude into two `fmadds` and spills nothing; with `(a - b).MagSquared()` the temporary
+      // is spilled as three `stfs` and the adds are left unfused.
+      const CVector3f delta = actor->GetTranslation() - position;
+      if (delta.MagSquared() < radius * radius) {
         return true;
       }
     }
@@ -612,13 +677,20 @@ TUniqueId CScriptTeamAiMgr::TouchingAnyTeammates(CStateManager& mgr, TUniqueId i
     return kInvalidUniqueId;
   }
   const CVector3f expansion = margin * CVector3f::One();
-  const CAABox expanded(bounds->GetMinPoint() - expansion, bounds->GetMaxPoint() + expansion);
+  // Named corners, not two temporaries in the constructor call (88.46% -> 88.88%). Retail still
+  // keeps two more `CVector3f` copies of `expansion` in the frame than we do, which is the whole
+  // of the remaining 11%.
+  const CVector3f minPoint = bounds->GetMinPoint() - expansion;
+  const CVector3f maxPoint = bounds->GetMaxPoint() + expansion;
+  const CAABox expanded(minPoint, maxPoint);
   for (rstl::vector< CTeamAiRole >::const_iterator it = mRoles.begin(); it != mRoles.end(); ++it) {
     if (it->mOwnerId != id) {
       if (const CActor* member = TCastToConstPtr< CActor >(mgr.GetObjectById(it->mOwnerId))) {
         if (member->GetActive()) {
           const rstl::optional_object< CAABox > memberBounds = member->GetTouchBounds();
-          if (memberBounds && expanded.DoBoundsOverlap(*memberBounds)) {
+          // `== true` for the same reason as `RemoveInvalidTeamActions` below: retail tests the
+          // returned byte against 1 rather than folding the test into its record bit.
+          if (memberBounds && expanded.DoBoundsOverlap(*memberBounds) == true) {
             return member->GetUniqueId();
           }
         }
