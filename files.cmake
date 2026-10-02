@@ -435,6 +435,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     # block in configure.py for the range, the dead-strip measurement and why the entry there is
     # named with the module prefix and carries `source=`. Same empty host branch as the entry above.
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian388C.cpp
+    # DestructibleBarrier's (module 13) `rstl::auto_ptr<COBBTree>` deleting destructor at .text
+    # 0x48AC..0x4910, the same shape as the AtomicAlpha entry above with this module's argument
+    # (`__dt__8COBBTreeFv`). Its host branch is empty by design, for the same reason.
+    src/MetroidPrime/ScriptObjects/CDestructibleBarrier48AC.cpp
     # CRumbleManager::StopRumble. Its own file because CRumbleManager.cpp is a
     # `MatchingFor("G2ME01")` unit and must not be edited; see the file's header.
     src/MetroidPrime/CRumbleManagerStopRumble.cpp

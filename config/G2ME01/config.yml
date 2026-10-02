@@ -92,6 +92,15 @@ modules:
     hash: e1744b2c85f29f2821175c332d2399ac8ebf1fac
     splits: config/G2ME01/rels/DestructibleBarrier/splits.txt
     symbols: config/G2ME01/rels/DestructibleBarrier/symbols.txt
+    # fn_13_48AC is the only function of a `Matching` unit (CDestructibleBarrier48AC.cpp, .text
+    # 0x48AC..0x4910) and nothing in the module references it, so mwldeppc dead-strips it:
+    # measured, the .text comes out 0x64 short, fn_13_4910 moves down into 0x48AC, and the
+    # module's sha1 stops matching. dtk 1.8.4 reads this list into the link script's
+    # FORCEACTIVE, which is the documented fix for an unreferenced function in a module;
+    # see docs/RUNNING_THE_DECOMP.md, the ScriptCoin note that first hit it, and
+    # module 2's fn_2_7E0 for the same shape.
+    force_active:
+      - fn_13_48AC
   # Module ID 14
   - object: files/RelProd/DigitalGuardian.rel
     hash: a3798856ec6b175272529f6a6295a29140662bcc

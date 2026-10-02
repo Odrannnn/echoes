@@ -2166,10 +2166,22 @@ config.libs = [
     # (`stw r3, gLoader_DestructableBarrier; blr`), so no symbols.txt rename is needed. Everything
     # from fn_13_A0 (0xA0) up is left unclaimed, so dtk fills it from retail and the module's
     # sha1 still holds.
+    # Added 2026-10-02 (goal item `progress-twin-rel-destructiblebarrier`). A second unit,
+    # `.text 0x48AC..0x4910` out of the unclaimed middle: fn_13_48AC is the deleting destructor
+    # of a two-word `rstl::auto_ptr<T>` - `bool mHas` at +0, the owned pointer at +4 - and this
+    # copy's T is `COBBTree` (the call is `__dt__8COBBTreeFv`). `tools/twin_scan.py` pairs it
+    # with `__dt__Q24rstl32auto_ptr<20CScannableObjectInfo>Fv` (CScannableObjectInfo.cpp); it is
+    # the same template with this module's argument, not that function, and the identical shape
+    # built inside another module is `CAtomicAlpha7E0.cpp` (module 2). `CDestructibleBarrierRel
+    # .cpp`'s range is untouched and the 0xA0..0x48AC and 0x4910..0x7358 bytes between and after
+    # the two ranges stay unclaimed, so dtk fills them from retail and the module's sha1 still
+    # holds. See the source's header for the declaration that reproduces the bytes and for why
+    # it keeps the `fn_13_48AC` name.
     Rel(
         "DestructibleBarrier",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CDestructibleBarrierRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CDestructibleBarrier48AC.cpp"),
         ],
     ),
     # Added 2026-09-29 (goal item `progress-rel-head-elitepirate`). 19 functions, .text
