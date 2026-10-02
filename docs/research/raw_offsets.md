@@ -38,9 +38,11 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **168 sites in 72 files** (`python3 tools/check_raw_offsets.py`
-prints `168 raw-offset site(s) in 72 file(s)`, and the 72 `##` headings below sum to 168; measured
-2026-10-02, after the `fn_800E9C14` carve added `src/MetroidPrime/Carve800E9C14.c`).
+the count here fails the gate. **170 sites in 74 files** (`python3 tools/check_raw_offsets.py`
+prints `170 raw-offset site(s) in 74 file(s)`, and the 74 `##` headings below sum to 170; measured
+2026-10-02, after the `fn_801E7C14` carve added `src/MetroidPrime/Cameras/Carve801E7C14.c` - this
+line read 168 in 72 while the tool already measured 169 in 73 and the headings already summed to
+169, so the totals here are re-derived from the tool rather than accumulated by hand).
 
 **This line has been wrong before, five times over, and the failure was always the same one.**
 `tools/check_raw_offsets.py` compares the *per-file* counts in the headings and never this
@@ -894,3 +896,27 @@ file; this section read 165 in 69 when it was written (2026-10-01, with
   `void* self` rather than a C++ member because retail names none of it and the claim is a
   standalone eight-byte range - the receiver is modelled, but nothing in this unit is a
   `CPhysicsActor`, so the offset has to be spelled for now.
+
+## `src/MetroidPrime/Cameras/Carve801E7C14.c` (1 site)
+
+- `+12`, in `fn_801E7C58` (retail 0x801E7C58, `.text 0x801E7C14..0x801E7CB0`, 0x58 = 88 bytes,
+  22 instructions, 100.00% matched, `Object(Matching)` in `configure.py`). The instruction is
+  `addi r3,r30,12 / li r4,-1 / bl __dt__17CCameraShakerDataFv`: the destructive step of the
+  deleting-destructor chain the carve reproduces, and the address of that member is what the call
+  needs. **Kind A, opaque receiver** - the class is unnamed and modelled by nothing: it is known
+  only from the DOL bytes, which say the member at `+0xC` is a `CCameraShakerData`
+  (`__dt__17CCameraShakerDataFv`, 0x8009D174, destroys three `CMayaSpline`s at +0x18/+0x5C/+0xA0,
+  which is `include/MetroidPrime/Cameras/CCameraShakerData.hpp`'s layout at
+  `CHECK_SIZEOF(..., 0xf4)`), that `fn_801E7D88` walks elements of it in 0x104-byte strides
+  (`lwz r0,0x0(r29) / cmpw r30,r0 / blt` with `addi r31,r31,260`), and that `fn_801E7CB0`
+  (`0x801E7CB0`, 0x64 = 100 bytes) copies the element with `lbz r0,256(r31) / stb r0,256(r30)` -
+  the 0xC + 0xF4 = 0x100 member plus that byte is the stride, and it reads the same `+0xC` through
+  `bl __as__17CCameraShakerDataFRC17CCameraShakerData`. The same run's `fn_801E7EC0`
+  (`include/MetroidPrime/CCameraShakeManager.hpp:11`) calls the same body on a stack temporary at
+  `r1+0xFC`. Retail's twin is
+  `CPlayerState::SPersistentState::~SPersistentState()` (0x80009508, `src/MetroidPrime/main.cpp:2208`),
+  the same 22 instructions with the same `addi r3,r30,0xC` on a member that class *does* model - so
+  the offset is not a guess, it is the one member this function's bytes name. The carve cannot spell
+  it as a member because no header owns the class, and inventing one would invent a class for bytes
+  nothing else names; the unit that next claims the run around 0x801E782C can, and then this site
+  goes with it.
