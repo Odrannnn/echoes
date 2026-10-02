@@ -8,3 +8,16 @@ Sections:
 
 MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp:
 	.text       start:0x00000000 end:0x0000010C
+
+MetroidPrime/ScriptObjects/DigitalGuardianVecList.cpp:
+	.text       start:0x0001AB24 end:0x0001AB50
+
+MetroidPrime/ScriptObjects/DigitalGuardianContact.cpp:
+	.text       start:0x0001AB50 end:0x0001AB98
+
+MetroidPrime/ScriptObjects/DigitalGuardianMemberPtr.cpp:
+	.text       start:0x0001ABD8 end:0x0001ABE0
+
+REL/REL_Setup.cpp:
+	.text       start:0x0001B6F8 end:0x0001B89C
+	.rodata     start:0x00000F60 end:0x00000FE4

@@ -1163,6 +1163,20 @@ list(APPEND MP_GAME_SOURCES
     # into this unit, so the port's undefined count is unchanged.
     src/MetroidPrime/ScriptObjects/CMetareeSwarmDes.cpp
     src/MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp
+    # Module 15's .text 0x1AB24..0x1AB50 - two functions. Listed for the same reason as the
+    # DigitalGuardianAccessors.cpp entry above: it defines neither RELMain nor RELExit, so
+    # check_files_cmake.py's MODULE_ENTRY exemption is not needed, and its only relocation
+    # outside itself - `sUpVector__9CVector3f` off `fn_14_1AB30` - is a DOL global the port
+    # already links from src/Kyoto/Math/CVector3f.cpp, so the port's undefined count is
+    # unchanged.
+    src/MetroidPrime/ScriptObjects/DigitalGuardianVecList.cpp
+    # Module 15's .text 0x1AB50..0x1AB98 and 0x1ABD8..0x1ABE0 - one function each. Listed for the
+    # same reason as the two DigitalGuardianAccessors entries above: neither defines RELMain nor
+    # RELExit, both read raw offsets through the two pointers the ABI puts in r3 and r4, and
+    # `powerpc-eabi-nm -u` on either object prints nothing, so the port's undefined count is
+    # unchanged.
+    src/MetroidPrime/ScriptObjects/DigitalGuardianContact.cpp
+    src/MetroidPrime/ScriptObjects/DigitalGuardianMemberPtr.cpp
     src/MetroidPrime/ScriptObjects/AtomicBetaAccessors.cpp
     src/MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp
     # Module 50's cross product, .text 0xD80..0xDC0 - one function. Listed for the same reason as

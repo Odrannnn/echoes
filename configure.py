@@ -2390,6 +2390,24 @@ config.libs = [
         "DigitalGuardian",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp"),
+            # Two more functions, .text 0x0001AB24..0x0001AB50, a gap far below the module's
+            # behavioural code and its own range: `fn_14_1AB24` resets the one-byte flag at +0xC
+            # and returns `this` (the twin is `CUnknownVec3List::ClearFlag()`,
+            # `main/MetroidPrime/TypesMatch` at 100.00%), and `fn_14_1AB30` returns
+            # `CVector3f::Up()` by value (the twin is `CPatterned::GetIngSnatchingNormal(float)`,
+            # `main/MetroidPrime/Enemies/CPatterned` at 100.00%). Both are in the module's
+            # `ldscript.lcf` FORCEACTIVE list, so nothing dead-strips them. The 0x44 bytes between
+            # them and `fn_14_1AB50` stay unclaimed, so dtk fills it from retail.
+            Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianVecList.cpp"),
+            # One function, .text 0x0001AB50..0x0001AB98: `fn_14_1AB50` copies the flag byte at
+            # +0x18 of `this` unconditionally and the six words at +0 of it only when the flag read
+            # from +0x730 of the argument is set. Retail copies the record as 8+4+8+4, which is
+            # what MWCC emits for two 8-byte union members and for nothing else that was measured.
+            Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianContact.cpp"),
+            # One function, .text 0x0001ABD8..0x0001ABE0: `fn_14_1ABD8`, the address of the member
+            # at +0x764 - `DigitalGuardianAccessors.cpp`'s `fn_14_D8` (+0x754) with this module's
+            # offset. Both are in the module's `ldscript.lcf` FORCEACTIVE list.
+            Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianMemberPtr.cpp"),
         ],
     ),
     Rel(
