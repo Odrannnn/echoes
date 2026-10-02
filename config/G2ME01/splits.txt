@@ -1446,6 +1446,9 @@ MetroidPrime/ScriptLoader/Krocus.cpp:
 	.text       start:0x802274C8 end:0x802274F4
 	.sbss       start:0x80419550 end:0x80419558
 
+MetroidPrime/ScriptLoader/Carve802274F4.c:
+	.text       start:0x802274F4 end:0x80227504
+
 MetroidPrime/ScriptLoader/AIMannedTurret.cpp:
 	.text       start:0x80227504 end:0x80227530
 	.sbss       start:0x80419560 end:0x80419568
