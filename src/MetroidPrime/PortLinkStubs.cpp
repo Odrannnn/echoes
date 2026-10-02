@@ -11,7 +11,9 @@
  *
  *   187 functions, 6 data objects (counted 2026-10-02, after the ninth upstream sync; after
  *   `fn_801FEA98`'s stub was retired for `Carve801FEA98.c` with `fn_801FEAE0`'s added in its
- *   place - an exchange, so the total did not move; before it 165 and 4, after `fn_801FEE88` was added by hand
+ *   place - an exchange, so the total did not move, and after `fn_801FEC64`'s stub was retired for
+ *   `Carve801FEC64.c` with `fn_801FECAC`'s added in its place - a second exchange, the total again
+ *   unmoved; before it 165 and 4, after `fn_801FEE88` was added by hand
  *   below for `Carve801FEE40.c` and `fn_801FEE40`'s stub retired in its place - an exchange, so
  *   the total did not move; after `fn_801FD67C` was added by hand
  *   below for `Carve801FD638.c`, and after `fn_801FD8E0`'s stub was retired for
@@ -958,29 +960,39 @@ extern "C" void stub_187() {}
 extern "C" void stub_188() asm("fn_801FE7E8");
 extern "C" void stub_188() {}
 
-// fn_801FEC64 - retail 0x801FEC64, 0x20 bytes (`config/G2ME01/symbols.txt:8316`), the copy of the
-// 0x2C-byte element `Carve801FF8A0.cpp` copy-constructs. It is itself a forwarder:
-// `stwu`/`mflr`/`stw` / `bl fn_801FEC84` / `mtlr`/`addi`/`blr`, and that is why the claim stops at
-// 0x801FEC64 rather than taking `fn_801FEC84` as well - matching the forwarded body is a separate
-// spelling job, and a second carve here would only move the port's link gap one function along,
-// the trade `stub_188` above already makes for the neighbouring unit.
-//
-// Asked for by the port because `src/MetroidPrime/ScriptObjects/Carve801FF8A0.cpp` (Matching,
-// 0x801FF8A0..0x801FFA20) reproduces `fn_801FF9B8` byte for byte, and that body's `bl fn_801FEC64`
-// at 0x801FF9E8 is in retail's bytes, so the carve cannot drop the call. For the DOL nothing is
-// needed: dtk's own auto object for the unclaimed range that holds it defines it (this run
-// `auto_03_801FDC88_text.o`, 0x801FDC88..0x801FEEF0), and this file is not in `configure.py`, so
-// the stub cannot reach main.dol. The port link does not carry that object, which is why its gap
-// would grow by this symbol: measured in this tree without this block, `python3 tools/link_gap.py
-// --rebuild` prints `288 MISSING` and names both
+// **`stub_189` and `fn_801FEC64` are retired.** `src/MetroidPrime/ScriptObjects/Carve801FEC64.c`
+// (Matching, 0x801FEC64..0x801FECAC) now defines that symbol for the port's link as well, so
+// leaving the block here would be two definitions of one symbol in the flat link. The measuring
+// the block recorded still stands, and it is why that carve's claim stops where it does: without
+// the block, `python3 tools/link_gap.py --rebuild` printed `288 MISSING` and named both
 // `gap grew: fn_801FDAA4 is not in port_link_gap_list.md` and
 // `gap grew: fn_801FEC64 is not in port_link_gap_list.md`; with the two blocks in place the same
-// command prints `286 MISSING`, all accounted for.
+// command printed `286 MISSING`, all accounted for. `fn_801FDAA4`'s half is claimed for real by
+// `ScriptObjects/Carve801FDAA4.c` and `fn_801FEC64`'s by `ScriptObjects/Carve801FEC64.c`.
+//
+// The exchange moves the stand-in one function along, exactly the trade the retired block named:
+// the carve's own callee is now the missing one, and `stub_226` below stands for it.
+
+// fn_801FECAC - retail 0x801FECAC, 0x78 = 120 bytes (`config/G2ME01/symbols.txt:8318`), the
+// 0x2C-byte element's copy constructor, the function `Carve801FEC64.c`'s `fn_801FEC84` calls when
+// its destination is non-null (the `bl` at 0x801FEC98). Asked for by the port because that unit
+// (Matching, 0x801FEC64..0x801FECAC) reproduces both of its functions byte for byte, and the `bl`
+// is in retail's bytes, so the carve cannot drop the call. For the DOL nothing is needed: dtk's
+// own `auto_03_801FEAE0_text.o` (0x801FEAE0..0x801FEE40) defines it, and this file is not in
+// `configure.py`, so the stub cannot reach main.dol. The port link does not carry that object,
+// which is why its gap grows by this symbol without this block: measured in this tree with the
+// block removed, `python3 tools/link_gap.py --rebuild` prints `282 MISSING` and names
+// `gap grew: fn_801FECAC is not in port_link_gap_list.md`; with the block in place
+// `tools/gate.sh`'s port link gap step is `ok`.
 //
 // This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
-// claim that fn_801FEC64 is decompiled - it is not.
-extern "C" void stub_189() asm("fn_801FEC64");
-extern "C" void stub_189() {}
+// claim that fn_801FECAC is decompiled - it is not. Matching its 0x78 bytes needs the two `.data`
+// vtables `lbl_803B7BCC`/`lbl_803B7BE4` and the bodies of the `rstl::basic_string` copy
+// constructor and `fn_801FE8B8` (0x801FE8B8, 0xC4), none of which any unit claims - which is why
+// `Carve801FEC64.c`'s claim stops at 0x801FECAC rather than taking it, the same trade `stub_200`
+// makes for `Carve801FEE40.c` one range along.
+extern "C" void stub_226() asm("fn_801FECAC");
+extern "C" void stub_226() {}
 
 // fn_8004509C - retail 0x8004509C, 0x28 = 40 bytes (`config/G2ME01/symbols.txt:1277`), the
 // per-element copy `Carve80045014.c`'s `fn_8004507C` calls at 0x80045088. Asked for by the port

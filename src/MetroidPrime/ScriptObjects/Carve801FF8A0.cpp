@@ -55,7 +55,13 @@
 // call this unit makes at 0x801FF990 now resolves to a real body rather than a stand-in.  What is
 // still true is the half about `fn_801FEC64`: it remains unclaimed and still needs `stub_189`,
 // because `fn_801FEC84` behind it is a real body and claiming either would only move the port's
-// link gap one function along - which is the trade those stubs record.
+// link gap one function along - which is the trade those stubs record.  **Superseded again**:
+// `fn_801FEC64` and `fn_801FEC84` are now claimed for real by
+// `ScriptObjects/Carve801FEC64.c` (a `Matching` unit, 0x801FEC64..0x801FECAC, both functions
+// 100.00%), so `stub_189` is **deleted** and this unit's `bl fn_801FEC64` at 0x801FF9E8 now
+// resolves to a real body; the link gap moved one function along exactly as that sentence
+// predicted, to the carve's own callee `fn_801FECAC` (`stub_226` in
+// `src/MetroidPrime/PortLinkStubs.cpp`).
 //
 // The internal call edges line up one for one as well: `fn_801FF8A0` calls `fn_801FF9B8` at
 // 0x801FF908 and `fn_801FF94C` at 0x801FF91C, `fn_801FF94C` calls `fn_801FF96C` at 0x801FF958.
