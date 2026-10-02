@@ -386,6 +386,15 @@ src/MetroidPrime/PortLinkStubs.cpp
     # reference; it is listed because check_files_cmake.py requires every config.py `Matching`
     # object to be in this list, and only a RELMain/RELExit unit is exempt.
     src/MetroidPrime/ScriptObjects/CLumiteRelTail.cpp
+    # FlyerSwarm's (module 21) rstl support block, `.text 0x1708..0x198C` - eight functions: the
+    # count+array vector's copy constructor and deleting destructor, `construct`/`construct_impl`/
+    # `uninitialized_copy_n` for the 0x24-byte element, that element's out-of-line copy
+    # constructor, a second deleting destructor and `CFlyerSwarm`'s own. Its host branch is empty
+    # by design (the bodies are inside `#ifdef __MWERKS__`) for the reason CLumiteRelTail.cpp's
+    # entry gives and one more: two of its three relocations - `fn_80_89F4` (SwarmBasics, module
+    # 80) and `fn_21_14E4`, this module's own unclaimed 0x14E4 - are names nothing on the host
+    # defines, so a host definition would grow the port's undefined count.
+    src/MetroidPrime/ScriptObjects/CFlyerSwarmRelTail.cpp
     # SandBoss's (module 55) out-of-line template tail, `fn_55_10548`..`fn_55_106E0`. Its host
     # branch is empty by design (the bodies are inside `#ifdef __MWERKS__`), so listing it adds
     # no undefined reference; it is listed because check_files_cmake.py requires every

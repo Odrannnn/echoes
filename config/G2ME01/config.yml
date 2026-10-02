@@ -132,6 +132,12 @@ modules:
     hash: e8205e9220dfe2bacd6173fa095c009ddc56f715
     splits: config/G2ME01/rels/FlyerSwarm/splits.txt
     symbols: config/G2ME01/rels/FlyerSwarm/symbols.txt
+    # fn_21_1708 (0x1708, 0x8C) is the module's count+array vector's deleting destructor and
+    # nothing references it - not the module's code and not its `.data` - so mwldeppc drops it
+    # from a Matching unit's `.text` and every function after it shifts (measured: the module
+    # comes out short). Same arrangement as AIMannedTurret, SandBoss and Tweaks above.
+    force_active:
+      - fn_21_1708
   # Module ID 22
   - object: files/RelProd/FlyingPirate.rel
     hash: 86a9aec257ccfe907159552f5e4022c462cb3bc2

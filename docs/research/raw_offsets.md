@@ -39,7 +39,7 @@ There are three kinds, and they are not equally acceptable:
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
 the count here fails the gate. **185 sites in 79 files** (`python3 tools/check_raw_offsets.py`
-prints `185 raw-offset site(s) in 79 file(s)`, and the 79 `##` headings below sum to 185; measured
+prints `186 raw-offset site(s) in 80 file(s)`, and the 80 `##` headings below sum to 186; measured
 2026-10-02, after the `progress-twin-rel-ingboostballguardian` item added module 30's accessor
 block - `CIngBoostBallGuardian194C.cpp` (1 site), `CIngBoostBallGuardianC6AC.cpp` (1) and
 `CIngBoostBallGuardianPredicates.cpp` (7), nine sites over three new files. This line read 176 in
@@ -994,3 +994,18 @@ file; this section read 165 in 69 when it was written (2026-10-01, with
   two reach their members through the real class types (`delete self->mPtr` on
   `single_ptr< CTweakPlayerGun >`/`< CTweakParticle >`), and the remaining two use `+ 8` and `+ 0xC`
   on `void*` receivers, which the checker's two-character minimum does not count as field accesses.
+
+## `src/MetroidPrime/ScriptObjects/CFlyerSwarmRelTail.cpp` (1 site)
+
+- `+0x18`, in `fn_21_18D4` (module 21, `.text 0x18D4`, 0x58 = 88 bytes,
+  `Object(Matching, ..., mw_version="GC/2.7")` in `configure.py`; `progress-twin-rel-flyerswarm`).
+  **Kind A, opaque receiver.** The instruction is `addi r3,r30,0x18 / li r4,-1 / bl fn_21_14E4`,
+  the destructive step of a deleting-destructor chain - the shape `CMorphBall.cpp`'s
+  `fn_800CD460` carries verbatim with the same `+24`, and its twin
+  `src/MetroidPrime/Player/CMorphBall.cpp` is written the same way. The function takes a `void*`
+  receiver with no `this` and no class, and the member at +0x18 is torn down by this module's own
+  unclaimed `fn_21_14E4` (0x14E4, 0x50), so there is no header to put a field in and inventing one
+  would be inventing a class for a record nothing else in this tree names. The other seven
+  functions in the claim spell no raw offset: the record and the count+array vector they walk are
+  declared in the file (`struct SFlyerElem`, `struct SFlyerVec`), and the class's deleting
+  destructor reaches its vtable through the module's own `lbl_21_data_4` data label.

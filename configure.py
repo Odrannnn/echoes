@@ -2083,6 +2083,19 @@ config.libs = [
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CFlyerSwarm.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CFlyerSwarmRel.cpp"),
+            # The module's rstl support block, .text 0x1708..0x198C: the vector's copy ctor and
+            # deleting destructor, `construct`/`construct_impl`/`uninitialized_copy_n` for the
+            # 0x24-byte element, that element's out-of-line copy constructor, a second deleting
+            # destructor and `CFlyerSwarm`'s own. Eight functions, all ours, one contiguous range.
+            # **Compiled with GC/2.7, not the module's default GC/1.3.2**: under 1.3.2 the vector
+            # copy ctor's `lwz r0,0x0(r4)` lands four instructions late and the element copy is a
+            # word copy - the same per-object override CLumiteRelTail.cpp and CSandBossRelTail.cpp
+            # carry, and the same reason (this family's out-of-line library blocks are the later
+            # compiler's). `fn_21_1708` is unreferenced anywhere in the module, so it is in this
+            # module's `force_active` list in config.yml; `fn_21_1888` is renamed in the module's
+            # symbols.txt to the copy constructor's mangled name, which is what its bytes are.
+            Object(Matching, "MetroidPrime/ScriptObjects/CFlyerSwarmRelTail.cpp",
+                   mw_version="GC/2.7"),
         ],
     ),
     Rel(

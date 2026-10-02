@@ -13,6 +13,9 @@ MetroidPrime/ScriptObjects/CFlyerSwarmRel.cpp:
 	.text       start:0x00000064 end:0x000000D8
 	.bss        start:0x00000000 end:0x00000004
 
+MetroidPrime/ScriptObjects/CFlyerSwarmRelTail.cpp:
+	.text       start:0x00001708 end:0x0000198C
+
 REL/REL_Setup.cpp:
 	.text       start:0x00001C58 end:0x00001DFC
 	.rodata     start:0x00000028 end:0x000000AC
