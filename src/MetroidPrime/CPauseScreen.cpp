@@ -1,6 +1,7 @@
 #include "MetroidPrime/CPauseScreen.hpp"
 
 #include "MetroidPrime/CActorLights.hpp"
+#include "MetroidPrime/CAnimData.hpp"
 #include "MetroidPrime/CModelData.hpp"
 #include "MetroidPrime/CQuitGameScreen.hpp"
 #include "MetroidPrime/Tweaks/CTweakGui.hpp"
@@ -294,8 +295,24 @@ void CPauseScreen::DrawMenuNode(const CTransform4f&, const CVector3f&, int, floa
 
 bool CPauseScreen::IsDone() const { return mDone; }
 
-void CPauseScreen::DrawModels(float) const {
-  // TODO: pre-render loaded animated models and draw the model view with scan-network fog disabled.
+void CPauseScreen::DrawModels(float alpha) const {
+  if (mModels.size() == 0 || !mModelsReady) {
+    return;
+  }
+  for (const rstl::auto_ptr< CModelData >* it = mModels.begin(); it != mModels.end(); ++it) {
+    if (it->get() != nullptr && !it->get()->IsNull()) {
+      if (!it->get()->IsLoaded(0)) {
+        return;
+      }
+      it->get()->Touch(CModelData::kWM_Normal, 0);
+      if (it->get()->HasAnimation()) {
+        it->get()->AnimationData()->PreRender();
+      }
+    }
+  }
+  SetFog(false);
+  DrawModelView(mModelTransform, alpha);
+  SetFog(true);
 }
 
 void CPauseScreen::InitializeStripedTexture() {
