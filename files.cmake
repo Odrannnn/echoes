@@ -367,9 +367,15 @@ src/MetroidPrime/PortLinkStubs.cpp
     # symbol, and Update needs `RemoveSource` from the same file, so the whole unit goes in.
     # Measured on the host: it closes 2 and adds nothing but `memmove`.
     src/MetroidPrime/Player/CStaticInterference.cpp
-    # The retail-named float reader CGameState::GetHardModeDamageMultiplier calls, `fn_80216D38`
-    # at +0x54 of the opaque Tweaks block.
-    src/MetroidPrime/Tweaks/CTweakGameHardModeDamageMultiplier.cpp
+    # src/MetroidPrime/Tweaks/CTweakGameHardModeDamageMultiplier.cpp was dropped here on
+    # 2026-10-02. It was the port's hand-written definition of the plain symbol `fn_80216D38`,
+    # and src/MetroidPrime/Tweaks/Carve80216D2C.c now claims 0x80216D38 as a `Matching` unit
+    # that defines that symbol for the host link as well. Two definitions of one symbol is a
+    # duplicate in the port's link, and the dropped one was dead weight: `nm` over the port's
+    # objects has no `U fn_80216D38`, because the carve that used to call it
+    # (CGameStateGetHardModeDamageMultiplier.cpp) was superseded by upstream's CGameState.cpp,
+    # which calls the mangled `CTweakGame::GetHardModeDamageMultiplier`. The port's undefined
+    # count is unchanged by the drop.
     # --- host-port link wave, CPlayerGun decompilation (2026-09-30). Four callees that
     # `CPlayerGun`'s newly decompiled bodies reach, each in a file of its own for the reason
     # `CGrappleArmReturnToDefault.cpp` gives: the unit that holds the body is a whole
@@ -556,6 +562,9 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptObjects/Carve80212944.c
     src/MetroidPrime/ScriptObjects/Carve802129A4.c
     src/MetroidPrime/ScriptObjects/Carve80212A24.c
+    # A carve of the four unnamed `CTweakGame` float readers at 0x80216D2C..0x80216D5C, and the
+    # one definition of `fn_80216D38` in both builds - see the note above and the file header.
+    src/MetroidPrime/Tweaks/Carve80216D2C.c
     src/MetroidPrime/ScriptLoader/Carve80229410.c
     src/MetroidPrime/ScriptLoader/Carve80229568.c
     src/MetroidPrime/ScriptLoader/Carve80229BBC.c

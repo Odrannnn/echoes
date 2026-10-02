@@ -15,9 +15,13 @@
 // `lwz r3,0(r3) ; lfs f1,84(r3) ; blr` - the float at +0x54 of the block `*gpTweakGame` points
 // at. It is a member of the same `Tweaks` accessor family as `fn_80216D2C` (+0x58),
 // `fn_80216D44` (+0x34) and `fn_80216D50` (+0x30), all four of which are one `lwz`/`lfs`/`blr`
-// apart in `docs/research/port_link_gap.md`'s neighbourhood. **It stays `extern "C"` and stays
-// undefined**: renaming it is a `symbols.txt` change with module-hash consequences, and defining
-// it here would need the `Tweaks` block layout, which is not what this unit is for.
+// apart in `docs/research/port_link_gap.md`'s neighbourhood. **It stays `extern "C"`, and it is
+// not this unit's to define**: renaming it is a `symbols.txt` change with module-hash
+// consequences, and defining it here would need the `Tweaks` block layout, which is not what
+// this unit is for. Since 2026-10-02 all four are defined by the `Matching` carve
+// `src/MetroidPrime/Tweaks/Carve80216D2C.c`, so the declaration below resolves against it.
+// (This unit itself is superseded and nothing builds it - see tools/check_files_cmake.py -
+// upstream's `CGameState.cpp` holds `GetHardModeDamageMultiplier` now.)
 //
 // `gpTweakGame` is `extern CTweakGame*` in `MetroidPrime/Tweaks/CTweakGame.hpp` and is defined by
 // `src/MetroidPrime/Tweaks/Tweaks.cpp`.

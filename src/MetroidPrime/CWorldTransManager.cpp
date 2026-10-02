@@ -25,11 +25,15 @@
 #include "rstl/math.hpp"
 #include "dolphin/os.h"
 
-// Retail 0x80216D50, an unclaimed one-instruction `CTweakGame` float reader - `lwz r3,0(r3)` /
+// Retail 0x80216D50, a one-instruction `CTweakGame` float reader - `lwz r3,0(r3)` /
 // `lfs f1,48(r3)` / `blr`, i.e. the float at +0x30 of the block `*gpTweakGame` points at. It is
-// a member of the same `Tweaks` accessor family as `fn_80216D38` (+0x54), and it stays
-// `extern "C"` and undefined for the reason that file gives: renaming it is a `symbols.txt`
-// change with module-hash consequences, and defining it here would need the `Tweaks` layout.
+// a member of the same `Tweaks` accessor family as `fn_80216D38` (+0x54), and since 2026-10-02
+// all four of them are defined together by the carve
+// `src/MetroidPrime/Tweaks/Carve80216D2C.c` (retail 0x80216D2C..0x80216D5C, `Matching`, which
+// also replaced the port-only definition `fn_80216D38` had in
+// `CTweakGameHardModeDamageMultiplier.cpp`). The declaration here stays `extern "C"` because
+// the name is retail's own: renaming it is a `symbols.txt` change with module-hash
+// consequences, and defining it in this unit would need the `Tweaks` layout.
 extern "C" float fn_80216D50(CTweakGame* tweakGame);
 
 // Retail holds both locator names as file-scope pointers in `.sdata2`. A function-local

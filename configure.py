@@ -553,6 +553,7 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "MetroidPrime/Tweaks/CTweakTargeting.cpp"),
             Object(MatchingFor("G2ME01"), "MetroidPrime/Tweaks/CTweakGuiColors.cpp"),
             Object(MatchingFor("G2ME01"), "MetroidPrime/Tweaks/CTweakGui.cpp"),
+            Object(Matching, "MetroidPrime/Tweaks/Carve80216D2C.c"),
             Object(MatchingFor("G2ME01"), "MetroidPrime/Player/CFrontEndGameMode.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CGMDeathMatch.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CGMCoin.cpp"),
