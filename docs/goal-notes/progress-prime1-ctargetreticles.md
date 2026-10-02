@@ -1634,3 +1634,314 @@ reduce to **one question this run did not answer: what is `CScriptGrapplePoint`'
 methods (`0x8009D580` is its destructor) rather than from Prime 1, and both become writable.
 `CalculateOrbitZoneReticlePosition` at 99.68% is one `f2`/`f3` swap away and is the cheapest by
 distance if anyone wants a different kind of problem.
+
+---
+
+# Ninth run (2026-10-02), lane 5 (wt-mp2-goal-L5) — investigation run, no source change
+
+**Re-measured first, and the tree is one function ahead of this file's last section.**
+`tools/fast_try.sh MetroidPrime/CTargetReticles` on the clean tree at HEAD `6787750e`
+(`match: carve-801f97c8`) gives **33/44, 30.00% fuzzy, 25.22% matched code**. The eighth run's
+last section records 32/44. `CalculateOrbitZoneReticlePosition` — which the eighth run left at
+99.68% with an `f2`/`f3` swap — **is at 100% in this tree**, so that inversion was resolved
+upstream, not by the eighth run.
+
+Eleven functions are unmatched, all below:
+
+| % | bytes | function |
+| --- | --- | --- |
+| 59.40 | 2280 | `__ct__22CCompoundTargetReticleFRC13CStateManageri` |
+| 1.35 | 576 | `CalculateRadiusWorld` |
+| 0.70 | 572 | `DrawGrapplePoint` |
+| 0.62 | 648 | `DrawGrappleGroup` |
+| 0.55 | 724 | `DrawOrbitZoneGroup` |
+| 0.36 | 1116 | `DrawScanTargetGroup` |
+| 0.34 | 1172 | `DrawSeeker` |
+| 0.16 | 2524 | `Update` |
+| 0.16 | 2484 | `DrawNextLockOnGroup` |
+| 0.15 | 2628 | `UpdateCurrLockOnGroup` |
+| 0.06 | 7128 | `DrawCurrLockOnGroup` |
+
+**Nothing was changed and nothing was committed.** `git status` is clean. This run bought the
+next one the measurements below; the reasons nothing landed are stated per target.
+
+## `_SDA_BASE_` (r13) is `0x8041FD80` — the run's most reusable measurement
+
+`_SDA2_BASE_` (r2) = `0x804223C0` was already known. **r13 is a different base**, and no run
+had solved it, which is why several sections above cite `-27740(r13)` and friends without
+resolving them. Solved here from two independent equations inside `CGraphics::SetDepthRange`
+(`tools/dis.sh 0x802BFA38 0xA0`):
+
+    stfs f5,-25624(r13)   ->  0x8041FD80 - 0x6418 = 0x80419968   (CGraphics::mDepthNear)
+    stfs f6,-29328(r13)   ->  0x8041FD80 - 0x7290 = 0x80418AF0   (CGraphics::mDepthFar)
+
+Both addresses are the ones `src/MetroidPrime/CWorldShadow.cpp:33-37` already documents from the
+same two `stfs`, so the two derivations agree and the base is not a guess. With it:
+
+| expression | address | value |
+| --- | --- | --- |
+| `lhz r0,-27740(r13)` | 0x80419134 | `kInvalidUniqueId` = 0xFFFF |
+| `lwz r0,-27736(r13)` | 0x80419138 | `kInvalidAreaId` |
+| `lfs f31,-25624(r13)` | 0x80419968 | `CGraphics::mDepthNear` |
+| `lfs f30,-29328(r13)` | 0x80418AF0 | `CGraphics::mDepthFar` |
+| `lfs f1,-29316(r2)` | 0x8041B13C | **0.125f** |
+| `lfs f2,-29468(r2)` | 0x8041B0A4 | **1.0f** |
+| `lfs f2,-29472(r2)` | 0x8041B0A0 | **0.0f** |
+| `lfs f0,-29336(r2)` | 0x8041B128 | **1e-5f** (`0x3727C5AC`) |
+
+`0x8041B13C` is `lbl_8041B13C` (`nm`: `8041b13c D lbl_8041B13C`) — an unnamed `.sdata2`
+global that nothing in `src/` currently references. So **0.125f must be spelled as that named
+global, not as a literal**, or the reviewer is right to reject it the way run 8's
+`fn_800B2EA0` was rejected. 1e-5f is `close_enough`'s default `Real32::Epsilon()`, so
+`close_enough(t, 0.f)` is the spelling, not `close_enough(t, 0.f, 1e-5f)`.
+
+## `DrawGrappleGroup` is now mapped line for line; three things still block it
+
+`./tools/dis.sh 0x800B0750 0x288`, with the constants resolved above. Everything below is
+measured from retail, not inferred.
+
+Prologue (no frame beyond 80 bytes, `stmw r26`, f31/f30 spilled):
+
+    mNoDrawTicks (0x2C) > 0                      -> return
+    mGrapple.mItem (0xA0) == 0 && mGrapple+0x4 != 0 && *(mGrapple.mOwner + 0x18) != 0
+        -> mGrapple.mItem = GetObj__6CTokenFv(&mGrapple).mItem    // 0x800B07B4
+    mGrapple.mItem == 0                          -> return
+    mPreviousState (0x24) == kRS_Scan (1)        -> return
+    !mgr.GetPlayerState(mPlayerIndex)->HasPowerUp(kIT_GrappleBeam /*23*/) -> return
+    prevNear = CGraphics::mDepthNear; prevFar = CGraphics::mDepthFar
+    CGraphics::SetDepthRange(0.125f, 1.0f, <third argument never written>)
+
+**Available in this tree, no work needed** (each was checked this run):
+
+- `CEntity::GetActive()` is bit 6 of the byte at +0x20 — `rlwinm. 25,31,31` is bit `31-25 = 6`,
+  and `CEntity` is `CHECK_SIZEOF(0x24)` with `uint mActive : 1` as its first declared `bool : 1`.
+  This confirms the third run's "first `bool : 1` lands at bit 6" rule **for `CEntity`**, not
+  just `CPlayer`.
+- the occlusion test is exactly the inlined `CGameArea::GetOcclusionState()` that
+  `include/MetroidPrime/CGameArea.hpp:266` already declares:
+  `IsLoaded() ? mPostConstructed->mOcclusionState : kOS_Occluded` is retail's
+  `mPhase (0xF4) == 16` / `mPostConstructed (0x104)` / `mOcclusionState (0x13C) == 1` /
+  `li r0,0` — **`kP_Loaded` is 16 and `kOS_Visible` is 1, and the `li r0,0; cmpwi r0,1; bne`
+  is MW materialising the ternary's false arm.** The seventh and eighth runs read this as an
+  unexplained `li`/compare pair; it is the `kOS_Occluded` arm and needs no layout work.
+- `mgr.GetPlayerState(mPlayerIndex)` and `HasPowerUp` are already spelled that way at
+  `src/MetroidPrime/Cameras/CCameraManager.cpp:191`.
+- the `else` half calls `CStateManager::GetObjectById` (0x80041998, which is `kOL_All` at
+  `mgr+0x810`), already declared and already in the port's undefined list.
+- the `t` guard is `close_enough(t, 0.f)` with `CMath::AbsF(float) { return fabs(v); }` taking
+  the **double** `fabs`, which is retail's `fabs` + `frsp`. Prime 1's line is verbatim correct.
+
+**Blocker A — the object-list walk does not exist in this tree.** Retail walks
+
+    r31 = *(mgr + 0x8A0)      ; a list object, not an array
+    r30 = *(r31 + 8)         ; first entry
+    loop: r4 = *(r30 + 8)    ; entry + 8 = the CEntity*
+          ...
+          r30 = *(r30 + 4)   ; entry + 4 = next
+          r0  = *(r31 + 12)  ; end sentinel
+          while (r30 != r0)
+
+`CStateManager::PrepareAreaUnload` (0x800419CC) walks `mgr + 0x878` with the **same**
+`+8 / +4 / +8 / +12` shape, so this is a second, pointer-based list kind that this repo's
+`CObjectList` (`SObjectListEntry {CEntity* mEntity; short mNext; short mPrev;}`, an array of
+1024 at +4, `GetFirstObjectIndex`/`GetNextObjectIndex`/`operator[]`) is not. That model is
+confirmed correct for `kOL_All` — `GetObjectById__11CObjectListCF9TUniqueId` (0x8000B538) does
+`rlwinm r0,r5,3,19,28` (uid * 8) then `lwz r3,4(r3)`, i.e. `mObjects[uid].mEntity`, and
+`__ct__11CObjectListF15EGameObjectListb` (0x8000B7CC) passes item size 8 and count 1024 with the
+array at `this + 4` — so the two are genuinely different structures and **which** one
+`mgr + 0x8A0` is has to be established before any body can be written.
+
+**Blocker B — `CGraphics::SetDepthRange` takes three floats in retail.** The symbol is
+`SetDepthRange__9CGraphicsFff` (`config/G2ME01/symbols.txt:12684`, `.text:0x802BFA38`); its body
+reads only f1 and f2, and both call sites in `DrawGrappleGroup` set only f1 and f2, so the third
+parameter is dead. This tree declares `static void SetDepthRange(float near, float far);`
+(`include/Kyoto/Graphics/CGraphics.hpp:285`), defined in `DolphinCGraphics.cpp:1447` — which is a
+**DOL unit** (`configure.py:875`), so the 3-arg body must *not* go there: it would displace the
+filler object that currently supplies 0x802BFA38 and change `main.dol`. It needs a port-only
+carve-out next to `CGraphicsHostStartup.cpp` (already listed in `files.cmake:711`), or a new one.
+
+**Blocker C — the per-player mask is one byte lower than this header's 4-bit field.** Retail:
+
+    lbz   r5,339(r4)      ; +0x153
+    li    r3,1
+    lwz   r0,0(r27)       ; mPlayerIndex
+    clrlwi r5,r5,28       ; (x << 28) & 0xF  ==  x & 0xF  -> the LOW NIBBLE
+    slw   r0,r3,r0
+    and.  r0,r5,r0
+
+so it is a four-wide per-player mask in bits 0..3 of the byte at **+0x153**. The seventh run
+recorded "bit 3 of +0x153" and the eighth "bits 0..3 of +0x153"; neither connected it to the
+class. This tree's only four-wide field in that area is
+`CActor::mTargetableVisorFlags : 4`, documented at `// x152`
+(`include/MetroidPrime/CActor.hpp:333`) — a nibble the header places in the byte at **+0x152**,
+one byte higher than retail's read. Since `CHECK_SIZEOF(CActor, 0x158)` cannot see bit offsets,
+that is either a wrong `// x152` comment or a genuinely unmodelled field. **Resolving it needs a
+bit-offset probe, not a header read**, and guessing it would move a bit in every actor unit in
+the game.
+
+## `DrawOrbitZoneGroup` is not Prime 1's function at all — corrected
+
+Four runs have written it off as "Echoes-specific, no Prime 1 counterpart", which is right about
+the *outcome* but wrong about the *cause* and hides what it costs. Prime 1's
+`DrawOrbitZoneGroup` (prime-ref:1183) draws the **crosshairs model** — ~20 lines ending in
+`model->Draw(CModelFlags::Additive(...))`, which is Prime 1's `DrawCrosshairs`. Echoes'
+0x800AD258 (724 B) draws the **orbit-zone arc in immediate mode**: `CPlayerState::GetIds`
+(0x8008485C), `gpRender` slot 0x70, `SetTevOp`, `SetDepthWriteMode`, `StreamBegin(kPT_Triangles)`,
+`StreamColor(CColor::White())`, `StreamTexcoord`, `StreamVertex`, `StreamEnd`,
+`fn_80232C20`, `fn_80232B34`, `CTexture::Load`, and `TCastToPtr<10CUnknown63>` on the orbit id.
+So it is not a port of anything in Prime 1, it is new geometry code built on a class this repo
+does not model (`CUnknown63`), and 724 bytes of it is several items' budget. **Do not spend a
+lane expecting Prime 1's line to be a starting point.**
+
+`DrawGrapplePoint` (572 B) and `DrawGrappleGroup` (648 B) share blocker C and add their own:
+`DrawGrapplePoint` calls `point.GetOrbitPosition(mgr)` **virtually** (vtable slot 20) and reads
+bit 6 of the byte at +0x184, and retail's cast there is the `CEntity&` overload
+(`TCastToPtr<19CScriptGrapplePoint>__FR7CEntity`), which is not among the 291 undefined symbols
+(the `CEntity*` overload is). Unchanged blockers from the seventh and eighth runs, still true.
+
+`CalculateRadiusWorld` remains at 1.35% with the second run's 99.375% body not applied; the
+second and eighth runs both measured that the residue is the `f1`/`f2` choice for the `dy`/`dx`
+subtractions across 12 spellings, and **no spelling was tried this run**, so this file's
+`WALL:` on it is left as it is rather than restated.
+
+## Why nothing landed
+
+Every remaining target needs a fact this tree does not record — a bit offset inside `CActor`
+(blocker C), a second object-list representation (blocker A), or a retail signature this tree
+does not declare (blocker B) — and a `progress` item is judged on **exact** matches only, so a
+body that compiles and scores 90-98% scores zero and risks a regression across the actor units.
+Guessing at blocker C would have been the expensive mistake: it moves a bit in `CActor`, which
+every actor in the game reads.
+
+## Codegen rules learned (not `NEW:` items)
+
+- **Solve `_SDA_BASE_` (r13) and `_SDA2_BASE_` (r2) separately; they are not the same value**
+  (0x8041FD80 and 0x804223C0). Every `-NNNNN(r13)` in a section above that was never resolved
+  becomes readable, and an `r2` answer applied to an `r13` offset silently lands on the wrong
+  float. Cross-check a candidate base against a `stfs`/`stw` whose target address some other
+  file already documents — that is what makes it a measurement rather than a guess.
+- **An unexplained `li rX,0; cmpwi rX,N; bne` inside a boolean expression is usually a ternary's
+  false arm, not a leftover constant.** Here it was `IsLoaded() ? mOcclusionState : kOS_Occluded`
+  with `kOS_Occluded == 0` and `kOS_Visible == 1`, which two earlier runs read as an unexplained
+  pair. Look for the accessor whose body has that shape before treating it as a mystery.
+- **`clrlwi rD,rS,28` is `rS & 0xF`, i.e. the LOW nibble** (`(x << 28) & 0xF`), so retail's mask
+  at `+0x153` covers bits 0-3 of that byte. Recording it as "bit 3" loses the width.
+- **`CMath::AbsF(float) { return fabs(v); }` picks up libm's *double* `fabs`**, and retail's
+  `fabs` + `frsp` pair is that promotion, not a hand-written absolute value.
+- **`build/report.json` in a lane worktree is still stale.** It claimed 32/44 for this unit in
+  this file's last section; the tree produces 33/44. Rebuild before quoting either.
+
+## What the next run should do
+
+`DrawGrappleGroup` is the only cheap target, and blockers A and C are answerable **from this
+file plus two commands** rather than from a session of guessing:
+
+1. Blocker C, cheap: compile a throwaway `.cpp` that does
+   `static_assert` / a `printf` of `offsetof`-style bit positions, or read retail's own
+   `CActor::SetDirtyFlags`/`CActor::SetVisorOrbitableFlags` (search `symbols.txt` for the setter
+   that writes +0x152/+0x153) and see which `rlwimi` mask it uses. One `rlwimi r0,r3,SH,MB,ME`
+   settles the whole `CActor` tail bitfield block.
+2. Blocker A, cheap: find which `EGameObjectList` value `CStateManager`'s constructor passes to
+   `CObjectList(EGameObjectList, bool)` (`__ct__13CStateManager`, 0x80043AEC, 0x11B8 bytes — the
+   `li` before each `bl __ct__11CObjectListF15EGameObjectListb` is the index). If index 18 is
+   what lands at `mgr + 0x8A0`, the enumerator is the only thing this header is missing and the
+   walk itself can be spelled on the existing array API.
+3. Blocker B, mechanical: declaration in `CGraphics.hpp`, body in `CGraphicsHostStartup.cpp`.
+
+If all three land, the body is ~50 lines with no new port symbol beyond `SetDepthRange` (which
+the carve-out closes) and it is the nearest thing to 100% in this unit.
+
+### Addendum, same run: blockers A and C resolved, and a fourth problem found
+
+Both were answerable in one command each, which is worth recording because the ninth section
+above had them open.
+
+**Blocker C is not a blocker.** Retail's own setters name the field
+(`tools/dis.sh 0x8004A3A8 0x54`, `SetValidTarget__6CActorFib`):
+
+    lbz r5,339(r3) ; li r0,1 ; slw r4,r0,r4 ; lbz r0,339(r3)
+    clrlwi r5,r5,28 ; or r4,r5,r4 ; rlwimi r0,r4,0,28,31 ; stb r0,339(r3)
+
+i.e. `mValidTargetPlayers` is the **low nibble of the byte at +0x153**, set and cleared per
+player index — exactly what `DrawGrappleGroup` reads. `CActor::SetValidTarget(int, bool)` is
+already declared at `include/MetroidPrime/CActor.hpp:129`; only a getter is missing, and a
+getter is a method, not a bit, so `CHECK_SIZEOF(CActor, 0x158)` and every actor unit are
+untouched. The neighbouring `SetVisorOrbitableFlags__6CActorFQ216CVisorParameters20EVisorOrbitableFlagsb`
+(0x8004A368) confirms the other half: `lbz 338(r3)` / `rlwimi r0,r4,0,28,31` puts
+`mTargetableVisorFlags` in the low nibble of **+0x152**, which is where this header already puts
+it. So the header's bitfield block is right and the seventh/eighth runs' "bit 3"/"bit 7"
+readings were both wrong about which field. **`DrawGrappleGroup`'s guard is
+`!point->IsValidTargetPlayer(mPlayerIndex)`.**
+
+**Blocker A's index is 18.** `CStateManager`'s constructor builds exactly one `CObjectList`
+(`__ct__13CStateManager`, 0x80043AEC: a single `bl __ct__11CObjectListF15EGameObjectListb` at
+0x800442A4 with `li r4,0`), so the other lists are built elsewhere and the index cannot be read
+off it. It can be read off the header instead: `mObjectLists` is at +0x808 with
+`rstl::auto_ptr`'s pointer in the element's **second** word (the header's own comment on
+`kOL_ScriptActors`, which this file has carried since the first run), so element `i` is read at
+`0x808 + 8*i + 8`; `kOL_All` (0) gives the 0x810 that `GetObjectById__13CStateManagerCF9TUniqueId`
+reads, `kOL_ScriptActors` (7) gives the 0x848 the same comment records, and `mgr + 0x8A0` is
+therefore **element 18**. Its occupants are read as `CScriptGrapplePoint`, so
+`kOL_GrapplePoints = 18` is the name; it is an enumerator addition, no layout change.
+
+**What is still open is the walk itself.** Retail walks that list by pointer
+(`list+8` first, `entry+4` next, `entry+8` the entity, `list+12` the end sentinel), which is not
+this header's array model — but note the array model *is* confirmed correct for `kOL_All`
+(`GetObjectById__11CObjectListCF9TUniqueId` indexes `mObjects[uid].mEntity`, and
+`__ct__11CObjectListF15EGameObjectListb` passes item size 8, count 1024, array at `this + 4`).
+Whether MW turns `GetFirstObjectIndex()/GetNextObjectIndex()/operator[]` into retail's four
+loads is an empirical question the next run settles in one `fast_try.sh`; `CObjectList.cpp`
+itself must not be touched, since `main/MetroidPrime/CObjectList` is **Matching at 11/11** (measured
+this run) and any new member function emitted there breaks it.
+
+**Fourth problem, found while writing the body: retail does not set `f3` for `SetDepthRange`.**
+Both call sites set only `f1` and `f2`, yet the symbol is `Fff`. Retail compiles `CGraphics`'s
+definition in the same build, so MW knows the third parameter is dead and drops it; **we cannot
+reproduce that across units**, and a defaulted third parameter will make us emit an `lfs f3`
+that retail does not have, twice. So blocker B is not just "add a declaration and a carve-out" —
+it needs a spelling whose third argument MW does not materialise. The cheapest thing to measure
+first is whether a third parameter MW can prove unused (an unnamed one whose default is only
+referenced in a `#ifdef`d branch) gets dropped; if not, this is the same class of problem as the
+first run's `DrawCrosshairs` wall, where the answer was upstream in `symbols.txt` rather than in
+the source.
+
+**Priority for the next run, revised:** `DrawGrappleGroup` is now down to one open question (the
+walk), plus the `f3` question. Everything else it needs is measured and available. That is a much
+nearer target than anything else in this unit.
+
+---
+
+# Tenth run (2026-10-02), lane 9 (wt-mp2-goal-L9) — PASS, 33 -> 34 / 44
+
+Re-measured first (`tools/fast_try.sh MetroidPrime/CTargetReticles`): 33/44, 30.00% fuzzy — far past the
+older sections above (the earlier `WALL:` lines on `CalculateOrbitZoneReticlePosition` etc. are stale;
+that one is 100% now). `CalculateRadiusWorld` was still a `return 1.f;` stub (1.35%).
+
+`./tools/goal_check.sh build/goal/item.json` -> PASS (`matched 12626 -> 12627`, `target rose 33 -> 34 / 44`,
+`gate.sh` clean, `no asm added`).
+
+## CalculateRadiusWorld__22CCompoundTargetReticle...: 1.35% -> **100.00%**
+
+Two changes:
+1. `src/MetroidPrime/CTargetReticles.cpp`: body = Prime 1's, with `CVector3f min/max` copies, `GetTargetRadiusMode()`
+   call, explicit `case 2: default:` with `(h + (w + d)) * (1/6)`, `TCastToConstPtr<CSandwormEye>(actor)` -> `radius = 1.f`,
+   and `class CSandwormEye;` forward declaration. Previous WALL (f1/f2 accumulator, 99.375%) is **resolved**:
+   in cases 0 and 1 hoist the inner min/max into a named local and compute `dx` *after* it:
+   ```cpp
+   float inner = rstl::min_val(max[2] - min[2], max[1] - min[1]);
+   float dx = max[0] - min[0];
+   radius = rstl::min_val(dx, inner) * 0.5f;       // case 1: same with max_val
+   ```
+   Measured this run: inline Prime-1 spelling 99.38%; named `inner` then `0.5f * min_val(max[0]-min[0], inner)` 99.38%;
+   hand ternaries `(inner<dx)?inner:dx` 98.33%; named `inner`+`dx` (above) **100%**. Named float locals for all six
+   AABB floats instead of CVector3f copies: 96.81%.
+2. `src/MetroidPrime/PortGlobals.cpp`: added `TCastToPtr<CSandwormEye>(CEntity&)` (id `kET_SandwormEye`, `reinterpret_cast`,
+   same pattern as `CSwarmBasics`) so the body adds no undefined port symbol (the previous blocker: 291 -> 292 fails
+   `link_check --strict`). No baseline/gap-list edit was needed.
+
+Rule: **when MW puts the wrong value in f1/f2, name the inner min/max result first and the outer operand after it** —
+it changes vreg creation order, which a single nested expression never does.
+
+## Not attempted
+`DrawGrapplePoint`/`DrawGrappleGroup` need `TCastToPtr<CScriptGrapplePoint>(CEntity&)` (same port-gap pattern, now cheap) plus
+CScriptGrapplePoint layout; `DrawOrbitZoneGroup` needs CUnknown63; others are 1000+ B Echoes-only bodies.

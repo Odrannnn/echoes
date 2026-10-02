@@ -871,6 +871,16 @@ CSwarmBasics* TCastToPtr< CSwarmBasics >(CEntity* entity) {
   return reinterpret_cast< CSwarmBasics* >(TryCast(entity, kET_SwarmBasics));
 }
 
+// `TCastToPtr<CSandwormEye>(CEntity&)` (0x80097FA8) is the reference overload; `TypesMatch.cpp` spells
+// it `CAST_TO_IMPL(CSandwormEye, kET_SandwormEye)` (id 131) and is out of the port build. The only
+// caller is `CCompoundTargetReticle::CalculateRadiusWorld`, which names `CSandwormEye` by
+// forward declaration, so this is a `reinterpret_cast` like `CSwarmBasics`'s above.
+class CSandwormEye;
+template <>
+CSandwormEye* TCastToPtr< CSandwormEye >(CEntity& entity) {
+  return reinterpret_cast< CSandwormEye* >(TryCast(&entity, kET_SandwormEye));
+}
+
 #undef PORT_CAST_TO_PTR
 
 // `CSoundPOINode::skExtendedVersion` is retail .sdata2 0x8041E410, two bytes, and the bytes are

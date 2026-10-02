@@ -22,6 +22,8 @@
 #include <math.h>
 #include <stdio.h>
 
+class CSandwormEye;
+
 // Declared here because `fn_800B2FD8` (the highest-addressed function in this unit, so
 // the first definition in the file under the descending-declaration rule) calls it and
 // it is defined further down.
@@ -441,12 +443,45 @@ void CCompoundTargetReticle::UpdateTargetParameters(CTargetReticleRenderState& s
 
 float CCompoundTargetReticle::CalculateRadiusWorld(const CActor& actor,
                                                    const CStateManager& mgr) const {
-  // TODO: derive reticle radius from the actor's bounds. The body below is reached and
-  // scores 96.11% (see docs/goal-notes/progress-unit-ctargetreticles.md), but it needs a
-  // `TCastToPtr<CSandwormEye>` call for the Sandworm-eye special case, and the port has no
-  // `TCastToPtr<12CSandwormEye>__FR7CEntity` to resolve it to, so landing it would raise the
-  // port's undefined count and fail tools/link_check.sh --strict.
-  return 1.f;
+  rstl::optional_object< CAABox > touchBounds = actor.GetTouchBounds();
+  const CAABox& aabb = touchBounds.valid()
+                           ? *touchBounds
+                           : CAABox(actor.GetAimPosition(mgr, 0.f), actor.GetAimPosition(mgr, 0.f));
+
+  const CVector3f min = aabb.GetMinPoint();
+  const CVector3f max = aabb.GetMaxPoint();
+
+  float radius;
+  switch (gpTweakTargeting->GetTargetRadiusMode()) {
+  case 0:
+    {
+      float inner = rstl::min_val(max[2] - min[2], max[1] - min[1]);
+      float dx = max[0] - min[0];
+      radius = rstl::min_val(dx, inner) * 0.5f;
+    }
+    break;
+  case 1:
+    {
+      float inner = rstl::max_val(max[2] - min[2], max[1] - min[1]);
+      float dx = max[0] - min[0];
+      radius = rstl::max_val(dx, inner) * 0.5f;
+    }
+    break;
+  case 2:
+  default: {
+    float w = max[0] - min[0];
+    float h = max[1] - min[1];
+    float d = max[2] - min[2];
+    radius = (h + (w + d)) * (1.f / 6.f);
+    break;
+  }
+  }
+
+  if (TCastToConstPtr< CSandwormEye >(actor) != nullptr) {
+    radius = 1.f;
+  }
+
+  return radius > 0.f ? radius : 1.f;
 }
 
 CVector3f CCompoundTargetReticle::CalculatePositionWorld(const CActor& actor,
