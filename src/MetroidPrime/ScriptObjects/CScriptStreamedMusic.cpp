@@ -260,10 +260,25 @@ void CScriptStreamedMusic::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg&
 
 CEntity* LoadStreamedAudio(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
   SLdrStreamedAudio data;
+  // Retail writes these eight words itself, in the frame, before the property loop - they are
+  // the twenty instructions our object was missing (648 bytes against retail's 728). The
+  // `unknown_0x5d298a43 = 3` is redundant against `__ct__20SLdrEditorPropertiesFv`, which already
+  // stores 3 at +0x38, and retail stores it again: measured, that store is at r1+100 = the
+  // aggregate's +56, and dropping it costs four bytes and 170 differing instructions.
+  data.editorProperties.unknown_0x5d298a43 = 3;
+  data.defaultAudio = false;
+  data.fadeInTime = 0.f;
+  data.fadeOutTime = 0.f;
+  data.volume = 127;
+  data.softwareChannel = 0;
+  data.softwareIsMusic = true;
 
-  const int propertyCount = input.ReadUint16();
+  // `u16`, not `int`, and `Get< uint >()`, not `ReadInt32()`: the two spellings move
+  // `propertyCount` and `&data.songFile` between r29 and r30 and the property id between r4 and
+  // r6, which is 14 of the 21 instructions that differed. See `CScriptRelay.cpp`.
+  const u16 propertyCount = input.ReadUint16();
   for (int i = 0; i < propertyCount; ++i) {
-    const uint propertyId = input.ReadInt32();
+    const uint propertyId = input.Get< uint >();
     const uint propertySize = input.ReadUint16();
     switch (propertyId) {
     case 0x255a4580:

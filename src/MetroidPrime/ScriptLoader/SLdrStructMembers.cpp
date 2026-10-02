@@ -131,9 +131,6 @@ SLdrHUDMemo::~SLdrHUDMemo() {}
 SLdrRelay::SLdrRelay() {}
 SLdrRelay::~SLdrRelay() {}
 
-SLdrStreamedAudio::SLdrStreamedAudio() {}
-SLdrStreamedAudio::~SLdrStreamedAudio() {}
-
 SLdrTimeKeyframe::SLdrTimeKeyframe() {}
 SLdrTimeKeyframe::~SLdrTimeKeyframe() {}
 

@@ -169,3 +169,131 @@ strings, which is what an *implicitly-default-constructed* aggregate (or a type 
 **I did not chase this**: removing the declared ctor/dtor from a generated header also changes
 what `SLdrStructMembers.cpp` emits, and `SLdrStreamedAudio` is not this unit's to reshape. Left for
 a lane that owns the script-loader structs. Not filed as `NEW:` - it is this same unit.
+---
+
+# Second run (lane 7, 2026-10-02): `LoadStreamedAudio` 87.38% -> 100.00%
+
+The section above ends with "`LoadStreamedAudio` ... a real modelling difference, not a wall ...
+**I did not chase this**". It was worth chasing: that one function is now matched, and the unit
+rises 17 -> 18 of 23.
+
+| | before this run | after |
+|---|---|---|
+| unit fuzzy | 96.37253% | **98.53%** |
+| **matched functions** | **17 / 23** | **18 / 23** |
+| `LoadStreamedAudio` | 87.38% (648 of 728 bytes) | **100.00%** (728 bytes) |
+
+`./tools/goal_check.sh build/goal/item.json` -> **PASS** (`matched 12273 -> 12274`, `linked` held at
+5863, no function anywhere got worse, no asm added, DOL sha1 `6ef9b491...` and all 86 RELs
+unchanged). The five functions the previous run walled are re-measured at the same scores and are
+untouched; see "what I did not change" below.
+
+## First: a correction to the reading method, which is what made this possible
+
+The previous run's evidence is right but its *labels* are inverted, and that is why it read as a
+job for "a lane that owns the script-loader structs":
+
+- `build/G2ME01/obj/<unit>.o` is **retail** (dtk's split; it carries `.note.split`), and
+  `build/G2ME01/src/<unit>.o` is **ours** (`tools/compare_unit.sh` header says so).
+- `objdiff.json` for this unit has `target_path: build/G2ME01/obj/...` and
+  `base_path: build/G2ME01/src/...` - **reversed** relative to that. objdiff matches by symbol so
+  the score is unaffected, but in `objdiff-cli diff` output **`left` is retail and `right` is
+  ours**. The previous run read the "ours" ctor call `__ct__17SLdrStreamedAudioFv` out of the wrong
+  column's neighbour and concluded retail called the base's ctor.
+- `config/G2ME01/symbols.txt` gives `LoadStreamedAudio` `size:0x2D8` = 728 (gap to the next
+  symbol). Retail really is 728 bytes and **we were emitting 648** - 20 instructions short, not 80.
+  A `build/binutils/powerpc-eabi-nm -S` on each object settles it in one command.
+
+Getting the per-instruction answer needs objdiff's own one-shot JSON, which `decomp_build.sh` does
+not use:
+
+    ./build/tools/objdiff-cli diff -p . -u main/MetroidPrime/ScriptObjects/CScriptStreamedMusic \
+        -o ldr.json --format json-pretty LoadStreamedAudio__FR13CStateManagerR12CInputStreamRC11CEntityInfo
+
+`left.symbols[].instructions[]` carries `diff_kind`; the twenty entries that are `DIFF_DELETE` with
+no `instruction` are exactly retail's twenty extra instructions.
+
+## The twenty missing instructions, and what they are
+
+They are a **default-initialisation block retail writes in its own frame** before the property
+loop. With `data` at r1+44 (0x2c), retail's layout of the aggregate is
+`editorProperties` 0..59, `songFile` 60..75, `defaultAudio` 76, `fadeInTime` 80, `fadeOutTime` 84,
+`volume` 88, `softwareChannel` 92, `softwareIsMusic` 96 - which is exactly the layout our generated
+header already produces (`sizeof` probe: `SLdrEditorProperties` 60, `SLdrStreamedAudio` 100), so
+nothing about the struct's *shape* was wrong. What was wrong was the constructor:
+
+| | retail | ours (before) |
+|---|---|---|
+| ctor | `__ct__20SLdrEditorPropertiesFv` (the member's) | `__ct__17SLdrStreamedAudioFv` (the aggregate's) |
+| dtor | `__dt__20SLdrEditorPropertiesFv` | `__dt__17SLdrStreamedAudioFv` |
+| `songFile` | default-constructed in place: `mNull`, 0, 0 at r1+104/108/112 | not constructed |
+| scalars | `3`, 0, false, 0.0f, 0.0f, 127, 0, true | untouched |
+| tail | `cmplwi r29,0` / `beq` / `mr r3,r29` / `bl internal_dereference` | inside `__dt__17...` |
+
+`grep 17SLdrStreamedAudio config/G2ME01/symbols.txt` is **empty**: retail has no such constructor
+at all. The declared pair in `include/MetroidPrime/ScriptLoader/SLdrStreamedAudio.hpp` (a
+`s/scripts/generate_script_loaders.py` artefact) was the whole bug - it forced a `bl` to a symbol
+retail does not define and hid every member's own construction. Removing it is the fix; the
+aggregate's members are then constructed in place, which is retail's shape.
+
+## The `3` at r1+100 (aggregate +56) is redundant, and still has to be there
+
+`3` is stored at aggregate+56, which is `editorProperties.unknown_0x5d298a43` - and
+`__ct__20SLdrEditorPropertiesFv` (0x8023F0E4) *already* stores 3 at +0x38. So retail writes the
+value twice. It is not an in-class initialiser that MWCC would fold into the constructor: retail
+**calls** that constructor out of line, so only a statement in the caller can produce the store.
+Dropping it costs 4 bytes and 170 differing instructions (measured).
+
+The other six defaults are the aggregate's own members and are written the same way, which is this
+repo's existing convention for these generated structs - see `src/MetroidPrime/ScriptObjects/
+CScriptRelay.cpp:18-19`, `SLdrRelay sldrThis; sldrThis.oneShot = false;`.
+
+## Two spellings that fixed the last 21 instructions
+
+With the constructor fixed, 21 instructions still differed, all register allocation:
+
+| spelling | differing instrs (of 182) |
+|---|---|
+| `const int propertyCount`, `const uint propertyId = input.ReadInt32()` | 21 |
+| `const uint propertyId = input.Get< uint >()` | 7 |
+| `const u16 propertyCount` alone | 14 |
+| `const u16 propertyCount` + `Get< uint >()` | **0** |
+| `Get< uint >()` + `Get< ushort >()` for the size | 21 |
+| `u16 i` for the loop counter | 64 instrs, 183 total - wrong size |
+
+`Get< uint >()` is `return ReadInt32();`, so this is not about the call - it is about the `int` ->
+`uint` narrowing at the assignment, which stops MWCC materialising the id in a sixth register
+(r6 instead of r4). `CScriptRelay.cpp:23-24` records the same finding for the same line of code.
+`const u16` for the count matters for the same reason one step later: it moves `propertyCount` and
+`&data.songFile` between r29 and r30.
+
+## Files changed (four; no `configure.py`, no carve, no `splits.txt`, no asm, no deleted work)
+
+- `include/MetroidPrime/ScriptLoader/SLdrStreamedAudio.hpp` - dropped `SLdrStreamedAudio();` and
+  `~SLdrStreamedAudio();`, with a comment recording that retail has no such symbols.
+- `src/MetroidPrime/ScriptLoader/SLdrStructMembers.cpp` - dropped the two now-undeclared
+  definitions. (That file is in `files.cmake` but in no `splits.txt` entry and no `build.ninja`
+  rule, so it is not compiled by the matching build and nothing in the DOL moves.)
+- `src/MetroidPrime/ScriptObjects/CScriptStreamedMusic.cpp` - the eight default stores and the two
+  spellings inside `LoadStreamedAudio`, nothing else.
+- `docs/HANDOFF.md` - the state block, rewritten by `tools/gate.sh` during `goal_check.sh`, not by
+  hand.
+
+## What I did not change, and one new wall of my own
+
+Re-measured this run, unchanged from the run above: `StopNonDsp` 77.78%, `StopStream` 73.33%,
+`StartStream` 74.29%, the iterator-range `basic_string` ctor 99.56%, `internal_search` 96.69%.
+
+I re-tried `StopNonDsp` with eight spellings the earlier run did not list - `this->mFadeOut`,
+`mFadeOut + 0.f`, `&mFadeOut` then `*f`, a trailing bare `return`, a comma expression, a local
+assigned and then re-assigned - and all eight are **byte-identical** to the baseline. One of them
+(`FadeBackIn(mFadeOut), mFadeOut = mFadeOut;`) does move the instruction, and it moves it the wrong
+way (it adds the `r31` save the baseline does not have), so the schedule is reachable from source
+and retail's is not one of the shapes that reaches it.
+
+WALL: CScriptStreamedMusic::StopNonDsp 77.78% - retail's `lfs f1,60(r3)` sits between `mflr` and
+the LR spill; eight further spellings tried this run all produce byte-identical code, and the one
+that does reschedule moves the load later, not earlier.
+
+No `NEW:` line: nothing here is a separate unit's blocker - the script-loader struct fix landed in
+this unit.
