@@ -5,6 +5,17 @@
 #include "MetroidPrime/CPhysicsActor.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 
+#include <float.h>
+
+// libc/float.h's `FLT_MAX` is `(*(float*)__float_max)`, which makes mwcceppc materialise the
+// address in a register and load through it instead of reading the constant in place. Retail
+// reads it in place (lbl_8041B984, 0x7f7fffff, in the DOL's shared `.sdata2`), so the constant
+// is spelled as a literal. Same finding, same workaround, as
+// src/MetroidPrime/ScriptObjects/CScriptTeamAiMgr.cpp:13 and
+// src/MetroidPrime/PathFinding/CPathFindArea.cpp:17.
+#undef FLT_MAX
+#define FLT_MAX 3.402823466e+38f
+
 CSteeringBehaviors::CSteeringBehaviors() : x0_(M_PIF / 2.f) {}
 
 CVector3f CSteeringBehaviors::Flee(const CPhysicsActor& actor, const CVector3f& position) const {
@@ -132,7 +143,7 @@ bool CSteeringBehaviors::ProjectOrbitalIntersection(const CVector3f& origin, flo
                                                     CVector3f& intersection) {
   if (speed > 0.f) {
     if (velocity.CanBeNormalized()) {
-      CVector3f radial = (position - orbitPoint).DropZ();
+      CVector3f radial((position - orbitPoint).ToVec2f(), 0.f);
       if (radial.CanBeNormalized()) {
         CVector3f currentPosition = position;
         CVector3f currentVelocity = velocity;
@@ -154,7 +165,7 @@ bool CSteeringBehaviors::ProjectOrbitalIntersection(const CVector3f& origin, flo
 
           currentPosition += dt * currentVelocity;
           previousRemaining = remaining;
-          radial = (currentPosition - orbitPoint).DropZ();
+          radial = CVector3f((currentPosition - orbitPoint).ToVec2f(), 0.f);
           if (!radial.CanBeNormalized()) {
             break;
           }
@@ -186,7 +197,7 @@ bool CSteeringBehaviors::ProjectOrbitalIntersection(const CVector3f& origin, flo
                                                     CVector3f& intersection) {
   bool found = false;
   if (speed > 0.f) {
-    CVector3f radial = (position - orbitPoint).DropZ();
+    CVector3f radial((position - orbitPoint).ToVec2f(), 0.f);
     if (velocity.CanBeNormalized() && radial.CanBeNormalized()) {
       CVector3f currentPosition = position;
       CVector3f currentVelocity = velocity;
@@ -213,7 +224,7 @@ bool CSteeringBehaviors::ProjectOrbitalIntersection(const CVector3f& origin, flo
         travelTime = delta.Magnitude() / speed;
         elapsed += dt;
         remaining = travelTime - elapsed;
-        radial = (currentPosition - orbitPoint).DropZ();
+        radial = CVector3f((currentPosition - orbitPoint).ToVec2f(), 0.f);
         if (!radial.CanBeNormalized()) {
           break;
         }
@@ -238,7 +249,7 @@ CVector3f CSteeringBehaviors::ProjectOrbitalPosition(const CVector3f& position,
                                                      float preThinkDt) {
   CVector3f currentPosition = position;
   if (velocity.CanBeNormalized()) {
-    CVector3f radial = (position - orbitPoint).DropZ();
+    CVector3f radial((position - orbitPoint).ToVec2f(), 0.f);
     if (radial.CanBeNormalized()) {
       CVector3f currentVelocity = velocity;
       float elapsed = 0.f;
@@ -249,7 +260,7 @@ CVector3f CSteeringBehaviors::ProjectOrbitalPosition(const CVector3f& position,
 
       while (elapsed < dt) {
         currentPosition += preThinkDt * currentVelocity;
-        radial = (currentPosition - orbitPoint).DropZ();
+        radial = CVector3f((currentPosition - orbitPoint).ToVec2f(), 0.f);
         if (radial.CanBeNormalized()) {
           radialUnit = radial.AsNormalized();
           CVector3f tangent = CVector3f::Cross(radialUnit, CVector3f::Up());
