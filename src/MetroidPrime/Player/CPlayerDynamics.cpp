@@ -4,6 +4,7 @@
 #include "Kyoto/Math/CRelAngle.hpp"
 #include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/Cameras/CBallCamera.hpp"
+#include "MetroidPrime/Cameras/CFirstPersonCamera.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CPlayerCameraBob.hpp"
 #include "MetroidPrime/Player/CPlayerGun.hpp"
@@ -932,14 +933,105 @@ void CPlayer::UpdateMorphBallTransition(float dt, CStateManager& mgr) {
 bool CPlayer::IsGravityBoostActive() const { return mGravityBoostDuration > 0.f; }
 
 void CPlayer::StartGravityBoost(CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  // Retail 0x8018381C. The guard is a two-part disjunction read off the branch targets:
+  // `clrlwi. r0,r3,24` / `bne` on `GetGravityBoostMultipleAllowed`'s bool jumps straight into the
+  // body, and when it is false `lbz r0,4700(r31)` (0x125C = `mGravityBoostActive`) / `bne` leaves.
+  // Inside, the four exits are, in order: `IsGravityBoostActive()` (0x80183980), the camera's
+  // fluid list through `CStateManager::mCameraManagers[GetPlayerIndex()]->mFpCamera` (0x151C /
+  // 0x18 / 0x110, the same chain `ApplyGravityBoost` and `CPlayerGunBase::Update` use),
+  // `mMorphBallState` (0x38C), and **this** actor's own `mFluidIds` count (0x110) - so the boost
+  // only starts with the player in a fluid.
+  if (GetTweakPlayer()->GetGravityBoostMultipleAllowed() || !mGravityBoostActive) {
+    if (!IsGravityBoostActive() && mgr.CameraManager(GetPlayerIndex())
+                                      ->FirstPersonCamera()
+                                      ->IsInFluid()
+        && mMorphBallState == kMS_Unmorphed) {
+      // The last gate is written as an if/else rather than as a fourth `&&` term, because retail
+      // rotates it: `lwz r0,272(r31)` / `cmpwi` / `bne +0x8` / `b <exit>`, i.e. the exit branch is
+      // skipped over rather than branched to.
+      if (IsInFluid()) {
+        mGravityBoostDuration = GetTweakPlayer()->GetGravityBoostTime();
+        // The z component is stored twice (`stfs f1,28(r1)` then `stfs f0,28(r1)`), which is the
+        // copy-then-assign shape; `-23116(r2)` is 0.1f (tools/sda.py `s2:-23116`). The multiply
+        // is written constant-first because that is the order MWCC keeps the two z stores from
+        // being coalesced into one, as retail has them.
+        CVector3f velocity = GetVelocityWR();
+        velocity.SetZ(0.1f * velocity.GetZ());
+        SetVelocityWR(velocity);
+        // `li r9,1` here against `li r9,0` in `EndGravityBoost`: the start sound loops, the cancel
+        // sound does not. 291 / 782 are the single- / multiplayer ids.
+        mGravityBoostSfx = CSfxManager::SfxStart(mgr.ReturnFirstIfSingleElseSecond(291, 782), 127,
+                                                 GetSoundPan(kMSP_4), GetCurrentAreaId().Value(), true,
+                                                 true, CSfxManager::kMedPriority);
+        CSfxManager::SetIgnoreAreaLowPass(mGravityBoostSfx, true);
+        CSfxHandle handle = mGravityBoostSfx;
+        ApplySubmergedPitchBend(handle);
+        mGravityBoostActive = true;
+      } else {
+        return;
+      }
+    }
+  }
 }
 
 // Guessed name
 void CPlayer::ApplyGravityBoost(float dt, CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  // Retail 0x80183754. Three conditions end the boost and one applies it, and the polarity of
+  // each is read off the branch targets rather than assumed:
+  //   - `lfs f0,4688(r3)` / `fcmpo cr0,f0,f2` / `ble` with `f2 = 0.f` (`-23120(r2)`) returns while
+  //     the duration has already run out without ending the boost;
+  //   - the duration is decremented and **re-read** (`lfs f0,4688(r30)` at 0x80183788) before the
+  //     second test, so the source re-reads the member rather than reusing the register. The
+  //     first test is a bare `ble` on the `fcmpo` (no `cror`), so the guard is the positive
+  //     `> 0.f` with the body inside it; the second is `cror eq,lt,eq` + `beq`, which is the
+  //     `<= 0.f` form.
+  if (mGravityBoostDuration > 0.f) {
+    mGravityBoostDuration -= dt;
+    if (mGravityBoostDuration <= 0.f || !mgr.CameraManager(GetPlayerIndex())
+                                           ->FirstPersonCamera()
+                                           ->IsInFluid()
+          || mMorphBallState != kMS_Unmorphed) {
+        EndGravityBoost(mgr);
+    } else {
+      // Retail builds the force vector on the stack (`stfs f1,16(r1)` / `stfs f0,8(r1)` /
+      // `stfs f0,12(r1)`, the third store first) and passes `CAxisAngle::Identity()`'s address
+      // in r5.
+      ApplyForceOR(CVector3f(0.f, 0.f, GetTweakPlayer()->GetGravityBoostForce()),
+                   CAxisAngle::Identity());
+    }
+  }
 }
 
 void CPlayer::EndGravityBoost(CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  // Retail 0x80183648, in order:
+  //  - the velocity is copied to the stack (`stfs` at 24/28/32(r1)) *before* the tweak lookups,
+  //    and only its z component is reloaded and scaled afterwards (`lfs f0,32(r1)` /
+  //    `fmuls f0,f0,f1` / `stfs f0,32(r1)`), so the scaled value goes back into the copy that
+  //    `SetVelocityWR` is handed by reference;
+  //  - `mGravityBoostDuration` is cleared with `lfs f2,-23120(r2)` = 0.f;
+  //  - the running boost sfx is stopped only when its handle is non-zero (`cmplwi r0,0`), and the
+  //    handle is passed **by value** through a 20(r1) temporary;
+  //  - `li r4,864` / `li r5,863` are the single-player / multiplayer ids handed to
+  //    `CStateManager::ReturnFirstIfSingleElseSecond`, `li r5,127` is the volume, `lwz r7,4(r29)`
+  //    is `CEntity::mAreaId` (0x4, measured) passed as the area, `li r8,1` / `li r9,0` are
+  //    useAcoustics / looped, and `lha r10,-16604(r2)` is `CSfxManager::kMedPriority` (127,
+  //    read as a halfword, verified with tools/sda.py `s2:-16604`);
+  //  - the returned handle is written to `x1258_` (0x1258) and then re-loaded **twice**, once
+  //    for the by-value `SetIgnoreAreaLowPass` argument and once for the by-reference
+  //    `ApplySubmergedPitchBend` argument - which is what two separate statements over the same
+  //    member emit, so it is written as two.
+  CVector3f velocity = GetVelocityWR();
+  const float dampening = GetTweakPlayer()->GetGravityBoostCancelDampening();
+  velocity.SetZ(velocity.GetZ() * dampening);
+  SetVelocityWR(velocity);
+  mGravityBoostDuration = 0.f;
+  if (mGravityBoostSfx) {
+    CSfxManager::SfxStop(mGravityBoostSfx);
+  }
+  x1258_ = CSfxManager::SfxStart(mgr.ReturnFirstIfSingleElseSecond(864, 863), 127,
+                                  GetSoundPan(kMSP_4), GetCurrentAreaId().Value(), true, false,
+                                  CSfxManager::kMedPriority);
+  CSfxManager::SetIgnoreAreaLowPass(x1258_, true);
+  CSfxHandle handle = x1258_;
+  ApplySubmergedPitchBend(handle);
 }

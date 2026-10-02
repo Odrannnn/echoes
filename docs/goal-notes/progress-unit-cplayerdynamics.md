@@ -428,3 +428,166 @@ instead of holding it in r3, and then numbers f5/f6 and f8/f9 differently); eigh
   98.11% rather than 0.28%.
 - `CActor+0x110` is still `mFluidIds` (the ninth run's probe), so `UpdateSubmerged` and
   `ApplyGravityBoost` remain blocked on other things only.
+
+---
+
+# Eleventh run (lane 3, 2026-10-02) - 37 -> 38 / 62: `ApplyGravityBoost`, plus the whole gravity-boost family at 97-99%
+
+Re-measured first on this tree: HEAD is `5a7f90a2 progress: progress-unit-cplayerdynamics`, so the
+unit carried the tenth run's 37/62 and nothing here was `STALE:`. **One function is now an exact
+byte match, `ApplyGravityBoost`** (200 B, 2.00% -> 100%), and the other two members of its family
+are now written in full: `EndGravityBoost` 1.49% -> **98.84%** and `StartGravityBoost` 1.12% ->
+**97.91%**, one and three instructions away respectively.
+
+`build/report.json`, `main/MetroidPrime/Player/CPlayerDynamics`:
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | 37 / 62 | **38 / 62** |
+| `fuzzy_match_percent` | 34.781643 | 37.74774 |
+| `matched_code` | 7416 / 27020 (27.45%) | 7616 / 27020 (28.19%) |
+
+Whole build, from `./tools/goal_check.sh build/goal/item.json` = **PASS**, all seven checks:
+`matched 12355 -> 12356`, `linked 5863 -> 5863` (unchanged, as a progress item must be),
+`All: 34.91% fuzzy, 28.52% matched, 12.90% linked (12356 / 28465 functions)`.
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (retail).
+`gate.sh` ran clean, which includes the per-function report diff (**no unit anywhere got worse**),
+`check_symbol_names.py`, `check_raw_offsets.py`, `check_decl_order.py`, `check_files_cmake.py`,
+`gen_module_order.py --check`, `probe_gs_offsets.py` and `check_docs_claims.py`.
+`./tools/probe_sources.sh` = `752 files, 0 failed, 0 errors; link: LINKED (289 undefined, 0
+duplicates)` - 289 is the judge's own baseline count (`build/goal/judge/undef.base.count`), i.e. no
+growth. `tools/link_gap.py` = `284 MISSING symbol(s), all accounted for in port_link_gap_list.md` -
+the tenth run's one new gap is the only delta and it is already in the list.
+`tools/unit_fit.sh`: the same 4 extra functions / 420 bytes the ninth and tenth runs measured.
+
+| function | retail | before | after | spellings tried |
+|---|---|---|---|---|
+| `ApplyGravityBoost` | 0x80183754, 200 B | 2.00% | **100%** | 2 |
+| `EndGravityBoost` | 0x80183648, 268 B | 1.49% | 98.84% | 8 |
+| `StartGravityBoost` | 0x8018381C, 356 B | 1.12% | 97.91% | 9 |
+
+Files touched:
+- `src/MetroidPrime/Player/CPlayerDynamics.cpp` - three bodies and one `#include`. **No header
+  change, no layout change, no other unit touched.**
+- `docs/HANDOFF.md` is the **judge's** own rewrite of the derived counts (`goal_check.sh` did it),
+  not an edit of mine.
+
+## The notes' "0 unhosted callees" blockers for all three gravity-boost functions are STALE
+
+The ninth run ranked `ApplyGravityBoost` 0/6, `EndGravityBoost` 0/9 and `StartGravityBoost` 0/12
+unhosted callees, and every earlier run inherited that. **It is false on this tree.** Checked
+against `build/goal/judge/undef.base.txt` (the port's own undefined list, 285 demangled entries):
+`CPlayer::GetPlayerIndex`, `GetTweakPlayer`, `CTweakPlayer::GetGravityBoostForce`,
+`GetGravityBoostTime`, `GetGravityBoostMultipleAllowed`, `GetGravityBoostCancelDampening`,
+`CAxisAngle::Identity`, `CPhysicsActor::ApplyForceOR`, `SetVelocityWR`,
+`CPlayer::GetSoundPan`, `CPlayer::ApplySubmergedPitchBend`,
+`CStateManager::ReturnFirstIfSingleElseSecond`, `CSfxManager::SfxStart` / `SfxStop` /
+`SetIgnoreAreaLowPass` are **none of them on that list**, and their TUs are all in `files.cmake`
+(`CPlayer.cpp:272`, `CPhysicsActor.cpp:254`, `CAxisAngle.cpp:1302`, `Tweaks/CTweakPlayer.cpp:852`,
+`Kyoto/Audio/CSfxManager.cpp`). The ranking script mapped retail `bl` targets through
+`report.json`'s `source_path`, which cannot see a symbol whose TU is compiled outside the decomp
+ordering - the same staleness the tenth run found for `CBallCamera::SetState`.
+**Method worth keeping: check a callee against `build/goal/judge/undef.base.txt` before treating
+it as a port-linking blocker; a mapping through `report.json` is not the same question.**
+
+## The offsets, measured (not inferred), with MWCC
+
+Every field these three functions touch was probed by compiling an `offsetof` array with the exact
+`mwcc_sjis` cflags out of `build.ninja` and reading the emitted `.data`/`.sdata` (scratch:
+`.tmp/opencode/pc.sh`, `lane3_all.cpp`; **never** with g++, whose pointers are 8 bytes wide):
+
+- `CPlayer+0x1250` `mGravityBoostDuration`, `+0x1254` `mGravityBoostSfx`, `+0x1258` `x1258_`
+  (unnamed `CSfxHandle`, the handle `EndGravityBoost` starts), `+0x125C` `mGravityBoostActive`
+  (the `lbz`/`stb` byte), `+0x38C` `mMorphBallState`, `sizeof(CPlayer) = 0x14C8`.
+- `CStateManager+0x151C` is **`CCameraManager* mCameraManagers[4]`**, not something opaque: the
+  header already has `CCameraManager* CameraManager(int playerIndex) { return
+  mCameraManagers[playerIndex]; }`, and `main/MetroidPrime/Player/CPlayer.cpp` is a second reader
+  (`fn_8001E71C`, 0x8001E778). `+0x14FC mPlayers`, `+0x150C mPlayerStates`, `sizeof = 0x2950`.
+- `CCameraManager+0x18` is **`mFpCamera`** (`FirstPersonCamera()` accessor; `+0x1C mBallCamera`
+  re-measured here, which is what the tenth run measured independently).
+- `CFirstPersonCamera : CGameCamera : CActor`, `CGameCamera = 0x200`, so `+0x110` is
+  **`CActor::mFluidIds`**' count - the ninth run's answer, re-confirmed by measuring `CActor`
+  itself (`mPitchBend 0x10C` -> `mFluidIds 0x110` -> `mPreviousFluidIds 0x11C` -> `mNextDrawNode
+  0x12A`).
+- **`CEntity+0x4` is `mAreaId`, not `mUniqueId`.** `lwz r7,4(r29)` in both sfx calls is a 4-byte
+  load, `mUniqueId` is a 2-byte `TUniqueId` at `+0x8`, and the argument is `CSfxManager::SfxStart`'s
+  `int area`. So the source passes `GetCurrentAreaId().Value()`. Getting this wrong is a silent
+  behaviour bug, not a codegen one: both are `lwz` from a nearby offset.
+- `CTweakPlayer::kMedPriority = 127`, read as a halfword: `tools/sda.py s2:-16604` ->
+  `0x8041E2E4 kMedPriority__11CSfxManager (exact, .sdata2)` = `00 7f ff ff`. `-23116(r2)` = 0.1f and
+  `-23120(r2)` = 0.f as the tenth run measured.
+
+## What the gravity boost actually does (two functions agree, and it is not what it looks like)
+
+**The boost only runs while the player is in a fluid.** `StartGravityBoost` exits unless
+`lwz r0,272(r31)` - *this* actor's `mFluidIds` count - is non-zero, and `ApplyGravityBoost` ends the
+boost when the **first-person camera's** count is zero. Both chains are
+`mgr.mCameraManagers[GetPlayerIndex()]->mFpCamera`, the same three calls
+`CPlayerGunBase::Update` already spells for `mUnderwater` (`src/MetroidPrime/Player/
+CPlayerGunBase.cpp:75-80`), so this is measured and already reviewed elsewhere in the tree, not a
+new guess. `StartGravityBoost`'s sfx is started with `li r9,1` (looped) and `EndGravityBoost`'s
+with `li r9,0`; ids 291/782 (start) and 864/863 (end); volumes both `li r5,127`.
+
+## `ApplyGravityBoost` is 50 instructions and two of them decide the spelling
+
+First spelling, `if (mGravityBoostDuration <= 0.f) { return; }` at the top, scored **97.90%**: it
+emits `cror eq,lt,eq` before each `beq`, and retail's first test is a bare `ble` on the `fcmpo`.
+Rewriting the guard as the positive `> 0.f` with the body nested inside gives `ble` for the first
+test and keeps `cror eq,lt,eq` + `beq` for the second (`<= 0.f`) - **100%, one spelling different**.
+This is the `UpdateCameraBob` `cmpwi`/`cmplwi` lesson again, on a branch instead of a cast.
+
+## `EndGravityBoost`: one instruction left, and it is a type MWCC will not elide
+
+Everything else in the 67-instruction function matches. The last difference:
+
+```
+801836e4: lwz  r7,4(r29)      ; CEntity::mAreaId -> the area argument
+801836e8: mr   r4,r3          ; the id, copied straight out of r3
+```
+ours: `clrlwi r4,r3,16`. `CSfxManager::SfxStart`'s first parameter is `ushort` and the argument is
+`CStateManager::ReturnFirstIfSingleElseSecond`'s `uint` return, so MWCC masks. **Five spellings
+tried, all mask**: the bare call result, `static_cast<ushort>(...)`,
+`static_cast<ushort>(static_cast<short>(...))`, a `const ushort` local, and a `const uint` local.
+A minimal 5-function probe (`.tmp/opencode/probe_ushort.cpp`, a `ushort`-taking function called with
+a `uint`-returning call, and `.tmp/opencode/probe_s.cpp`, the same call with CSfxManager's exact
+7-parameter shape and a by-value return) confirms MWCC 2.7 always inserts the mask.
+
+**Changing the header's `ushort id` to `uint id` *does* produce `mr r4,r3` and a 100% function, and
+must not be done**: the emitted symbol changes from `SfxStart__11CSfxManagerFUsssibbs` to
+`...FUissibbs`, which is not retail's name, so objdiff loses `CSfxManager::SfxStart` (currently
+58.86%) by name and any Matching unit linking it would break. Decoding the dtk mangling, with three
+reference functions compiled to read the names off (`U` is an *unsigned* prefix, not a type):
+`f1(ushort,short,int,bool,uchar,uint,float)` -> `FUssibUcUif`,
+`f2(uint,short,short,int,bool,bool,short)` -> `FUissibbs`,
+`f4(ushort,short,short,short,int,bool,bool,short)` -> `FUssssibbs`. So retail's `FUsssibbs` is
+`(ushort, short, short, int, bool, bool, short)` - **exactly this header**, and the header's
+definition body even keeps a dead `id == 0xFFFFFFFF` test that only makes sense on a wider id,
+which is a clue about the original source, not about the prototype. **Do not "fix" the mask by
+widening the parameter: the mangling is the witness, and it says the header is already right.**
+
+## `StartGravityBoost`: three instructions, each measured
+
+1. **The same `clrlwi`/`mr`** on the 291/782 id - one shared cause with `EndGravityBoost`.
+2. **`fmuls f0,f0,f1` where retail has `fmuls f0,f1,f0`** (f0 = the 0.1f literal, f1 = the loaded
+   z; same product, operands swapped). Three spellings tried - `z * 0.1f`, `0.1f * z`, and a named
+   `const float z` - all emit `f0,f0,f1`; MWCC orders the two source operands by register here, not
+   by the source. Writing it constant-first *does* recover retail's second z store
+   (`stfs f1,28(r1)` then `stfs f0,28(r1)`; the other order lets MWCC coalesce them into one), so
+   the source reads `0.1f * velocity.GetZ()` for that reason and says so in a comment.
+3. **The fourth gate is rotated in retail**: `lwz r0,272(r31)` / `cmpwi r0,0` / `bne +0x8` /
+   `b <exit>`, i.e. the exit is *skipped over*; the first three gates branch straight to the exit.
+   Four shapes tried for that last term - a fourth `&&` term, `if (IsInFluid())` with an
+   `else { return; }`, an early `if (!IsInFluid()) { return; }`, and a `do { if (!...) break; } while
+   (false)` - and MWCC emits the single `beq <exit>` for all four. So the current source keeps the
+   if/else, which is the closest of the four, and the difference is one instruction pair.
+
+## Re-measured and unchanged
+
+- `UpdateStepCameraZBias` 99.17969% and `ComputeDash` 98.11% carry the fifth / seventh / tenth
+  runs' walls; neither was re-spelled this run, so no new `WALL:` line is written for either.
+- Everything the tenth run listed as blocked is blocked: `UpdateSubmerged` (needs `fn_801C0124`
+  hosted and the `CScriptWater` chain), `fn_801842c8` / `fn_80184a60` (musyx `dataCurveTab` in
+  another unit's `.bss`), `EnterMorphBallState`, `fn_801858cc`, `fn_80189EFC`, and the large
+  `ComputeMovement` / `JumpInput` / `SetMoveState` band. No `NEW:` line is filed: everything still
+  open is inside this item's own unit, and a blocker whose target is the item's target is a
+  restatement of the item.
