@@ -91,6 +91,46 @@ static const CColor skDisabledControlColor(0.3f, 0.3f, 0.3f, 1.f);
 
 static inline float Lerp(float a, float b, float t) { return a * (1.f - t) + b * t; }
 
+// Retail 0x8008BEB0, 0x80 = 128 bytes: the out-of-line `rstl::destroy(begin, end)` loop for
+// `rstl::vector<rstl::auto_ptr<IWorld> >`, which retail calls out of line from three places, all in
+// this unit: `clear` (`bl 8008beb0` at 0x8008BE90), `~vector` (0x8008BF7C) and
+// `erase(pointer_iterator, pointer_iterator)` (0x8008C038). dtk's map has no name for that address,
+// so objdiff cannot pair it with anything; our object only ever inlined the loop at the three call
+// sites, so those three functions scored 0.79%, 27.21% and 69.52% against retail.
+//
+// This specialization is what turns those three call sites back into calls. `rstl::destroy(It, It)`
+// and `rstl::destroy_impl(It, It)` (`include/rstl/construct.hpp:87,98`) are both plain `inline`
+// function templates, and for this container the folded body is 14 instructions, well under
+// `-pragma "inline_max_size(125)"`, so mwceppc inlines it into all three members. Retail did not:
+// its `clear` is 24 instructions, of which 14 are the call setup and the `bl`. Specializing the
+// forwarder for this one iterator type routes every `destroy(begin(), end())` in this file through
+// the out-of-line copy, and `vector`'s own members need no other change - their frame layouts,
+// their iterator slots and the rest of `erase`'s shift loop were already byte-identical.
+typedef rstl::vector< rstl::auto_ptr< IWorld > >::iterator CAutoMapperWorldIter;
+extern "C" void fn_8008BEB0(CAutoMapperWorldIter first, CAutoMapperWorldIter last);
+typedef rstl::list< CAutoMapper::SAutoMapperHintLocation, rstl::rmemory_allocator >
+    CAutoMapperHintLocationList;
+
+namespace rstl {
+// `~vector` for this container, retail 0x8008BF30. The body is include/rstl/vector.hpp:130 with
+// `destroy(begin(), end())` spelled as the call to `fn_8008BEB0`. It has to be declared up here
+// rather than next to the other two, because `CAutoMapper`'s own destructor implicitly instantiates
+// it long before retail's ordering would put it, and mwceppc then reports the specialization as a
+// redefinition. Its slot in the object is unaffected: it lands where the implicit instantiation did,
+// between `__as__` (0x8008BD88) and `erase(pointer_iterator)` (0x8008BFB4).
+template <>
+vector< auto_ptr< IWorld >, rmemory_allocator >::~vector() {
+  fn_8008BEB0(begin(), end());
+  mAllocator.deallocate(mItems);
+}
+
+// The three specializations below are declared next to the retail function each one reproduces,
+// not here, because mwcceppc emits definitions in reverse source order and retail lays these out
+// at 0x8008BE50 (`clear`), 0x8008BF30 (`~vector`) and 0x8008C000 (`erase`). `tools/check_decl_order.py`
+// is the check; it was `ok` on this unit before them and `would break on a flip` with all four
+// written here instead.
+} // namespace rstl
+
 CAutoMapper::SAutoMapperRenderState::SAutoMapperRenderState(
     const CVector2i& viewportSize, const CQuaternion& camOrientation, float camDist, float camAngle,
     const CVector3f& areaPoint, float drawDepth1, float drawDepth2, float alphaSurfaceVisited,
@@ -334,6 +374,37 @@ void CAutoMapper::SetupTeleportNavigation() {
   mHintSteps.push_back(SAutoMapperHintStep(SAutoMapperHintStep::kHST_SwitchToUniverse, 0));
   mHintSteps.push_back(SAutoMapperHintStep(SAutoMapperHintStep::kHST_ZoomOut, 0));
 }
+
+namespace rstl {
+// `do_insert_before` for the hint-location list. The body is `list<T>::do_insert_before` from
+// include/rstl/list.hpp:110 with `create_node`'s four lines written in instead of called. mwceppc
+// inlines that call for the hint-STEP list (which matches retail exactly) but outlines it for this
+// one, which left `do_insert_before` at 60.5% - it called a function and so was 112 bytes where
+// retail's is 176 - and gave our object a `create_node__...HintLocation...` symbol that retail's
+// object does not define at all. Retail inlines the allocation and the value copy in all four of
+// its list instantiations; this is the only one where ours did not. `n->mPrev` is read into a
+// local before the allocation because retail loads it before the `bl` (0x80090818); reading it
+// inline instead put the load after the call and cost the last four instructions.
+template <>
+CAutoMapperHintLocationList::node* CAutoMapperHintLocationList::do_insert_before(
+    CAutoMapperHintLocationList::node* n, const CAutoMapper::SAutoMapperHintLocation& val) {
+  node* const prev = n->mPrev;
+  node* nn;
+  mAllocator.allocate(nn, 1);
+  nn->mPrev = prev;
+  nn->mNext = n;
+  construct(nn->get_value(), val);
+
+  if (n == mStart) {
+    mStart = nn;
+  }
+  nn->get_prev()->set_next(nn);
+  nn->get_next()->set_prev(nn);
+  ++mCount;
+
+  return nn;
+}
+} // namespace rstl
 
 void CAutoMapper::SetupHintNavigation() {
   if (!gpGameState->GameOptions().GetIsHintSystemEnabled()) {
@@ -1460,14 +1531,33 @@ CAssetId CAutoMapper::GetAreaHintDescriptionString(CAssetId areaId) {
   return kInvalidAssetId;
 }
 
-// Retail 0x8008BEB0, 0x80 = 128 bytes: the out-of-line `rstl::destroy(begin, end)` loop for
-// `rstl::vector<rstl::auto_ptr<IWorld> >`, which retail calls out of line from three places, all
-// in this unit: `clear` (`bl 8008beb0` at 0x8008BE90), `~vector` (0x8008BF7C) and
-// `erase(pointer_iterator, pointer_iterator)` (0x8008C038). dtk's map has no name for that
-// address, so objdiff cannot pair it with anything; our object only ever inlined the loop at the
-// three call sites, so those bytes were an unmatched blob. Spelling the loop out under retail's
-// name is the same move `fn_8008F968` above makes for `push_front`.
-//
+// `rstl::vector<rstl::auto_ptr<IWorld> >::erase(pointer_iterator, pointer_iterator)`,
+// retail 0x8008C000. The body is include/rstl/vector.hpp:256 with `destroy(first, last)` spelled
+// as the call to `fn_8008BEB0` instead: going through `rstl::destroy` (which forwards to
+// `destroy_impl`) left an extra `stw` of `first` into 16(r1) and put the two iterator arguments in
+// the opposite frame slots, for 94.94% against retail's 63 instructions. See the note on
+// `fn_8008BEB0` below for what that call is.
+namespace rstl {
+template <>
+typename vector< auto_ptr< IWorld >, rmemory_allocator >::iterator
+vector< auto_ptr< IWorld >, rmemory_allocator >::erase(iterator first, iterator last) {
+  fn_8008BEB0(first, last);
+
+  const typename iterator::difference_type tmp = first - begin();
+
+  int newCount = tmp;
+
+  for (iterator it = last, moved = iterator(mItems + tmp); it != end();
+       ++moved, ++newCount, ++it) {
+    construct(&*moved, *it);
+    destroy(&*it);
+  }
+  mCount = newCount;
+
+  return first;
+}
+} // namespace rstl
+
 // The body is the header's `destroy_impl` verbatim, and the spelling is measured: going through
 // `rstl::destroy` (which only forwards to `destroy_impl`, `include/rstl/construct.hpp:97`) lands
 // `end` in r31 at 12(r1) and the cursor at 8(r1), where retail has 8(r1) and 12(r1) - 99.94%, one
@@ -1475,11 +1565,24 @@ CAssetId CAutoMapper::GetAreaHintDescriptionString(CAssetId areaId) {
 // guard is gone either way: `is_trivially_destructible<auto_ptr<IWorld> >::value` is false, so
 // mwcceppc emits the `auto_ptr` teardown (`mHas && mItem` -> `mItem->vfunc(1)`, the `IWorld`
 // virtual destructor at vtable slot 2) and the 8-byte stride - the same 16 instructions our three
-// inlined copies already produce, and nothing hand-written.
-typedef rstl::vector< rstl::auto_ptr< IWorld > >::iterator CAutoMapperWorldIter;
+// inlined copies already produce, and nothing hand-written. Declared here, at the bottom of the
+// file, because mwcceppc emits definitions in reverse source order and retail's `fn_8008BEB0` sits
+// between `GetAreaHintDescriptionString` (0x8008C1B0) and `Update` (0x8008940C).
 extern "C" void fn_8008BEB0(CAutoMapperWorldIter first, CAutoMapperWorldIter last) {
   rstl::destroy_impl(first, last);
 }
+
+// And `clear` (retail 0x8008BE50), include/rstl/vector.hpp:273 with `destroy` called. Retail's is
+// 24 instructions and ours was 23: it builds `end()` into the register `mItems` was in and reloads
+// `mItems` for `begin()`, while keeping both at once and landing a byte short. Writing the call as
+// `fn_8008BEB0(begin(), end())` reproduces that.
+namespace rstl {
+template <>
+void vector< auto_ptr< IWorld >, rmemory_allocator >::clear() {
+  fn_8008BEB0(begin(), end());
+  mCount = 0;
+}
+} // namespace rstl
 
 void CAutoMapper::Update(float dt, CStateManager& mgr) {
   if (IsFullyOutOfMiniMapState()) {
