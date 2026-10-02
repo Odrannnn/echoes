@@ -21,6 +21,7 @@
 #include "Kyoto/CToken.hpp"
 #include "Kyoto/Text/CFontImageDef.hpp"
 #include "Kyoto/Text/CTextRenderBuffer.hpp"
+#include "MetroidPrime/CHealthInfo.hpp"
 
 extern "C" void* __nw__FUlPCcPCc(unsigned long size, const char* /*fileAndLine*/,
                                  const char* /*type*/) {
@@ -79,6 +80,23 @@ extern "C" void __dt__13CFontImageDefFv(void* self, short) {
 // already defines for the host - so no further undefined symbol appears.
 extern "C" void __dt__Q217CTextRenderBuffer12SFontPaletteFv(void* self, short) {
   static_cast< CTextRenderBuffer::SFontPalette* >(self)->~SFontPalette();
+}
+
+// Retail's own mangled name for `CHealthInfo`'s copy constructor, reached the same way.
+// `src/MetroidPrime/Carve8016FD4C.c` (retail 0x8016FD4C..0x8016FD94) is the unit that needs it:
+// that is `rstl::construct< CHealthInfo >`'s null-guarded half, whose whole body is a frame and
+// `bl __ct__11CHealthInfoFRC11CHealthInfo` behind a `cmplwi r3,0x0`.  Unlike the two names above,
+// **the bytes are claimed by a unit in this tree** - retail's copy constructor (0x80070D60,
+// `symbols.txt:2082`, 0x54 bytes) sits inside `ScriptObjects/CScriptActor.cpp`'s claim
+// (0x8006EB98..0x80070DB4), which is `NonMatching`, so dtk's own object supplies them in the DOL
+// link; there is simply no host object for them, so this is only what a host link binds to.
+// The body is that copy: the 0x20 bytes `include/MetroidPrime/CHealthInfo.hpp` declares
+// (`CHECK_SIZEOF(CHealthInfo, 0x20)`), copied memberwise into `self`.  Nothing here is a stub -
+// on `TARGET_PC` the class's copy is otherwise made inline by the compiler, as
+// `MetroidPrime/Enemies/CAi.cpp` (which opts into the out-of-line declaration) does, and this
+// gives the host link the one symbol the carve's `bl` names.
+extern "C" void __ct__11CHealthInfoFRC11CHealthInfo(void* self, const void* src) {
+  new (self) CHealthInfo(*static_cast< const CHealthInfo* >(src));
 }
 
 // The other half of the same split. Retail's `operator delete` is `CMemory::Free`, and `Matching`

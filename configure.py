@@ -719,6 +719,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/Player/Carve8014FFCC.c"),
             Object(Matching, "MetroidPrime/CInGameTweakManagerReadFromMemoryCard.cpp"),
             Object(Matching, "MetroidPrime/CInGameTweakManagerCtor.cpp"),
+            Object(Matching, "MetroidPrime/Carve8016FD4C.c"),
             Object(Matching, "MetroidPrime/Carve80179E08.c"),
             Object(Matching, "MetroidPrime/Carve80193C30.c"),
             Object(Matching, "MetroidPrime/Carve80193C54.c"),
