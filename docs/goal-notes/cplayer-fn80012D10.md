@@ -309,3 +309,278 @@ and `progress-unit-cplayergun-bits` (`DetachActorFromPlayer` 54.5%, `GetCombatMo
 `GetExplorationMode` 13.3% each, all blocked on `CPlayerGun`'s unnamed bitfield members) - and
 `docs/goal-notes/progress-unit-cplayer.md`'s `GetDeathAlpha` register wall. Nothing new was
 measured about any of them here, so filing them again would be noise.
+
+---
+
+# Third attempt (lane 5, 2026-10-02)
+
+`fn_80012D10` was already matched by run 1, and this run found **eight** more functions in the
+same unit, all at 100%. Two files changed: `src/MetroidPrime/Player/CPlayer.cpp` (+130/-13) and
+`include/MetroidPrime/Player/CPlayerGunBase.hpp` (+25, two inline accessors and their comments).
+No `tools/`, no `config/`, no `files.cmake`, no `build/goal/` edit beyond this notes file.
+
+## Result, measured
+
+| | before | after |
+| --- | --- | --- |
+| matched functions | 69 / 228 | **77 / 228** |
+| matched code | 3468 / 71652 (4.8401%) | **4372 / 71652 (6.1017%)** |
+
+Whole build `All: 34.71% fuzzy, 28.25% matched, 12.90% linked (12300 / 28465 functions)`;
+`matched 12292 -> 12300`, `linked 5863 -> 5863`.
+
+`./tools/goal_check.sh build/goal/item.json` in the worktree: **PASS**
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12292 -> 12300   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    All:  34.71% fuzzy, 28.25% matched, 12.90% linked (12300 / 28465 functions)
+  ok    target rose: main/MetroidPrime/Player/CPlayer: 69 -> 77 / 228 functions
+  ok    no asm added
+```
+
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, unchanged.
+`python3 tools/check_symbol_names.py` -> `0 declared names are missing`.
+`python3 tools/check_decl_order.py --unit Player/CPlayer` does not name `Player/CPlayer`, so it
+is still emitted in retail order (every edit below is an in-place body replacement; no
+declaration moved). `tools/gate.sh`'s `per-function diff` reports `+8 functions at 100%, 0 units
+newly linked` and no function got worse anywhere.
+
+| function | bytes | before | after |
+| --- | --- | --- | --- |
+| `DetachActorFromPlayer__7CPlayerFv` | 44 | 54.55% | 100% |
+| `GetCombatMode__7CPlayerCFv` | 60 | 13.33% | 100% |
+| `GetExplorationMode__7CPlayerCFv` | 60 | 13.33% | 100% |
+| `AttachActorToPlayer__7CPlayerF9TUniqueIdb` | 112 | 37.11% | 100% |
+| `AddToRenderer__7CPlayerCFRC13CStateManager` | 132 | 3.03% | 100% |
+| `RenderReflectedPlayer__7CPlayerFR13CStateManager` | 132 | 3.03% | 100% |
+| `fn_80012e14__7CPlayerCFv` | 164 | 4.88% | 100% |
+| `fn_80017358__7CPlayerFf` | 200 | 2.00% | 100% |
+
+## The method that worked
+
+Exactly run 2's, and it is now measured twice: **sort `build/report.json`'s unmatched functions
+by size and read the smallest ones.** All eight here are 44-200 B and every one matched on the
+first or second spelling. Nothing in this unit needs a codegen wall; the blockers the earlier
+runs recorded were all *layout* blockers, and the layout is now all probed.
+
+Three things make the loop fast and they are worth repeating:
+
+1. `build/report.json` per unit -> `fuzzy_match_percent < 100` -> sort by `size`.
+2. `./tools/dis.sh <vaddr> <size>` for retail's bytes. The addresses come straight out of
+   `functions[].metadata.virtual_address`, so no `symbols.txt` lookup is needed.
+3. **`tools/probe_offsets.cpp`'s method, scripted.** `tools/probe_cc.sh` as shipped lacks
+   `-i extern/musyx-port/include`, so any TU that pulls in `musyx.h` (every one that includes
+   `CPlayer.hpp`) fails to compile the probe; add that `-i` by hand. Then `#define private
+   public` **and `#define protected public`** around the include - `protected` is needed for
+   `CPlayerGunBase`'s members, and without it the compiler says "illegal access to
+   protected/private member" on `offsetof`. `offsetof` on a **bitfield** is still "illegal
+   operand", so leave those out. Compile the same flags `build.ninja` uses (take them off the
+   `ninja -t commands` line) or the offsets are not the offsets.
+
+To decide whether a candidate is *reachable at all* before writing it, this run also added a
+scan that disassembles each unmatched function, collects its `bl` targets, and checks them
+against the set of symbols the port's own objects already define. Every candidate below came
+back with 0 missing callees. Two did not and were skipped without a build: `StopSounds`
+(112 B, 3.57%) calls `fn_80060FD4`, and `__ct__CDamageVulnerability(const CDamageVulnerability&)`
+(92 B, 82.61%) calls `fn_8001C6E4`; both are unmangled retail helpers with no port definition,
+and adding either call would raise the port's undefined count.
+
+## `fn_80012e14` - Prime 1's `GetMaximumPlayerPositiveVelocity`, plus a Phazon branch
+
+Prime 1's body (`prime-ref/src/MetroidPrime/Player/CPlayer.cpp:1994`) is
+`GetItemAmount(kIT_SpaceJumpBoots) ? 14.f : 11.66666f`. Echoes prepends a `GetSurfaceRestraint()`
+test and a second `GetItemAmount(kIT_GravityBoost)`, and takes **four** returns, all named
+constants:
+
+| retail | constant | value |
+| --- | --- | --- |
+| `lfs -32344(r2)` = 0x8041A568 | `5.25f` | phazon, no gravity boost, has boots |
+| `lfs -32340(r2)` = 0x8041A56C | `4.75f` | phazon, no gravity boost, no boots |
+| `lfs -32336(r2)` = 0x8041A570 | `14.f` | other surface, has boots |
+| `lfs -32332(r2)` = 0x8041A574 | `11.66666f` | other surface, no boots |
+
+`11.66666f` is the literal, not `35.f/3.f`: the SDA word is `0x413AAAA4`, and `35.0f/3.0f` and
+`11.666666f` both round to `0x413AAAAA` while `11.66666f` rounds to `0x413AAAA4`. That one bit of
+mantissa is the whole difference between 100% and one instruction out.
+
+Two spellings were needed:
+
+| spelling | score |
+| --- | --- |
+| `mPlayerState->GetItemAmount(...)` written out at both sites | 95.61% |
+| the same, with `CPlayerState* const playerState = mPlayerState;` hoisted | **100%** |
+
+The second matters because retail holds `mPlayerState` in `r31` across **both** calls and the
+`GetSurfaceRestraint` call in between; written out twice, the compiler reloads `lwz r3,4884(r30)`
+the second time. Same lesson as `UpdateVisorTransition` in run 2, one level down.
+
+`GetItemAmount`'s second parameter is spelled `true` explicitly even though the header defaults
+it: retail materialises `li r5,1`, and MWCC will not elide it.
+
+## `fn_80017358` - two countdown timers, and `= CSfxHandle()` not `= 0`
+
+Retail 0x80017358 accumulates `x1194_` (0x1194) then runs two identical countdown blocks:
+`x1190_` against `mLandingSfx` (0x117C), and `mDamageSfxTimer` (0x11A0) against
+`mSamusVoiceSfx` (0x119C). Each is `if (timer > 0.f) { timer -= dt; if (timer <= 0.f) { stop; } }`.
+
+| spelling | score |
+| --- | --- |
+| `mLandingSfx = 0;` after the `SfxStop` | 85.52% |
+| `mLandingSfx = CSfxHandle();` (both handles) | **100%** |
+
+`= 0` picks the `CSfxHandle(uint)` converting constructor and emits `addi r3,r1,16 / li r4,0 /
+bl <uint ctor> / lwz r0,16(r1) / stw r0,4476(r31)` - five instructions where retail has `li r0,0
+/ stw r0,4476(r31)`. The rest of the repo already writes `= CSfxHandle()` (see
+`src/MetroidPrime/CPauseScreen.cpp:210`); `= 0` is the trap.
+
+## `RenderReflectedPlayer` - a `float` local, not a `CVector3f` local
+
+Retail reads `mgr.mCurrentRenderPlayer` (0x15F8), compares it with `this`, and switches on
+`mMorphBallState` (0x38C) to pick 1.8f or 1.68f; it then materialises a `CVector3f` in the frame
+at 8(r1) and calls `CModelData::SetScale` twice with its address (`ModelData()` at 0x60,
+`mBallTransitionBeamModel` at 0x1210).
+
+| spelling | score |
+| --- | --- |
+| `CVector3f scale(1.8f,1.8f,1.8f);` and `SetX/SetY/SetZ(1.68f)` in the cases | 84.24% |
+| the same, all three components assigned in the cases | 84.24% |
+| `float scale = 1.8f; ... scale = 1.68f;` then `const CVector3f v(scale, scale, scale);` | **100%** |
+
+The first form stores the 1.8f triple **before** the branch (the compiler has to, the object is
+live across it) and then re-stores 1.68f inside; retail loads `lfs f0,1.8` once at function entry
+and only stores once, after the branch. One `float` local and one `CVector3f` built afterwards
+is what produces that.
+
+The `switch` needs all four `case` labels spelled, in ascending order, with `default: break;`
+**after** them - that is what makes MWCC emit `cmpwi 3 / beq / bge / cmpwi 0 / beq / bge / b`
+rather than the shorter `cmpwi 3 / bge / cmpwi 0 / bge / b`.
+
+## `AddToRenderer` - the `if/else` is load-bearing, not the `||`
+
+```cpp
+if (x126b_28_) return;                                     // rlwinm. mb=29 on 0x126B
+if (mCameraState != kCS_FirstPerson && mMorphBallState == kMS_Morphed) {
+  CActor::AddToRenderer(mgr);
+} else {
+  mGun->AddToRenderer(mgr);
+  CActor::AddToRenderer(mgr);
+}
+```
+
+| spelling | score |
+| --- | --- |
+| `if (mCameraState != kCS_FirstPerson \|\| mMorphBallState != kMS_Morphed) { mGun->...; }` then one `CActor::AddToRenderer` | 93.48% |
+| the `&&` with an explicit `else` holding both calls | **100%** |
+
+Retail's branch is `cmpwi 0 / bne +0x40` off `mCameraState` and `cmpwi 1 / beq +0x58` off
+`mMorphBallState`, with the gun call at the fall-through - the *negative* of the `||` form.
+The gun call is `mtctr`/`bctrl` off vtable slot 10 of the `rstl::single_ptr<CPlayerGun>` at 0xEBC;
+no spelling needed beyond `mGun->AddToRenderer(mgr)`, which finds it.
+
+`x126b_28_` is the third-from-last `bool ... : 1` of the `0x126b` byte. Same trap as run 2's
+`x1268_*` group: the flag names are offset-from-MSB labels over an unordered declaration order,
+so do not compute the name from the shift.
+
+## `GetCombatMode` / `GetExplorationMode` - and MWCC's read/write shift asymmetry
+
+Both read `mGun`'s holster word at 936 and switch on it: combat is the two "out" states
+(1 drawing, 2 drawn), exploration is the two "away" states (0 holstered, 3 holstering). The
+word is `CPlayerGunBase::mGunHolsterState` (0x3A8, `EGunHolsterState`), which was `protected`, so
+this run added a one-line public accessor `GetGunHolsterState()` to `CPlayerGunBase.hpp`
+(header change, no layout effect).
+
+The order of the `case` labels is what decides the emitted code, and **it differs between the
+two functions**:
+
+| spelling | GetCombatMode | GetExplorationMode |
+| --- | --- | --- |
+| cases listed true-first, then the false pair, then `default: break;` | **100%** | 98.87% |
+| cases listed false-first, then the true pair, then `default: break;` | 100% | **100%** |
+| only the two cases that return `true`, plus `default: return false;` | 100% | 78.53% |
+
+Retail's `GetExplorationMode` puts the `li r3,0 / blr` for cases 1-2 **above** the `li r3,1 /
+blr` for cases 0 and 3, and its `GetCombatMode` puts the `li r3,1 / blr` first. Neither is
+obvious from the source; both are matched by listing the case labels in the order the `li`s come
+out.
+
+## `AttachActorToPlayer` / `DetachActorFromPlayer` - the MWCC read/write bitfield asymmetry
+
+This is the finding most worth keeping. **MWCC 2.7 numbers a bitfield's read and write shift
+differently by one.** For one member `k` (0-based declaration index in its byte):
+
+* a read emits `rlwinm r0,r0,24+k,31,31` (**mb = 24+k**)
+* a write emits `rlwimi r0,rX,31-mb,mb,mb` with the **same** mb - but because retail's `bl` is
+  what we are matching, retail's `rlwimi r0,r6,6,25,25` (shift 6 = 31-25) means **mb = 25**, and
+  the member that emits *that* is the one whose *read* is `mb = 26`.
+
+Measured on `CPlayerGunBase`'s flag byte at 942 (0x3AE), both ways:
+
+| member | read | write |
+| --- | --- | --- |
+| `mUnderwater` | `mb=25` | `mb=24` |
+| `x3ae_25_` | `mb=26` | **`mb=25`** |
+| `mInBigStrike` | `mb=27` | `mb=26` |
+| `mMissileMode` | `mb=28` | `mb=27` |
+| `mInPhazonPool` | `mb=29` | `mb=28` |
+
+Retail `AttachActorToPlayer` (0x80012CCC) and `DetachActorFromPlayer` (0x80012C90)
+read-modify-write `mb=25`, and `CPlayerGun::AcceptScriptMsg` (0x801CBE98) *reads* `mb=25` at
+0x801CBE9C. Prime 1 calls that bit `mActorAttached`
+(`prime-ref/include/MetroidPrime/Player/CPlayerGun.hpp:228,453`). Two attempts:
+
+| spelling | Detach | Attach |
+| --- | --- | --- |
+| write `mUnderwater` | 98.64% | 48.00% |
+| write `x3ae_25_` | **100%** | 48.54% |
+| same, with the guard written `if (attached == kInvalidUniqueId) { ... return true; } return false;` | **100%** | **100%** |
+
+So the member is the second one declared, and the header's `x3ae_25_` is the placeholder for
+Prime 1's `mActorAttached`. **Both this run and run 2 picked the wrong member for the same
+reason: they read the shift off a read instruction and then wrote the member.** If you are
+writing a bitfield, write it and read the *write's* shift.
+
+`AttachActorToPlayer`'s second half is Prime 1's body verbatim (`prime-ref:2018`), and the guard
+has to be the nested `if (...) { ...; return true; } return false;` rather than
+`if (...) return false;` - the early-return form puts the three `stfs`/`stw` before the branch
+and MWCC reorders them differently. Both flags (`= 0x1f48`, `= 0x2E4`) and
+`kInvalidUniqueId` are already correct in the tree.
+
+## Not attempted, and why (measured, so the next run skips them)
+
+* `fn_80011fc0` (128 B, 3.13%): reads `mModelData` (0x60) then its anim data (0x10), tests
+  byte 0x128 of that, and calls `CAnimData::Render` with a `CColorF(1,1,1,1)`. Its callees are
+  all defined, so it is reachable; it needs two unnamed members of `CAnimData` at 0x124/0x128
+  that this header does not have (`CAnimData`'s private list stops at `mPose`/`mPlaybackParms`
+  well below 0x124 - see the offsets in `tools/probe`-style probes: `mPassedParticleCount`
+  0x29C, `x2a8_` 0x2A8, `mPose` 0x2B0, `mPlaybackParms` 0x414, `sizeof` 0x5B8, against
+  retail's 0x124/0x128). A header change to a shared class that also decompiles elsewhere; not
+  this item's business.
+* `fn_8000d3ac` (96 B, 4.17%), `fn_8000d540` (156 B, 2.56%), `fn_8000ba60` (152 B, 2.63%),
+  `fn_8000bbb4` (144 B, 2.78%), `PreThink` (184 B, 2.17%), `fn_8000d0ac` (104 B, 5.38%): all
+  0 missing callees and all reachable in principle; each needs either a
+  `CScriptPlayerTurret` class (this tree has only the loader struct
+  `include/MetroidPrime/ScriptLoader/SLdrPlayerTurret.hpp`, no class), a `CScriptWater` /
+  `CScriptTrigger` member, or a `CStateManager` member at 0x14F8/0x848/0x24DC that this header
+  does not name. All **layout** blockers, not codegen blockers. `mgr+0x24DC` is
+  `mCurrentRenderPlayerIndex` (probed) and `mgr+0x848` is `mObjectLists` (probed), so those two
+  are the cheapest of the six if the callers' semantics fall out.
+* `fn_80019360` (40 B, 18.90%): unchanged blocker from run 1 - the spelling reproduces the bytes
+  but `src/MetroidPrime/Cameras/CFirstPersonCamera.cpp` is still not in `files.cmake`, so the
+  call grows the port's link gap.
+* `GetDeathAlpha` (132 B, 95.76%) and `StartSamusVoiceSfx` (220 B, 98.91%): run 2's walls,
+  unchanged and not retried.
+* `GetCurrentBeam` (32 B, 99.88%): one instruction. Ours is `lwz r3,12(r3)` where retail has
+  `lwz r3,1424(r3)`, i.e. `mPlayerState->GetCurrentBeam()` reading a different member of
+  `CPlayerState`. A header member-order question in a shared class, not this item.
+
+## NEW:
+
+None filed. The two things still blocking other functions in this unit are already queued from
+`docs/goal-notes/progress-unit-cplayer.md` (`port-files-cmake-first-person-camera`,
+`progress-unit-cplayergun-bits`). The three new classes of blocker this run mapped -
+`CScriptPlayerTurret` absent from the port, `CAnimData`'s members above 0x2B0 unnamed, and
+`CStateManager`'s 0x14F8 unnamed - are all *layout* gaps in shared headers that other lanes
+decompile, so filing them would duplicate work already in flight rather than open a lane.

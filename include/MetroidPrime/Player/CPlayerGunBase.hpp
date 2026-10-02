@@ -43,6 +43,31 @@ public:
   virtual void PollStateMachine(CStateManager& mgr) = 0;
   virtual void InitializeStateMachine(CStateManager& mgr) = 0;
 
+  // `CPlayer::GetCombatMode` / `::GetExplorationMode` (0x80010BB8 / 0x80010B7C) read this word
+  // at 936 and switch on it directly, so it has to be readable from outside the class.
+  EGunHolsterState GetGunHolsterState() const { return mGunHolsterState; }
+  // Retail `CPlayer::AttachActorToPlayer` (0x80012CCC) and `::DetachActorFromPlayer`
+  // (0x80012C90) read-modify-write **bit 25** of the flag byte at 942 (0x3AE) -
+  // `rlwimi r0,r6,6,25,25` with r6 = 1, and `rlwimi r0,r4,6,25,25` with r4 = 0 - and
+  // `CPlayerGun::AcceptScriptMsg` (0x801CBE98) tests that byte before a combo-Fx check.
+  // Prime 1 calls the bit `mActorAttached`.
+  //
+  // **The member that emits retail's *write* shift is `x3ae_25_`, the second one declared here,
+  // not `mUnderwater`.** MWCC 2.7's read and write forms for one bitfield differ by one: reads
+  // go out as `rlwinm r0,r0,mb,31,31` with mb = 24 + (declaration index), writes as
+  // `rlwimi r0,rX,31-mb,mb,mb` with the same mb. Measured on this header, both ways:
+  //
+  //   member          read      write
+  //   mUnderwater     mb=25     mb=24
+  //   x3ae_25_        mb=26     mb=25     <- retail's write and its read
+  //   mInBigStrike    mb=27     mb=26
+  //   mMissileMode    mb=28     mb=27
+  //   mInPhazonPool   mb=29     mb=28
+  //
+  // so the pair retail uses (write mb=25 here, read mb=25 at 0x801CBE9C) is this one member,
+  // and its header name is the placeholder `x3ae_25_`. Nothing else in the port writes this
+  // bit; the sfx and Fire calls in `CPlayerGun.cpp` read `mUnderwater`, a different bit.
+  void SetActorAttached(bool attached) { x3ae_25_ = attached; }
   TUniqueId GetPlayerUniqueId() const { return mPlayerUniqueId; }
   CPlayer* GetPlayer(CStateManager& mgr) const;
   CPlayer* GetPlayerFromAll(CStateManager& mgr) const;

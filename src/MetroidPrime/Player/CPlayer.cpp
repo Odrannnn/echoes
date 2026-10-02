@@ -440,8 +440,30 @@ void CPlayer::UpdateCrosshairsState(const CFinalInput& input) {
   mDrawCrosshairs = mControlMapper.GetDigitalInput(CControlMapper::kC_Unknown63, input);
 }
 
+/**
+ * `.text 0x80017358`, 200 bytes. Two countdown timers of the same shape, `x1190_` against
+ * `mLandingSfx` (0x117C) and `mDamageSfxTimer` (0x11A0) against `mSamusVoiceSfx` (0x119C).
+ *
+ * `x1194_` (0x1194) is accumulated first and is not read afterwards. Each `SfxStop` is passed a
+ * stack temporary by address, which is what MWCC 2.7 emits for a by-value class argument, so the
+ * handle is written into the frame before the call rather than loaded into a register.
+ */
 void CPlayer::fn_80017358(float dt) {
-  // TODO: Recover the remaining target behavior.
+  x1194_ += dt;
+  if (x1190_ > 0.f) {
+    x1190_ -= dt;
+    if (x1190_ <= 0.f) {
+      CSfxManager::SfxStop(mLandingSfx);
+      mLandingSfx = CSfxHandle();
+    }
+  }
+  if (mDamageSfxTimer > 0.f) {
+    mDamageSfxTimer -= dt;
+    if (mDamageSfxTimer <= 0.f) {
+      CSfxManager::SfxStop(mSamusVoiceSfx);
+      mSamusVoiceSfx = CSfxHandle();
+    }
+  }
 }
 
 float CPlayer::fn_80016ce4(float dt, const CFinalInput& input, CStateManager& mgr) {
@@ -603,9 +625,24 @@ void CPlayer::fn_80012eb8(CStateManager& mgr) {
   // TODO: Recover the remaining target behavior.
 }
 
+/**
+ * `.text 0x80012E14`, 164 bytes. Prime 1's decomp has the same tail as
+ * `CPlayer::GetMaximumPlayerPositiveVelocity` (`kIT_SpaceJumpBoots ? 14.f : 11.66666f`); Echoes
+ * adds a Phazon-surface branch in front of it.
+ *
+ * `mPlayerState` is the member (0x1314), not an argument, and the first `GetItemAmount` is
+ * called before `GetSurfaceRestraint`, so the order below is load-bearing for the bytes.
+ * `neg`/`or`/`srwi` is mwcceppc's `int != 0` normalisation of the first amount; `li r5,1` is
+ * `GetItemAmount`'s `respectFieldToQuery` default, materialised because retail passes it.
+ */
 float CPlayer::fn_80012e14() const {
-  // TODO: Select jump duration from surface restraint and equipment.
-  return 0.f;
+  CPlayerState* const playerState = mPlayerState;
+  const bool hasBoots = playerState->GetItemAmount(CPlayerState::kIT_SpaceJumpBoots, true) != 0;
+  if (GetSurfaceRestraint() == kSR_Phazon &&
+      playerState->GetItemAmount(CPlayerState::kIT_GravityBoost, true) == 0) {
+    return hasBoots ? 5.25f : 4.75f;
+  }
+  return hasBoots ? 14.f : 11.66666f;
 }
 
 /**
@@ -657,21 +694,24 @@ extern "C" CVector3f fn_80012D10(const CPlayer* player, float strafeInput, float
 }
 
 bool CPlayer::AttachActorToPlayer(TUniqueId actor, bool disableGun) {
-  if (mAttachedActor != kInvalidUniqueId) {
-    return false;
+  if (mAttachedActor == kInvalidUniqueId) {
+    if (disableGun) {
+      mGun->SetActorAttached(true);
+    }
+    mAttachedActor = actor;
+    mAttachedActorTime = 0.f;
+    mAttachedActorStruggle = 0.f;
+    mMorphBall->StopParticleWakes();
+    return true;
   }
-  mAttachedActor = actor;
-  mAttachedActorTime = 0.f;
-  mAttachedActorStruggle = 0.f;
-  // TODO: Set the gun-disable flag and reset the ball attachment state.
-  return true;
+  return false;
 }
 
 void CPlayer::DetachActorFromPlayer() {
   mAttachedActor = kInvalidUniqueId;
   mAttachedActorTime = 0.f;
   mAttachedActorStruggle = 0.f;
-  // TODO: Clear the gun's attachment-disable flag.
+  mGun->SetActorAttached(false);
 }
 
 void CPlayer::UpdateFreeLook(float dt) {
@@ -686,8 +726,22 @@ void CPlayer::UpdateGunAlpha(const CStateManager& mgr) {
   // TODO: Recover the remaining target behavior.
 }
 
+/**
+ * `.text 0x80012538`, 132 bytes. `x126b_28_` (0x126B, `rlwinm.` mb=29) returning early is the
+ * third-person reflection flag; the camera-state/morph-state pair decides whether the gun adds
+ * itself. The gun call is `mtctr`/`bctrl` off vtable slot 10, which is `CPlayerGunBase`'s
+ * `AddToRenderer`, reached through the `rstl::single_ptr` at 0xEBC.
+ */
 void CPlayer::AddToRenderer(const CStateManager& mgr) const {
-  // TODO: Recover the remaining target behavior.
+  if (x126b_28_) {
+    return;
+  }
+  if (mCameraState != kCS_FirstPerson && mMorphBallState == kMS_Morphed) {
+    CActor::AddToRenderer(mgr);
+  } else {
+    mGun->AddToRenderer(mgr);
+    CActor::AddToRenderer(mgr);
+  }
 }
 
 void CPlayer::PreRenderAllViewports(CStateManager& mgr) {
@@ -698,8 +752,32 @@ void CPlayer::PreRender(CStateManager& mgr) {
   // TODO: Recover the remaining target behavior.
 }
 
+/**
+ * `.text 0x8001216C`, 132 bytes. Retail's branch chain is a `switch` on `mMorphBallState`
+ * (0x38C) with cases 0, 2 and 3 falling through to the 1.68f scale, 1 and >= 4 to 1.8f, and
+ * anything negative to 1.8f as well - the `cmpwi 1 / bge / cmpwi 0 / bge` chain is what
+ * mwcceppc emits for that case set.
+ *
+ * `mgr.mCurrentRenderPlayer` (0x15F8) is compared with `this` and the scale stays 1.8f when
+ * they differ; the two `SetScale` calls take the address of one frame temporary, so the scale
+ * is a named local rather than a temporary at each call site.
+ */
 void CPlayer::RenderReflectedPlayer(CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  float scale = 1.8f;
+  if (mgr.mCurrentRenderPlayer == this) {
+    switch (mMorphBallState) {
+    case kMS_Unmorphed:
+    case kMS_Morphing:
+    case kMS_Unmorphing:
+      scale = 1.68f;
+      break;
+    default:
+      break;
+    }
+  }
+  const CVector3f v(scale, scale, scale);
+  ModelData()->SetScale(v);
+  mBallTransitionBeamModel->SetScale(v);
 }
 
 void CPlayer::fn_80012040(CStateManager& mgr) {
@@ -742,14 +820,37 @@ void CPlayer::fn_80010bf4(CStateManager& mgr) {
   // TODO: Recover the remaining target behavior.
 }
 
+/**
+ * `.text 0x80010BB8` and `.text 0x80010B7C`, 60 bytes each. Both read `mGun`'s holster word at
+ * 936 and switch on it: combat is the two "out" states (1 drawing, 2 drawn) and exploration is
+ * the two "away" states (0 holstered, 3 holstering). The `cmpwi 3 / bge / cmpwi 0 / bge` chain
+ * is what mwcceppc emits for a two-case switch, and the two bodies are separate functions so
+ * each gets its own copy.
+ */
 bool CPlayer::GetCombatMode() const {
-  // TODO: Query gun holster state through its shared interface.
-  return false;
+  switch (mGun->GetGunHolsterState()) {
+  case CPlayerGunBase::kGHS_Drawing:
+  case CPlayerGunBase::kGHS_Drawn:
+    return true;
+  case CPlayerGunBase::kGHS_Holstered:
+  case CPlayerGunBase::kGHS_Holstering:
+    return false;
+  default:
+    return false;
+  }
 }
 
 bool CPlayer::GetExplorationMode() const {
-  // TODO: Query gun holster state through its shared interface.
-  return false;
+  switch (mGun->GetGunHolsterState()) {
+  case CPlayerGunBase::kGHS_Drawing:
+  case CPlayerGunBase::kGHS_Drawn:
+    return false;
+  case CPlayerGunBase::kGHS_Holstered:
+  case CPlayerGunBase::kGHS_Holstering:
+    return true;
+  default:
+    return false;
+  }
 }
 
 void CPlayer::SetScanningState(EPlayerScanState state, CStateManager& mgr) {
