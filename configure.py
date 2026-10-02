@@ -770,6 +770,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FD5E8.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FD638.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FD8E0.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve801FD924.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FDAA4.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FEA98.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FEC64.c"),

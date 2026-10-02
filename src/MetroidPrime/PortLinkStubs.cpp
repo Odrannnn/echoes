@@ -5,11 +5,16 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 193 of them: the ones referenced **only by
+ * file supplies 194 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   187 functions, 6 data objects (counted 2026-10-02, after the ninth upstream sync; after
+ *   187 functions, 7 data objects (counted 2026-10-02, after the `Carve801FD924.cpp` carve:
+ *   `stub_198` (`fn_801FD924`) was retired because that unit now defines the symbol for the port's
+ *   link too, and `stub_227` (`fn_801FD6F0`) plus `stub_data_6` (`lbl_803B7BF0`) were added in its
+ *   place - functions unmoved at 187, data 6 -> 7, the total 193 -> 194, because a carve that names
+ *   its vptr costs one data symbol the stub did not carry. Before that, the ninth upstream sync,
+ *   after
  *   `fn_801FEA98`'s stub was retired for `Carve801FEA98.c` with `fn_801FEAE0`'s added in its
  *   place - an exchange, so the total did not move, and after `fn_801FEC64`'s stub was retired for
  *   `Carve801FEC64.c` with `fn_801FECAC`'s added in its place - a second exchange, the total again
@@ -40,8 +45,13 @@
  *   `CDamageVulnerability.cpp` defines it and is listed in `files.cmake`; this line read
  *   154 for the 151-function file, which its own breakdown already contradicted by one).
  *
- * Breakdown: 86 REL loader, 45 game method, 33 unmangled fn_/lbl_, 1 CodeWarrior-mangled
- * `rstl::rmemory_allocator::allocate`, 4 vtable/typeinfo. (counted 2026-10-02, after `fn_801FD67C`
+ * Breakdown: 86 REL loader, 66 game method, 34 unmangled fn_/lbl_, 1 CodeWarrior-mangled
+ * `rstl::rmemory_allocator::allocate`, 7 vtable/typeinfo. (counted 2026-10-02, re-derived with the
+ *   `Carve801FD924.cpp` change: 194 total, 34 unmangled is `grep -cE 'asm\("(fn_|lbl_)'` over the
+ *   file, 7 is its `stub_data_*` count, and the game-method term is the residual
+ *   `194 - 86 - 34 - 7 - 1`; the new `stub_data_6` names an `lbl_` symbol, so that one stub is
+ *   counted in both the unmangled term and the vtable/typeinfo one. Before that, after
+ *   `fn_801FD67C`
  *   was added by hand below for `Carve801FD638.c` and the `fn_801FD8E0`/`fn_801FD924` exchange
  *   below for `Carve801FD8E0.c`; before that, after `fn_80008C28`
  *   was added by hand below for `Carve800052A0.c`; the game-method term read 46 and was wrong by
@@ -1102,35 +1112,42 @@ extern "C" void stub_196() {}
 extern "C" void stub_197() asm("fn_801FD67C");
 extern "C" void stub_197() {}
 
-// fn_801FD924 - retail 0x801FD924, 0x74 = 116 bytes (`config/G2ME01/symbols.txt:8281`), the
-// 0x24-byte element's deleting destructor: store the vtable 0x803B7BF0 into +0x0, run `fn_801FD6F0`
-// (with `li r4,-1`) over the member at +0x14, release the `rstl::basic_string` at +0x4 through
-// `internal_dereference__Q24rstl66basic_string<...>`, and `Free__7CMemoryFPCv` only when the
-// caller's flag is positive (`extsh. r0,r31 / ble`). Asked for by the port because
-// `src/MetroidPrime/ScriptObjects/Carve801FD8E0.c` (Matching, 0x801FD8E0..0x801FD924) reproduces
-// `fn_801FD900` byte for byte and that body's `li r4,-1` at 0x801FD908 and `bl fn_801FD924` at
-// 0x801FD910 are in retail's bytes, so the carve cannot drop the call. This block also
-// **retires `stub_184`**: that stub stood in for `fn_801FD8E0`, which the new unit now defines for
-// real, and leaving both would be two definitions of one symbol in the port's flat link. One
-// function stub out, one in - the total does not move.
+// fn_801FD6F0 - retail 0x801FD6F0, 0x84 = 132 bytes (`config/G2ME01/symbols.txt:8275`), the
+// 0x24-byte element's +0x14 member destructor: it walks `x04_count` elements of 0x14 bytes through
+// `fn_801FD774` (which releases each `rstl::basic_string` in turn), frees the `x0c_buffer`, and then
+// frees its own receiver only when its flag is positive (`extsh. r0,r31 / ble`). Retail calls it
+// from eight sites measured this run (`objdump -d build/G2ME01/main.elf | grep 'bl.*801fd6f0'`):
+// the three 0x74-byte destructors above it (`fn_801FD67C` at 0x801FD6B0, `fn_801FD924` at
+// 0x801FD958 and `fn_801FDAE8` at 0x801FDB1C, each preceded by `li r4,-1`) and five more inside
+// dtk's `auto_03_801FDC88_text` range (0x801FDD00, 0x801FE100, 0x801FE244, 0x801FE354,
+// 0x801FE474). This block is asked for by the port because
+// `src/MetroidPrime/ScriptObjects/Carve801FD924.cpp`
+// (Matching, 0x801FD924..0x801FD998) reproduces `fn_801FD924` byte for byte and that body's
+// `addi r3,r30,20` at 0x801FD948, `li r4,-1` at 0x801FD950 and `bl fn_801FD6F0` at 0x801FD958 are
+// in retail's bytes, so the carve cannot drop the call.
 //
-// For the DOL nothing is needed: 0x801FD924 is exactly 0x0 bytes past that unit's claim end, so it
-// stays retail's and dtk emits its own bytes from `auto_03_801FD924_text.o` (the `auto_*` object
-// the claim splits out of `auto_03_801FD67C_text`); this file is not in
-// `configure.py`, so the stub cannot reach main.dol. The port link does not carry that object,
-// which is why its gap would grow by this symbol: measured in this tree without this block,
-// `python3 tools/link_gap.py --rebuild` prints `286  MISSING` and
-// `gap grew: fn_801FD924 is not in port_link_gap_list.md`; with the block in place the same command
-// prints `285  MISSING`, all accounted for.
+// This block **retires `stub_198`**: that stub stood in for `fn_801FD924`, which the new unit now
+// defines for real, and leaving both would be two definitions of one symbol in the port's flat
+// link. One function stub out, one in - the function-stub total does not move.
+//
+// For the DOL nothing is needed: `fn_801FD6F0` is in dtk's unclaimed `auto_03_801FD67C_text.s`
+// (`# .text:0x74 | 0x801FD6F0 | size: 0x84`), which the matching build links, so the DOL resolves
+// it from retail's own bytes; this file is not in `configure.py`, so the stub cannot reach
+// main.dol. The port link does not carry that object, which is why its gap would grow by this
+// symbol: measured in this tree with the two new blocks absent,
+// `python3 tools/link_gap.py --rebuild` prints `283  MISSING` and
+// `gap grew: fn_801FD6F0 is not in port_link_gap_list.md` plus
+// `gap grew: lbl_803B7BF0 is not in port_link_gap_list.md`; with both blocks in place the same
+// command prints `281  MISSING`, all accounted for.
 //
 // This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
-// claim that fn_801FD924 is decompiled - it is not, and `docs/research/port_link_gap.md` keeps the
+// claim that fn_801FD6F0 is decompiled - it is not, and `docs/research/port_link_gap.md` keeps the
 // symbol listed as still missing. Claiming it instead only moves the same gap one function along:
-// its 0x74 bytes need the `.data` vtable `lbl_803B7BF0` as well as the bodies of `fn_801FD6F0`
-// (0x801FD6F0, 0x84) and that string release, which are themselves unclaimed. The same trade
-// `stub_196` and `stub_197` above make for their carves' callees.
-extern "C" void stub_198() asm("fn_801FD924");
-extern "C" void stub_198() {}
+// its 0x84 bytes need the bodies of `fn_801FD774` (0x801FD774, 0x60) and
+// `internal_dereference__Q24rstl66basic_string<...>`, both unclaimed. The same trade `stub_196`
+// and `stub_197` above make for their carves' callees.
+extern "C" void stub_227() asm("fn_801FD6F0");
+extern "C" void stub_227() {}
 
 // fn_801FDAE8 - retail 0x801FDAE8, 0x74 = 116 bytes (`config/G2ME01/symbols.txt:8287`), the
 // 0x2C-byte element's deleting destructor: store the vtable 0x803B7BE4 into +0x0, run `fn_801FD6F0`
@@ -1363,3 +1380,13 @@ extern "C" char stub_data_4[64] asm("_ZTI7CEffect") = {};
 
 // vtable for CEffect
 extern "C" char stub_data_5[64] asm("_ZTV7CEffect") = {};
+
+// The 0x24-byte script-object element's own vtable, `lbl_803B7BF0` (0x803B7BF0, `symbols.txt:18318`,
+// retail `.data` size 0xC, `{0, 0, &fn_801FF4B4}`). Asked for by the port because
+// `src/MetroidPrime/ScriptObjects/Carve801FD924.cpp` (Matching, 0x801FD924..0x801FD998) restores
+// this vptr in retail's bytes, so the carve cannot drop the reference - and it is the address of
+// this object, not its contents, that both builds need: the matching build takes the word from
+// dtk's own `auto_07_803B7AE0_data.o` (`powerpc-eabi-nm` shows `00000110 D lbl_803B7BF0` in it),
+// which the port does not carry. Zero-filled and 64 bytes rather than retail's 0xC, like every
+// other data stub here: on this path the object is only ever taken the address of, never read.
+extern "C" char stub_data_6[64] asm("lbl_803B7BF0") = {};
