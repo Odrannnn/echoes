@@ -1466,6 +1466,9 @@ MetroidPrime/ScriptLoader/EmperorIngStage1.cpp:
 	.text       start:0x80227540 end:0x8022756C
 	.sbss       start:0x80419570 end:0x80419578
 
+MetroidPrime/ScriptLoader/Carve8022756C.c:
+	.text       start:0x8022756C end:0x80227574
+
 MetroidPrime/ScriptLoader/OctopedeSegment.cpp:
 	.text       start:0x80227574 end:0x802275A0
 	.sbss       start:0x80419578 end:0x80419580
