@@ -28,9 +28,19 @@ public:
   virtual void SetLocalScale(const CVector3f& scale) = 0;
   virtual void SetParticleEmission(bool emission) = 0;
   virtual void SetModulationColor(const CColor& col) = 0;
-  virtual void SetGeneratorRate(float rate) {}
+  // The five methods with bodies below - SetGeneratorRate, SetDrawFlags, GetGeneratorRate,
+  // GetDrawFlags and ShouldDraw - are **not** inline in retail. `config/G2ME01/symbols.txt:1614`
+  // puts all five at `.text` just past `CExplosion`'s last constructor, and
+  // `build/G2ME01/obj/MetroidPrime/CExplosion.o` defines them `T` while every other object that
+  // touches the class (`CElementGen.o`, `CParticleElectric.o`, `CParticleSwoosh.o`,
+  // `CParticleGen.o`) references them `U`. Defining them out of line in `CExplosion.cpp` is what
+  // puts them there; a body in the class makes mwcceppc emit a weak copy in every including object
+  // instead. It also moves `__vt__12CParticleGen`, because SetGeneratorRate is the first virtual
+  // with a definition in declaration order and so is CParticleGen's key function - retail defines
+  // the vtable in `CExplosion.o` too.
+  virtual void SetGeneratorRate(float rate);
   // Names of the draw-flag methods are hypotheses based on the sDrawFlags/sDrawMask Wii exports.
-  virtual void SetDrawFlags(uint flags) { mDrawFlags = flags; }
+  virtual void SetDrawFlags(uint flags);
   virtual const CTransform4f& GetOrientation() const = 0;
   virtual const CVector3f& GetTranslation() const = 0;
   virtual const CTransform4f& GetGlobalOrientation() const = 0;
@@ -38,10 +48,10 @@ public:
   virtual const CVector3f& GetGlobalScale() const = 0;
   virtual bool GetParticleEmission() const = 0;
   virtual const CColor& GetModulationColor() const = 0;
-  virtual float GetGeneratorRate() const { return 1.f; }
+  virtual float GetGeneratorRate() const;
   virtual int GetEmitterTime() const = 0;
-  virtual uint GetDrawFlags() const { return mDrawFlags; }
-  virtual bool ShouldDraw() const { return (GetDrawFlags() & sDrawMask) == sDrawFlags; }
+  virtual uint GetDrawFlags() const;
+  virtual bool ShouldDraw() const;
   virtual int GetSystemCount() = 0;
   virtual bool IsSystemDeletable() = 0;
   virtual rstl::optional_object< CAABox > GetBounds() = 0;
@@ -51,9 +61,6 @@ public:
   virtual void DestroyParticles() = 0;
   virtual void AddModifier(CWarp*);
   virtual uint Get4CharId() const = 0;
-
-  static uint sDrawFlags;
-  static uint sDrawMask;
 
 protected:
   rstl::list< CWarp* > mModifiersList;

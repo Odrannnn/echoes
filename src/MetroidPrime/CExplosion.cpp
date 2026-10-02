@@ -10,6 +10,45 @@
 #include "MetroidPrime/TCastTo.hpp"
 #include "rstl/math.hpp"
 
+// `.sbss` render flags, written by `CStateManager::fn_80036650` and defined outside this unit's
+// split (`src/MetroidPrime/mainHead.cpp`). `ShouldDraw` below reads them: retail's is
+// `lwz r31, lbl_80419AA0@sda21(r0)` / `lwz r30, lbl_80419A9C@sda21(r0)`, so `lbl_80419AA0` is the
+// mask it ANDs with and `lbl_80419A9C` the value it compares against.
+extern "C" uint lbl_80419A9C;
+extern "C" uint lbl_80419AA0;
+
+// The five `CParticleGen` methods retail defines out of line in this object, in the descending
+// retail `.text` order mwcceppc needs (0x800534CC, 0x800534C4, 0x800534BC, 0x800534B4,
+// 0x800534B0). `Kyoto/Particles/CParticleGen.hpp` only declares them; a body there would make
+// every including object emit its own weak copy instead.
+
+// .text:0xBCC | 0x800534CC | size: 0x54 - vtable index 23. The three locals are load-bearing:
+// written as one expression, mwcc loads both flags *after* the virtual call into volatile
+// registers and emits 20 bytes; it hoists them above the call into r31/r30 - and so spills and
+// reloads them - only when they are read into locals first.
+bool CParticleGen::ShouldDraw() const {
+  const uint mask = lbl_80419AA0;
+  const uint flags = lbl_80419A9C;
+  const uint drawFlags = GetDrawFlags();
+  return (drawFlags & mask) == flags;
+}
+
+// .text:0xBC4 | 0x800534C4 | size: 0x8 - vtable index 22.
+uint CParticleGen::GetDrawFlags() const { return mDrawFlags; }
+
+// .text:0xBBC | 0x800534BC | size: 0x8 - vtable index 20. Retail's `lfs f1,lbl_8041A920@sda21(r0)`
+// is a real load, so this stays a literal rather than a folded `li f1,1.0`. The literal lands in
+// this object's `.sdata2`, which is where the linked DOL's `.sdata2:0x8041A920` word comes from;
+// `lbl_8041A920` is only defined on the PC side (`src/MetroidPrime/PortGlobals.cpp`), so naming it
+// here would be an undefined symbol in the DOL link.
+float CParticleGen::GetGeneratorRate() const { return 1.f; }
+
+// .text:0xBB4 | 0x800534B4 | size: 0x8 - vtable index 12.
+void CParticleGen::SetDrawFlags(uint flags) { mDrawFlags = flags; }
+
+// .text:0xBB0 | 0x800534B0 | size: 0x4 - vtable index 11. Empty in retail: `blr` and nothing else.
+void CParticleGen::SetGeneratorRate(float rate) {}
+
 CExplosion::CExplosion(const TLockedToken< CGenDescription >& particle, TUniqueId uid,
                        const CEntityInfo& info, const rstl::string& name, const CTransform4f& xf,
                        const uint flags, const CVector3f& scale, const CColor& color,
