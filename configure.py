@@ -655,6 +655,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/Player/CGameStateBlockDtor.cpp"),
             Object(Matching, "MetroidPrime/Player/CGameStateBlockCopyCtor.cpp"),
             Object(Matching, "MetroidPrime/Player/CGameStateBlockConstruct.cpp"),
+            Object(Matching, "MetroidPrime/Factories/Carve80032A98.c"),
             Object(Matching, "MetroidPrime/Carve80045CD4.c"),
             Object(Matching, "MetroidPrime/Carve800534B0.c"),
             Object(Matching, "MetroidPrime/Carve800534BC.c"),
