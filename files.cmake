@@ -617,6 +617,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     # loader setter at 0x8021887C..0x80218884, out of dtk's `auto_03_8021887C_text` - see the
     # file header.
     src/MetroidPrime/ScriptLoader/Carve8021887C.c
+    # A carve of `fn_802188E4` (0x802188E4..0x802188EC), the DarkSamus module's 8-byte loader
+    # setter out of dtk's `auto_03_802188E4_text`. `.c` because the module imports that exact
+    # retail name, so the definition has to be unmangled - see the file header.
+    src/MetroidPrime/ScriptLoader/Carve802188E4.c
     # A carve of `fn_802201F8` (0x802201F8..0x80220294), the deleting destructor of the unnamed
     # 0x448-byte class `fn_8021FBCC` news with `"??(??"` - see the file header.
     src/MetroidPrime/ScriptLoader/Carve802201F8.cpp

@@ -1543,6 +1543,9 @@ MetroidPrime/ScriptLoader/DarkSamus.cpp:
 	.text       start:0x802188B8 end:0x802188E4
 	.sbss       start:0x804193D0 end:0x804193D8
 
+MetroidPrime/ScriptLoader/Carve802188E4.c:
+	.text       start:0x802188E4 end:0x802188EC
+
 MetroidPrime/ScriptLoader/Ings.cpp:
 	.text       start:0x802188EC end:0x80218918
 	.sbss       start:0x804193D8 end:0x804193E0
