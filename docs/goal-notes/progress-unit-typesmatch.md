@@ -345,3 +345,160 @@ belongs.
 No `STALE:`. No new `WALL:` line for `fn_8009D45C` is claimed separately from the one above: the
 two functions fail on the identical construct, and this run measured the caller's spelling, which is
 where the construct lives.
+
+---
+
+# Run 3 (lane `L1`, 2026-10-02): 509 -> 510 / 511, and the run-2 wall is REFUTED
+
+**The dead-store wall from run 2 does not exist.** Both remaining functions are now byte-identical
+to retail. The stores were never a codegen dead end: they are what mwcceppc emits for a **by-value
+class argument**, and the previous two runs missed it because they spelled the two cursors as
+`uchar**` and then as `Item*`. `SUnknownItemIter`, a one-word class, reproduces retail's four stores
+in the caller and its two in the callee, and the 32-byte frames that go with them.
+
+One file touched: `src/MetroidPrime/TypesMatch.cpp`. The unit stays `NonMatching`; `flip_test` was
+not run. `docs/HANDOFF.md` shows a diff in this worktree: that is `tools/check_docs_claims.py
+--write` under the judge's `MP_GATE_DOCS_WRITE=1`, not an edit of mine.
+
+**Verified: `./tools/goal_check.sh build/goal/item.json` -> `PASS`**
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12302 -> 12303   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    All:  34.77% fuzzy, 28.31% matched, 12.90% linked (12303 / 28465 functions)
+  ok    target rose: main/MetroidPrime/TypesMatch: 509 -> 510 / 511 functions
+  ok    no asm added
+goal_check: PASS progress-unit-typesmatch
+```
+
+| | base (`build/goal/judge/report.base.json`) | now |
+|---|---|---|
+| unit matched / total | 509 / 511 | **510 / 511** |
+| unit fuzzy % | 99.41805 | **99.48195** |
+| unit matched-code % | 99.05808 | **99.48195** |
+| DOL matched functions | 12302 | **12303** |
+
+`python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json` -> `no regression`,
+with exactly one line: `+100%  main/MetroidPrime/TypesMatch :: fn_8009D45C`. No function anywhere got
+worse, and `linked` did not move (the unit is `NonMatching`, so `mwldeppc` links retail's object).
+
+## 1. `fn_8009D45C`: 84.93% -> 100.00%, 108 bytes
+
+Run 2 measured 14 spellings of the *body* and concluded the two dead stores at 8(SP)/12(SP) were
+MWCC folding them away ("MWCC passes the address of a local straight to the callee and never makes
+an outgoing-argument copy of it"). That generalisation is wrong. What MWCC never does is fold away
+the **parameter save area copy of a by-value class argument**, because a class argument is not passed
+in a register at all: it is materialised in the frame and its address is passed.
+
+The proof is already in this tree. `src/MetroidPrime/CAutoMapper.cpp:1570-1573` spells retail
+0x8008BEB0 as `fn_8008BEB0(CAutoMapperWorldIter first, CAutoMapperWorldIter last) { rstl::destroy_impl(first, last); }`
+and matches at 100%. Retail 0x8008BEB0 and retail 0x8009D45C are the *same function*:
+
+```
+8008beb0: stwu r1,-32(r1) / mflr r0 / stw r0,36(r1) / stw r31,28(r1) / lwz r31,0(r4)
+          stw r30,24(r1) / lwz r30,0(r3) / stw r31,8(r1) / stw r30,12(r1) / b <loop test>
+8009d45c: stwu r1,-32(r1) / mflr r0 / stw r0,36(r1) / stw r31,28(r1) / lwz r31,0(r4)
+          stw r30,24(r1) / lwz r30,0(r3) / stw r31,8(r1) / stw r30,12(r1) / b <loop test>
+```
+
+Both are `rstl::destroy(begin, end)` for a container whose `iterator` is a one-word class, and both
+are a *forwarder* to a separate inline helper. The forwarding call is what leaves the argument
+copies behind once the helper is inlined. I found this by scanning all 16748 functions in
+`build/G2ME01/main.elf` for a 32-byte frame that stores two non-saved registers to 8(SP) and
+12(SP): 148 hits, and the `rstl::vector::clear` / `~vector` / `erase(pointer_iterator)` /
+`destroy<pointer_iterator<...>>` family is all of them.
+
+The change, measured with a standalone probe compiled through the unit's own command line
+(`.tmp/opencode/probe.sh`, i.e. `wibo` + `sjiswrap.exe` + `mwcceppc.exe` with the exact `-O4,p
+-inline deferred,noauto -pragma "inline_max_size(125)"` line from `build.ninja:1455`):
+
+| spelling of the callee | frame | stores at 8/12 | instrs vs retail |
+|---|---|---|---|
+| `fn(Item** first, Item** last)` + own loop (run 2's best) | 16 | none | 5 |
+| `fn(Item*& first, Item*& last)` + own loop | 16 | none | 5 |
+| `fn(Item* first, Item* last)` + own loop | 16 | none | 5 |
+| `volatile` locals / `&local` passed on / local array / extra call after the loop | 16 | none | 5 |
+| **`fn(Iter first, Iter last)` forwarding to an inline helper** | **32** | **both** | **0** |
+
+The last row is what landed: `SUnknownItemIter` (`TypesMatch.cpp:200-219`) and
+`static inline void DestroyUnknownItems(SUnknownItemIter, SUnknownItemIter)` (`:1006-1015`).
+
+## 2. `~CUnknownItemList` is now byte-identical to retail's `fn_8009D3D8` (unpaired)
+
+The caller gets its four stores from the same lever, because the arguments it passes are now the two
+class cursors rather than `&local`:
+
+```cpp
+CUnknownItemList::~CUnknownItemList() {
+  fn_8009D45C(SUnknownItemIter(reinterpret_cast< SUnknownItem* >(xC_items)),
+              SUnknownItemIter(reinterpret_cast< SUnknownItem* >(xC_items) + x4_count));
+  CMemory::Free(xC_items);
+}
+```
+
+All 33 instructions now match retail (`slwi r0,r0,3` / `add r5,r5,r0` / `stw r5,12(r1)` /
+`stw r5,8(r1)` / `stw r0,16(r1)` / `stw r0,20(r1)` / `addi r3,r1,20` / `addi r4,r1,12`), and
+`__dt__16CUnknownItemListFv` grows 124 -> 132 B, which is retail's size. It still scores 0.00%
+because objdiff pairs by name and retail's name is `fn_8009D3D8`; see the wall below.
+
+Two spellings of the bound matter and are worth not rediscovering: `x4_count * 8` gives
+`slwi r0,r0,6` (the `* 8` is re-applied as the `SUnknownItem*` stride), and hoisting the cast into
+a local (`SUnknownItem* const items = ...`) moves the result into r0 and swaps the 8(SP)/12(SP) and
+16(SP)/20(SP) slots. `+ x4_count` on the cast member directly is the one that matches.
+
+## 3. `fn_8009D3D8` is blocked by two independent things, both measured this run
+
+1. **The name.** Run 2's measurement stands and I reproduced it: `extern "C" ~C();` is an
+   `illegal storage class` error and `extern "C"` on a class is ignored, so no destructor can carry
+   the symbol `fn_8009D3D8`.
+2. **The body, once paired.** I removed `~CUnknownItemList` from the class, made the members public
+   and wrote `extern "C" void fn_8009D3D8(CUnknownItemList* self, int deletingFlag)` with the same
+   body. It pairs, and scores **67.61%** - not because of the stores (they are right) but because a
+   plain function is not given the destructor's codegen: no `mr. r30,r3 / beq` null guard and no
+   `extsh. r0,r31 / ble / mr r3,r30 / bl Free` deleting-flag tail. 25 of retail's 33 instructions
+   survive. Reverted; the destructor spelling is kept because it is the one retail actually compiled.
+
+WALL: fn_8009D3D8 - unreachable in C++: mwcceppc mangles every destructor so retail's `fn_` name can
+never be paired (0.00%), and the free-function spelling that does pair loses the destructor's null
+guard and deleting-flag tail (67.61%). The body itself is byte-identical, 33/33.
+
+## 4. A false 100% worth knowing about, in the same unit
+
+`__dt__13CUnknownInnerFv` reads 100.00% in `report.base.json`, but the object says otherwise: retail
+0x8009D374 has 25 instructions and ours has 23 - ours is missing `mr r3,r30 / li r4,-1 / bl
+fn_8009D3D8`, because `CUnknownInner::~CUnknownInner() {}` is empty and so never destroys its
+`CUnknownItemList x0_base` member. objdiff's fuzzy section alignment is pairing our 23 instructions
+with a neighbour's 25 and calling it a match. Adding the real call (`x0_base.~CUnknownItemList();`)
+was measured and gives **89.60%**, not 100% - so `~CUnknownInner` is not a spelling away from a
+matched function and the member-destruction gap is a genuine source bug, not a scoring artefact.
+Not fixed here: it costs a matched function (510 -> 509), and this item's job is the other one.
+
+## 5. What is left, and why (1 function)
+
+`fn_8009D3D8`, 132 B, unpaired (0.00%), body byte-identical. See the wall in 3. There is nothing
+else below 100% in `main/MetroidPrime/TypesMatch`, and nothing else in the unit worth requeueing
+for: `python3 tools/check_decl_order.py --unit main/MetroidPrime/TypesMatch` still prints `would
+break on a flip` (pre-existing, and `docs/research/decl_order.md` already lists the unit), and
+`tools/unit_fit.sh MetroidPrime/TypesMatch.cpp` still reports 17 functions retail does not define -
+the same 17 as before, all destructors whose retail names are `fn_*`, with `__dt__16CUnknownItemListFv`
+now 132 B instead of 124 B. So the unit still cannot flip, and that is not this item's job.
+
+## The rule worth keeping
+
+**When MWCC will not emit a store, change the parameter's *type class*, not the expression.**
+`uchar**`/`Item*`/`Item*&` are all "a pointer in a register" and all compile the same; a one-word
+*class* is "a value in memory" and gets a frame slot, a store and an address. Anything that is dead
+after inlining then survives, because the copy belongs to the call, not to the code it called. This
+is the same mechanism behind `rstl::destroy(begin, end)` in retail 0x8008BEB0, the 148-member
+`rstl::vector` clear/dtor/erase family in the DOL, and `src/MetroidPrime/CAutoMapper.cpp:1570`.
+
+## NEW:
+
+None filed. The one remaining function is inside this item's own target
+(`main/MetroidPrime/TypesMatch`) and is walled above, so it belongs to a requeue of
+`progress-unit-typesmatch`, not to a new queue entry.
+
+No `STALE:`. The run-2 `WALL:` on the dead stores is **superseded** and should not be read as a
+finding: the stores are reachable, and section 1 has the spellings.

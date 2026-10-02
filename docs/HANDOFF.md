@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    12321 / 28465 functions        (34.79% fuzzy, 28.37% of code, 12.90% fully linked)
+matched    12322 / 28465 functions        (34.79% fuzzy, 28.37% of code, 12.90% fully linked)
 linked     5863 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  10773 / 16726 functions        (main/*, including the SDK's)
+DOL units  10774 / 16726 functions        (main/*, including the SDK's)
 port link  291 undefined, 0 duplicates   (291 since the eighth upstream sync, 2026-10-01: upstream's
                                    CFrontEndGameMode, CRelFile and CDamageVulnerability units define what
                                    38 listed names asked for, and six new names opened -
@@ -170,7 +170,8 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 **1. The DOL** - the `DOL units` line above. Work is per unit: write it, measure with objdiff, flip
 to `Matching` when `tools/flip_test.sh` passes. The two units the whole port was
 waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 29/103 is `NonMatching` since the upstream
-merge widened it. Others: `TypesMatch` 509/511, `CStateManager` 103/239, `CPlayerGun` 68/136,
+merge widened it. Others: `TypesMatch` 510/511, `CStateManager` 103/239, `CPlayerGun` 68/136,
+merge widened it. Others: `TypesMatch` 510/511, `CStateManager` 101/239, `CPlayerGun` 68/136,
 `CPlayerState` 67/72. (`check_docs_claims.py --write` keeps these six counts current.)
 
 **2. The REL modules** - the `REL units` line above, 86 modules. A module counts only when its

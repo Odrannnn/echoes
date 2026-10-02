@@ -197,12 +197,34 @@ struct SUnknownItem {
   void* x4_ptr;
 };
 
+// The cursor fn_8009D45C walks, one word wide. Its *type* is load-bearing even though its layout
+// is not: mwcceppc passes a by-value class argument in memory, so a function taking two of these
+// materialises both into its own frame (8(SP) and 12(SP), retail 0x8009D478/0x8009D47C) and passes
+// their addresses. Spelled as a plain `uchar**` pair MWCC folds both away and the frame drops from
+// 32 to 16 bytes. The same shape is what `rstl::destroy`/`destroy_impl` get for a
+// `rstl::vector<T>::iterator`, which is how retail 0x8008BEB0 and 0x8009D45C agree word for word -
+// see src/MetroidPrime/CAutoMapper.cpp:1570.
+class SUnknownItemIter {
+public:
+  SUnknownItem* x0_current;
+  SUnknownItemIter() : x0_current(nullptr) {}
+  SUnknownItemIter(SUnknownItem* begin) : x0_current(begin) {}
+  SUnknownItem& operator*() const { return *x0_current; }
+  SUnknownItem* operator->() const { return x0_current; }
+  SUnknownItemIter& operator++() {
+    ++x0_current;
+    return *this;
+  }
+  bool operator==(const SUnknownItemIter& other) const { return x0_current == other.x0_current; }
+  bool operator!=(const SUnknownItemIter& other) const { return x0_current != other.x0_current; }
+};
+
 void FreeUnknownItem(void* item, bool b);
 
 // Retail fn_8009D45C: walks [first, last) in 8-byte steps and hands every element whose flag
-// byte is set to fn_8024EC88. Both arguments are read once, through the pointer. C linkage, so the
-// definition below spells retail's own symbol name rather than a mangled one.
-extern "C" void fn_8009D45C(uchar** first, uchar** last);
+// byte is set to fn_8024EC88. C linkage, so the definition below spells retail's own symbol name
+// rather than a mangled one, and the two cursors are by value - see SUnknownItemIter.
+extern "C" void fn_8009D45C(SUnknownItemIter first, SUnknownItemIter last);
 
 // Retail fn_80032D88, in MetroidPrime/Weapons/CGameProjectile's object: 0x80032D88 is
 // `if (self != nullptr) { if (self->xC_valid != 0) self->xC_token.CToken::~CToken(); }`, the
@@ -211,6 +233,12 @@ extern "C" void fn_8009D45C(uchar** first, uchar** last);
 // the unit is NonMatching, so this reference never reaches the link.
 extern "C" void fn_80032D88(void* self, int deletingFlag);
 
+// Retail's symbol table has no name for this class's destructor (0x8009D3D8 is `fn_8009D3D8`), and
+// mwcceppc mangles every destructor, so objdiff can never pair the two and this function scores
+// 0.00% whatever its body is. Writing it as the free function `fn_8009D3D8` instead does pair, and
+// measured: 67.61%, because a plain function gets none of the destructor's codegen - no
+// `mr. r3; beq` null guard and no `extsh.` deleting-flag tail. The body below is the destructor's
+// and is byte-identical to retail's 33 instructions.
 class CUnknownItemList {
 public:
   ~CUnknownItemList();
@@ -954,30 +982,36 @@ SUnknownOuter::~SUnknownOuter() {
   delete x0_ptr;
 }
 CUnknownInner::~CUnknownInner() {}
-// Not at 100%, and not even paired: retail's symbol table calls this `fn_8009D3D8`, mwcceppc mangles
-// every destructor, so objdiff can never pair the two and this scores 0.00% whatever the body is.
-// Retail also gives each of the two bounds a stack home *and* an outgoing-argument copy (four
-// stores, arguments at 12(SP) and 20(SP)); MWCC here gives one slot each. Everything else in this
-// function is byte-identical. See docs/goal-notes/match-typesmatch.md.
+// Not paired by name: retail's symbol table calls this `fn_8009D3D8` and mwcceppc mangles every
+// destructor, so objdiff scores it 0.00% whatever the body is - the body below is byte-identical to
+// retail's 33 instructions, and the free-function spelling of the same body (`extern "C" void
+// fn_8009D3D8(CUnknownItemList*, int)`) pairs at only 67.61% because a plain function is not given
+// the destructor's null guard or its `extsh.` deleting-flag tail. The four stores are not a
+// spelling problem either: retail passes two by-value *class* cursors, and it is the class type
+// (SUnknownItemIter) that makes mwcceppc materialise each of them twice - once as a home, once as
+// the outgoing-argument copy. Spelled as `uchar**` locals they collapse to two stores and the frame
+// drops to 16 bytes.
 CUnknownItemList::~CUnknownItemList() {
-  uchar* last = xC_items + x4_count * 8;
-  uchar* first = xC_items;
-  fn_8009D45C(&first, &last);
-  CMemory::Free(first);
+  fn_8009D45C(SUnknownItemIter(reinterpret_cast< SUnknownItem* >(xC_items)),
+              SUnknownItemIter(reinterpret_cast< SUnknownItem* >(xC_items) + x4_count));
+  CMemory::Free(xC_items);
 }
 // Retail's symbol table names this `fn_8009D45C`, so it is declared with C linkage: a C++ spelling
-// would mangle to a different name and objdiff could never pair the two. The declaration order is
-// load-bearing - MWCC hands out callee-saved registers in declaration order, and retail keeps the
-// bound in r31 with r30 walking the array, so `item` must be declared before `end` (see
-// docs/RUNNING_THE_DECOMP.md, "MWCC's inlining and scheduling levers").
-extern "C" void fn_8009D45C(uchar** first, uchar** last) {
-  SUnknownItem* const end = reinterpret_cast< SUnknownItem* >( *last );
-  SUnknownItem* item = reinterpret_cast< SUnknownItem* >( *first );
-  for (; item != end; ++item) {
+// would mangle to a different name and objdiff could never pair the two. The loop itself is a
+// separate inline helper for the same reason retail's is: forwarding the two by-value cursors to it
+// is what produces the pair of frame stores at 8(SP)/12(SP) and the 32-byte frame, and it is the
+// spelling src/MetroidPrime/CAutoMapper.cpp:1570 already uses for retail 0x8008BEB0.
+static inline void DestroyUnknownItems(SUnknownItemIter begin, SUnknownItemIter end) {
+  SUnknownItemIter cur = begin;
+  for (; cur != end; ++cur) {
+    SUnknownItem* item = &*cur;
     if (item != nullptr && item->x0_flag != 0) {
       FreeUnknownItem(item->x4_ptr, true);
     }
   }
+}
+extern "C" void fn_8009D45C(SUnknownItemIter first, SUnknownItemIter last) {
+  DestroyUnknownItems(first, last);
 }
 SFreeablePtr::~SFreeablePtr() {
   CMemory::Free(xC_ptr);
