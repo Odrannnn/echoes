@@ -1854,6 +1854,7 @@ config.libs = [
         "SandBoss",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CSandBossRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CSandBossRelTail.cpp", mw_version="GC/2.7"),
         ],
     ),
     # Added 2026-09-30 (goal item `progress-rel-head-sandworm`). 4 functions, .text

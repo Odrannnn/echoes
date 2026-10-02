@@ -386,6 +386,12 @@ src/MetroidPrime/PortLinkStubs.cpp
     # reference; it is listed because check_files_cmake.py requires every config.py `Matching`
     # object to be in this list, and only a RELMain/RELExit unit is exempt.
     src/MetroidPrime/ScriptObjects/CLumiteRelTail.cpp
+    # SandBoss's (module 55) out-of-line template tail, `fn_55_10548`..`fn_55_106E0`. Its host
+    # branch is empty by design (the bodies are inside `#ifdef __MWERKS__`), so listing it adds
+    # no undefined reference; it is listed because check_files_cmake.py requires every
+    # configure.py `Matching` object to be in this list, and only a RELMain/RELExit unit is
+    # exempt.
+    src/MetroidPrime/ScriptObjects/CSandBossRelTail.cpp
     # CRumbleManager::StopRumble. Its own file because CRumbleManager.cpp is a
     # `MatchingFor("G2ME01")` unit and must not be edited; see the file's header.
     src/MetroidPrime/CRumbleManagerStopRumble.cpp

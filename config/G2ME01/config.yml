@@ -288,6 +288,10 @@ modules:
     hash: 0a28cddbe1a04c8c4ca2bf6a6750d0467b9e805e
     splits: config/G2ME01/rels/SandBoss/splits.txt
     symbols: config/G2ME01/rels/SandBoss/symbols.txt
+    # These unreferenced functions are present in the original REL.
+    force_active:
+      - fn_55_10588
+      - fn_55_1064C
   # Module ID 56
   - object: files/RelProd/Sandworm.rel
     hash: f818ae142461676bd2532a9efa6e7f7d0a15f7f3
