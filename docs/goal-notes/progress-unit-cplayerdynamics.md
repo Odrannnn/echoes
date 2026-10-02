@@ -944,3 +944,249 @@ lesson**: 19 variants that all score exactly the same means the source shape is 
 so a large matrix is the wrong tool once two variants agree to 0.01%. Reach for the instruction
 diff (the third run's `.tmp/opencode/idiff.py`) instead, and change something at a different level
 - here, the accessor's return type rather than its call site.
+
+---
+
+# Sixth run (lane 2, 2026-10-02) - 30 -> 31 / 62
+
+Re-measured first on the clean tree: the unit carried the fifth run's 30/62, so nothing here is
+`STALE:`. One function went to an exact byte match - and it is one the **fourth** run had already
+recovered in full and then written off as blocked. Its blocker is gone.
+
+`build/report.json`, `main/MetroidPrime/Player/CPlayerDynamics`, before and after
+(`./tools/fast_try.sh MetroidPrime/Player/CPlayerDynamics`):
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | 30 / 62 | **31 / 62** |
+| `fuzzy_match_percent` | 16.42 | 18.33 |
+| `matched_code` | 3796 / 27020 (14.05%) | 4316 / 27020 (15.97%) |
+
+Whole build: `All: 34.64% fuzzy, 28.00% matched, 12.89% linked (12258 / 28465 functions)`;
+`matched 12257 -> 12258`, `linked 5860 -> 5860` (unchanged, as a progress item must be);
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+`./tools/goal_check.sh build/goal/item.json` = **PASS**, all seven checks.
+`python3 tools/check_decl_order.py --unit MetroidPrime/Player/CPlayerDynamics` = ok
+(`SidewaysDashAllowed` was already declared in the right place; only its body changed).
+`docs/HANDOFF.md`'s state block is the judge's own rewrite of the derived counts.
+
+| function | retail | before | after |
+|---|---|---|---|
+| `SidewaysDashAllowed` | 0x80189658, 520 B | 1.08% | **100%** |
+
+File touched: `src/MetroidPrime/Player/CPlayerDynamics.cpp` only (37 lines: the body plus one
+`extern "C"` declaration). No header change, no new undefined symbol in the port link, no `asm`.
+
+## `fn_80012D10` is no longer missing - re-check the previous runs' blockers before writing them off
+
+The fourth run closed its notes with a `NEW:` item, `cplayer-fn80012D10`, saying
+`SidewaysDashAllowed` was "otherwise fully recovered" and naming that symbol as the only thing
+between it and a match. **It is now implemented**: `src/MetroidPrime/Player/CPlayer.cpp:613`
+defines it, and `CPlayer.cpp` *is* in `files.cmake`, so the port can link a call to it. The
+`NEW:` line has done its job. Nothing about the body changed; the body below is the fourth run's
+reading, and it went **1.08% -> 93.85% on the first spelling** and 100% on the second.
+
+**So the queue a previous run leaves is a set of hypotheses about the tree, not about the code.**
+Before repeating a blocker, grep for it: the port's compiled set changes under you.
+
+## The one spelling that mattered: the division's result must not be a named local
+
+Prime 1's body transplanted verbatim scored 93.85%. The only structural difference, from an
+instruction-level diff of the two objects:
+
+```
+retail:  bl SqrtF / fmr f30,f1 / addi r3,r1,20 / bl Magnitude / fmr f31,f1
+         ... bl GetDashStrafeInputThreshold / fdivs f0,f30,f31 / fcmpo cr0,f0,f1
+mine:    bl SqrtF / fmr f31,f1 / addi r3,r1,20 / bl Magnitude / fdivs f31,f31,f1
+         ... bl GetDashStrafeInputThreshold / fcmpo cr0,f31,f1
+```
+
+Written as `const float threshold = inputMagnitude / stickEdge.Magnitude();` the division is
+folded into the local, the stick-edge magnitude dies in f1 (the `Magnitude` return register) and
+the ratio is computed in place over `inputMagnitude`. Retail keeps **both** magnitudes in
+callee-saved registers across the two tweak calls and divides into a *third* one - which only
+happens when `stickEdge.Magnitude()` is its own named local and the division is written inside
+the condition:
+
+```cpp
+const float inputMagnitude = CMath::SqrtF(strafeInput * strafeInput + forwardInput * forwardInput);
+const float edgeMagnitude = stickEdge.Magnitude();
+if (inputMagnitude / edgeMagnitude >= GetTweakPlayer()->GetDashStrafeInputThreshold()) { return true; }
+```
+
+Same class of finding as the third run's `edgeMagnitude`-equivalent in `FinishSidewaysDash`: a
+callee-saved register in retail is a *named local in the source*, and a value that retail spills
+across calls is a value our compiler is folding away.
+
+## `lfs fX,0(0)` in our object is NOT a difference - do not chase it
+
+Our object spells a float literal as `lfs f0,0(0)` (a relocation against the TU's own literal
+pool) where retail writes `lfs f0,-23120(r2)` (the shared SDA2 pool). This is **not** a diff and
+does not cost a percent: `FinishSidewaysDash` and `GetDampedClampedVelocityWR` are both at 100%
+and both contain `lfs f0,0(0)`. objdiff compares the relocation, not the displacement. The
+same applies to `bl` displacements, which is why the notes above have always described the
+relocated forms as 100%.
+
+## Tool: rank a unit's unmatched functions by what the port can actually link
+
+The expensive part of this run was not the function, it was finding out which functions were
+*writable at all*. A `progress` item on a unit like this one is mostly blocked by the port's link
+gap, not by the disassembly, and a callee the port cannot resolve fails `gate.sh` no matter how
+right the code is. `.tmp/opencode/hosted.py` (scratch, not a `tools/` change) does the ranking:
+
+```
+python3 .tmp/opencode/hosted.py CPlayerDynamics            # all unmatched, sorted
+python3 .tmp/opencode/hosted.py CPlayerDynamics fn_801842c8 # one function, with every callee
+```
+
+It reads `files.cmake`, indexes every `Class::method` and `extern "C" fn_*` definition in
+`src/`, reads each unmatched function's size out of `config/G2ME01/symbols.txt` (named symbols
+have no `size:` - it is the gap to the next entry, as `tools/dis.sh`'s docstring says),
+disassembles the retail range, and counts the `bl` targets whose only definition lives in a
+file `files.cmake` does not list. Getting there needed two corrections worth remembering: the
+ELF's symbol names are dtk's **old-style** mangling (`SetState__11CBallCameraFQ2...`), which
+`c++filt` will not demangle, so the class has to be sliced out by the digit count in `__<n>`;
+and `[\w]` includes `_`, so a greedy `[A-Za-z_]\w*` swallows the `__` separator.
+
+The ranking it produced this run, for the record (0 unhosted = writable today):
+
+| function | size | unhosted callees |
+|---|---|---|
+| `ApplyGravityBoost` | 200 B | 0 / 6 |
+| `fn_801842c8` | 264 B | 0 / 11 |
+| `EndGravityBoost` | 268 B | 0 / 9 |
+| `StartGravityBoost` | 356 B | 0 / 11 |
+| `EnterMorphBallState` | 296 B | 0 / 12 |
+| `UpdateCameraBob` | 768 B | 0 / 12 |
+| `SidewaysDashAllowed` | 520 B | 0 / 10  <- taken this run |
+| `fn_80184a60` | 324 B | 0 / 8 |
+| `CalculatePlayerMovementDirection` | 908 B | 0 / 4 |
+| `UpdateMorphBallTransition` | 1016 B | 0 / 20 |
+| `fn_801858cc` | 444 B | 2 / 9 |
+| `UpdateStepCameraZBias` | 512 B | 1 / 5 (`TCastToPtr<CScriptPlatform>`, a false positive) |
+| `fn_801843d0` | 1680 B | 6 / 22 (`CBallCamera::SetState` and `TeleportCamera`, real) |
+
+## Measured and rejected this run: `fn_801842c8` and `fn_80184a60` both read a musyx table
+
+These are the two smallest writable functions left and both are **otherwise fully recovered**.
+Both copy three floats out of **`.bss` at `0x803F74B0`**, which is `dataCurveTab`
+(0x803F4718, size 0x4000) + 0x2D98 - a musyx internal table with `scope:local`, not a game
+global, so no game source can name it, and declaring a new global would move `main.dol`. The
+emission is `lis r3,-32703 / lfsu f0,29872(r3) / lfs f0,4(r3) / lfs f0,8(r3)`, i.e. three
+consecutive floats at a fixed address. **Both functions are blocked on that one read, and
+nothing else.** Not filed as a `NEW:` - a musyx table is not a unit.
+
+`CPhysicsActor`'s own members are at `host - 0x24`, verified against two retail anchors
+(`CPhysicsActor::mMass` = 0x158, `CPhysicsActor::mVelocity` = 0x1a8, the latter read off
+`EnterMorphBallState`'s `addi r3,r30,424 / bl Magnitude`). That pins
+**`CPhysicsActor::mMomentum` = 0x1c0**, which is the destination of all three stores
+(`448/452/456(r29)`). Method: compile `#define private public` + `__builtin_offsetof` for the
+whole base chain on the host and subtract; it costs one 20-line probe and replaces a guess.
+It does **not** give `CActor`'s tail: only `mTransform` = 0x24 is anchored there, and the host
+probe is 0x10 out at `mTransform`/`mPosition`/`mMaterial`/`mLoopingSounds` and a different
+amount further on, so `CActor+0x110` - the field `ApplyGravityBoost` and `UpdateSubmerged` both
+need - is still unmeasured. The CActor members are, in order: transform, position, model data,
+material, material filter, looping sounds, actor lights, simple shadow, scan object info, echo
+emitter, other bounds, render bounds, draw flags, time, pitch bend, two fluid-id vectors, then
+the token fields and the 32-bit flag block; the two `reserved_vector<TUniqueId, 4>` members are
+the likely place the host/retail delta changes, so measure a real anchor past them.
+
+### `fn_801842c8` (0x801842C8, 264 B) - complete apart from that read
+
+```cpp
+void CPlayer::fn_801842c8(float dt, CStateManager& mgr, EPlayerMorphBallState state) {
+  SetMorphBallState(kMS_Unmorphing /* li r4,3 */, state);
+  TransitionFromMorphBallState(dt, mgr);
+  mMorphBall->LeaveMorphBallState(mgr);                     // 0x800CA5CC
+  const bool ok = fn_801843d0(mgr, state);
+  ForceGunOrientation(mTransform /* this+0x24 */, mgr);     // 0x800190F8
+  mGun->DrawGun(mgr);                                       // 0x801DDDBC
+  ClearForcesAndTorques();
+  SetAngularVelocityWR(CAxisAngle::Identity());
+  AddMaterial(kMT_GroundCollider /* 37 */, mgr);
+  mMomentum = <three floats at 0x803F74B0>;                 // the blocker
+  if (!ok) {
+    SetCameraState(4, mgr);
+  }
+}
+```
+
+`kMT_GroundCollider` is 37 (same immediate `EnterMorphBallState` passes to `RemoveMaterial`),
+and `SetCameraState`'s arm here is 4, which is the second run's "`kCS_Ball == 1` is a Prime 1
+artefact" note showing up as data: 2 and 4 are the two ball arms.
+
+### `fn_80184a60` (0x80184A60, 324 B) - likewise, and `SetOrbitRequest` is 0x8011E908
+
+```cpp
+void CPlayer::fn_80184a60(float dt, CStateManager& mgr, EPlayerMorphBallState state) {
+  fn_80185a88(dt, mgr);
+  mMomentum = <three floats at 0x803F74B0>;                 // the blocker
+  SetMorphBallState(2, state);
+  SetCameraState(4, mgr);
+  // 0x28/0x38/0x48 are the Z of CTransform4f's first two rows and of its translation, so this
+  // is the "up, in world space" direction written into mLookDir (0xfd0) by three separate loads.
+  mLookDir.SetX(mTransform.GetRow0().GetZ());
+  mLookDir.SetY(mTransform.GetRow1().GetZ());
+  mLookDir.SetZ(GetTranslation().GetZ());
+  mMoveDir = mLookDir;                                      // 0xfdc
+  mMoveDir.SetZ(0.f);
+  if (mMoveDir.CanBeNormalized()) {
+    mMoveDir.Normalize();
+  } else {
+    mLookDir = CVector3f(0.f, <float at -23112(r2)>, 0.f); // and mMoveDir the same
+  }
+  fn_80184ba4(mgr);
+  SetOrbitRequest(2, mgr);                                  // 0x8011E908
+  mGun->HolsterGun(mgr);                                    // 0x801DDE14
+  x125c_ = false;                                           // stb 0,4700(r29)
+}
+```
+
+`fn_80184a60` is *also* how the `CPlayer+0x28/0x38/0x48` triple got named: they are the three Z
+components of a `CTransform4f`'s rows plus its translation, i.e. `GetUp()` in world space.
+
+### `EnterMorphBallState` (0x80184118, 296 B) - one unclaimed `.sdata2` pair in the way
+
+Its guard global **is** named: `lwz r0,-32640(r2)` is `Initialized` (0x8041A020), and the call it
+guards is `CPlayer::fn_8011eac4(kPOR_13, mgr)`. Prime 1's body is otherwise right. What blocks it
+is `lwz r3,-23128(r2)` / `lwz r6,-23124(r2)` copied to `8(r1)`/`12(r1)` and indexed by
+`mSpawnedMorphBallState`: a **two-element array of four-byte values** at `0x8041D5B8` and
+`0x8041D5BC`, which `config/G2ME01/symbols.txt` names `lbl_8041D5B8` / `lbl_8041D5BC` in
+`.sdata2` - unclaimed gaps, so the port would need host definitions (as the fifth run did for
+`lbl_803B5B30/3C/48`) *and* the DOL linker would have to place them at those exact addresses.
+Left alone for that reason, not for want of a body.
+
+### `CalculatePlayerMovementDirection` (0x80186FE4, 908 B) - Prime 1's body, one substitution
+
+Prime 1's 50 lines are right with `delta = GetTranslation() - mLastPosForDirCalc` replaced by
+the **`displacement` parameter** (r31, used directly, no copy: the function starts
+`CanBeNormalized(&displacement)`). The rest of the member offsets the head confirms against
+`CPlayer.hpp`: `mMoveSpeed` 0xfc8, `mFlatMoveSpeed` 0xfcc, `mLookDir` 0xfd0, `mMoveDir` 0xfdc,
+`xfe8_` 0xfe8, `mLastPosForDirCalc` 0xff4, `mGunDir` 0x1000, `mTimeMoving` 0x100c - and the
+`switch` is a comparison tree (`cmpwi 1/bge`, `cmpwi 0/bge`, `cmpwi 4/bge`), the same shape the
+first run needed for `GetCollisionPrimitive`. Not attempted here for time, not for a blocker.
+
+## Still open
+
+- `UpdateStepCameraZBias` is **unchanged at 99.18%**; re-measured this run, not re-attempted, so
+  no `WALL:` line - the fifth run's stands. The fifth run's one untried idea (change what
+  `CScriptPlatform::IsMotionActive()` *returns*) is still untried.
+- The gravity-boost trio (`StartGravityBoost`, `EndGravityBoost`) is blocked on the `CSfxHandle`
+  pass-by-reference prototypes (`NEW:` filed by the second run). `ApplyGravityBoost` is blocked
+  on `CActor+0x110`, `UpdateSubmerged` on the same member plus the `CScriptWater+0x1C8 -> +0x44`
+  chain.
+- `ActivateMorphBallCamera` (99.95% in the second run) still needs `CBallCamera::SetState`
+  hosted (`NEW:` filed by the second run). Confirmed still unhosted this run: its only
+  definition is `src/MetroidPrime/Cameras/CBallCamera.cpp:702`, not in `files.cmake`.
+- `fn_80189CA8` (88 B) is byte-identical and still 0% only because retail's symbol is
+  `fn_80189CA8` and ours is the template instantiation; unchanged since the first run, and still
+  a *port* item rather than a change here.
+- `fn_80189EFC` (216 B) is a static constructor that builds a 64-bit mask with five `__shl2i` from
+  five SDA2 words at `0x8041AB88..0x8041AB98`, stores it to `0x8041B8AC`/`0x8041B8A8`, then
+  writes five words at `0x803EB450` (`lis r5,-32706 / addi r3,r5,-19376`). **The third run's
+  "`0x803B5B30 + 0x40`" is wrong**; 0x803EB450 is inside the `.bss` symbol `seqInstance`
+  (0x803E3DF0, size 0xC440), so it is unnameable for the same reason as the musyx table above.
+- `fn_801858cc` (444 B), `fn_801892a0` (548 B), `fn_80185a88` (1064 B), `fn_80184ba4` (980 B),
+  the input cluster (`ComputeMovement`, `JumpInput`, `ComputeDash`, `SetMoveState`,
+  `ForwardInput`, `TurnInput`), `BombJump`, `Teleport`, `UpdateCameraBob` and the morph-ball
+  transition pair are untouched stubs.

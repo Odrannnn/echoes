@@ -184,9 +184,44 @@ void CPlayer::UpdateStepCameraZBias(float dt, CStateManager& mgr) {
   x1269_27_ = false;
 }
 
+// Retail 0x80012D10, `CPlayer::CalculateLeftStickEdgePosition`; `extern "C"` and defined in
+// `src/MetroidPrime/Player/CPlayer.cpp:613` because Echoes' DOL carries no symbol there.
+extern "C" CVector3f fn_80012D10(const CPlayer* player, float strafeInput, float forwardInput);
+
 bool CPlayer::SidewaysDashAllowed(float strafeInput, float forwardInput,
                                   const CFinalInput& input) const {
-  // TODO: Recover the remaining target behavior.
+  // Retail 0x80189658: Prime 1's body, with `x1269_24_` (shift 25) and `mHitWallDuringMove`
+  // (shift 26) standing in for Prime 1's `mSlidingOnWall` / `mHitWall` - both are read out of
+  // the one byte at 0x1269, which is why retail loads it once. The two arms differ in more than
+  // the conditions: the hold arm compares `|strafe| >= |forward|` with the strafe absolute value
+  // in the register the forward one came from (`fabs f30,f31`), the press arm keeps both in f0/f1,
+  // and only the hold arm scales by the tweak threshold rather than the 0.01f at -23080(r2).
+  if (x1269_24_ || mHitWallDuringMove || mOrbitState != kOS_OrbitObject) {
+    return false;
+  }
+  if (GetTweakPlayer()->GetDashOnButtonRelease()) {
+    if (mOrbitState != kOS_NoOrbit && GetTweakPlayer()->GetDashEnabled() &&
+        mStartingJumpTimeout > 0.f && !JumpHeld(input) &&
+        mDashButtonHoldTime < GetTweakPlayer()->GetDashButtonHoldCancelTime() &&
+        CMath::AbsF(strafeInput) >= CMath::AbsF(forwardInput) &&
+        CMath::AbsF(strafeInput) > GetTweakPlayer()->GetDashStrafeInputThreshold()) {
+      return true;
+    }
+  } else if (mOrbitState != kOS_NoOrbit && GetTweakPlayer()->GetDashEnabled() &&
+             JumpPressed(input) && mStartingJumpTimeout > 0.f &&
+             CMath::AbsF(strafeInput) >= CMath::AbsF(forwardInput) &&
+             CMath::AbsF(strafeInput) > 0.01f) {
+    const CVector3f stickEdge = fn_80012D10(this, strafeInput, forwardInput);
+    const float inputMagnitude =
+        CMath::SqrtF(strafeInput * strafeInput + forwardInput * forwardInput);
+    // `edgeMagnitude` has to be its own named local: retail keeps it in f31 *across* the two
+    // tweak calls and divides into a third register (f0), which only happens when the division
+    // is written inside the condition instead of being folded into the `inputMagnitude` local.
+    const float edgeMagnitude = stickEdge.Magnitude();
+    if (inputMagnitude / edgeMagnitude >= GetTweakPlayer()->GetDashStrafeInputThreshold()) {
+      return true;
+    }
+  }
   return false;
 }
 
