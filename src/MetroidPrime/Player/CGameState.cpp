@@ -117,31 +117,70 @@ extern "C" void fn_801467C0(uchar* begin, uchar* end) {
 
 extern "C" void fn_801467A0(uchar* begin, uchar* end) { fn_801467C0(begin, end); }
 
-// The 36-byte block's `reserve` (retail 0x801466F4). The new buffer is filled by the
-// `fn_8014680C` above from the two `SStateIter` arguments this function materialises on its own
-// stack (0x80146734-0x80146758: the old end twice at 8(r1)/12(r1), the old begin twice at
-// 16(r1)/20(r1)), the old elements are then destroyed with `fn_801467A0` and the old block
-// handed back to `CMemory::Free`. The guard is a **signed** `cmpw` - `n <= x08_cap` skips the
-// grow entirely, with no allocation.
+// The 36-byte block's `reserve` (retail 0x801466F4), written as the **explicit specialization**
+// `rstl::vector< CWorldState >::reserve` and not as an `extern "C"` carve: retail's symbol at
+// 0x801466F4 is the mangled template instantiation (the eighth upstream sync named it), and objdiff
+// pairs by name, so a byte-identical carve called `fn_801466F4` scores nothing (71.37% measured on
+// the generic instantiation this specialization replaces). `rstl/vector.hpp`'s `reserve` is
+// declared out of line (`void reserve(int size);`), so mwcceppc accepts the non-inline
+// specialization and emits it **strong** at the source position, which reverse source order puts
+// where retail has it: between `fn_801465A8` below and `fn_801467A0` above (read off `nm`).
 //
-// Both ends are re-read from `self` after the copy and again for the destroy rather than kept in
-// locals across the `fn_8014680C` call: holding them costs a fifth live register, `stmw r27,28(r1)`
-// and a 144-byte frame (66.63%).
-extern "C" void fn_801466F4(SGameStateBlock* self, int capacity) {
-  if (capacity <= static_cast< int >(self->x08_cap)) {
+// The body is the generic one's with the two range helpers substituted for the template ones: the
+// new buffer is filled by `fn_8014680C` from the two `SStateIter` arguments this function
+// materialises on its own stack (0x80146734-0x80146758: the old end twice at 8(r1)/12(r1), the old
+// begin twice at 16(r1)/20(r1)), the old elements are then destroyed with `fn_801467A0` and the old
+// block handed back to `CMemory::Free`. The guard is a **signed** `cmpw` - `n <= mCapacity` skips
+// the grow entirely, with no allocation. `SGameStateBlock` is this vector's own layout
+// (`x04_count`/`x08_cap`/`x0c_data` at +4/+8/+12), which is why the raw-pointer spelling was the
+// same code.
+//
+// Both ends are re-read from the members after the copy and again for the destroy rather than kept
+// in locals across the `fn_8014680C` call: holding them costs a fifth live register,
+// `stmw r27,28(r1)` and a 144-byte frame (66.63%).
+//
+// **The 36 is retail's element size, so this body is guest layout only.** The host's
+// `CWorldState` is 64 bytes (`StateForWorld` strides `0x40`, `fn_80142760` writes `+0x38`), and a
+// specialization is a *strong* definition, so one body for both would override the weak
+// sizeof-based instantiation for every caller - `CWorld.cpp` and `CMemoryCard.cpp` both call
+// `StateForWorld` (`PORT_NOTES.md`), which reaches `mWorldStates.reserve()` - and under-allocate
+// by 28 bytes per element. The `#else` below therefore gives the host the header's own body,
+// verbatim (`include/rstl/vector.hpp`, the same spelling `src/MetroidPrime/CEntity.cpp:17` and
+// `src/MetroidPrime/Player/CStaticInterference.cpp:12` write out for their own vectors), which
+// allocates `newSize * sizeof(CWorldState)`.
+#ifndef TARGET_PC
+template <>
+void rstl::vector< CWorldState >::reserve(int newSize) {
+  if (newSize <= mCapacity) {
     return;
   }
 
   uchar* const buffer =
-      static_cast< uchar* >(rstl::rmemory_allocator::allocate(capacity * 36));
-  fn_8014680C(SStateIter(self->x0c_data),
-              SStateIter(static_cast< uchar* >(self->x0c_data) + self->x04_count * 36), buffer);
-  fn_801467A0(static_cast< uchar* >(self->x0c_data),
-              static_cast< uchar* >(self->x0c_data) + self->x04_count * 36);
-  CMemory::Free(self->x0c_data);
-  self->x0c_data = buffer;
-  self->x08_cap = static_cast< u32 >(capacity);
+      static_cast< uchar* >(rstl::rmemory_allocator::allocate(newSize * 36));
+  fn_8014680C(SStateIter(mItems),
+              SStateIter(reinterpret_cast< uchar* >(mItems) + mCount * 36), buffer);
+  fn_801467A0(reinterpret_cast< uchar* >(mItems),
+              reinterpret_cast< uchar* >(mItems) + mCount * 36);
+  CMemory::Free(mItems);
+  mItems = reinterpret_cast< CWorldState* >(buffer);
+  mCapacity = newSize;
 }
+#else
+template <>
+void rstl::vector< CWorldState >::reserve(int newSize) {
+  if (newSize <= mCapacity) {
+    return;
+  }
+
+  CWorldState* newData;
+  mAllocator.allocate(newData, newSize);
+  uninitialized_copy(begin(), end(), newData);
+  destroy(mItems, mItems + mCount);
+  mAllocator.deallocate(mItems);
+  mItems = newData;
+  mCapacity = newSize;
+}
+#endif // TARGET_PC
 
 // The 12-byte block's element copy (retail 0x801465A8). One word and two floats per element.
 // `begin` and `end` are loaded once, before the loop (0x801465A8 / 0x801465AC), and `dst` is
@@ -1447,19 +1486,25 @@ extern "C" void fn_80142718(void* elem, const void* src) { fn_80142738(elem, src
 // multiply lands on the count's own register instead of a temporary and the function sits at
 // 97.50%.
 //
-// **This 56-byte body is byte-identical to retail's 0x801426E0, which the eighth upstream sync
-// named `push_back__Q24rstl48vector<11CWorldState,Q24rstl17rmemory_allocator>FRC11CWorldState` -
-// so it no longer pairs with anything.** objdiff matches by symbol name, and an `extern "C"`
-// carve called `fn_801426E0` scores 0 however exact its bytes are; the template instantiation
-// `rstl::vector< CWorldState >::push_back` does carry the right name, but
-// `include/rstl/vector.hpp`'s inline `push_back` is the growth-checking one (144 bytes, paired at
-// 37.25%) and retail's is the *unsafe* append, which `StateForWorld` gets by reserving first.
+// **This 56-byte body is byte-identical to retail's 0x801426E0, so the symbol there is named
+// `fn_801426E0` in `config/G2ME01/symbols.txt` and this carve pairs with it.** The eighth upstream
+// sync had renamed that address to `push_back__Q24rstl48vector<11CWorldState,
+// rstl::rmemory_allocator>::push_back(const CWorldState&)`; objdiff pairs by name, so the carve
+// scored 0 however exact its bytes were. Retail's own `StateForWorld` calls this function out of
+// line (`bl 801426E0` at 0x801426A0), and retail's is the *unsafe* append while
+// `include/rstl/vector.hpp`'s is the growth-checking one, so the generic instantiation our compiler
+// emits is 144 bytes and cannot be the pair.
 //
-// The right name under the right body needs an explicit specialization, and **mwcceppc cannot
-// express one**: `template<> void rstl::vector<CWorldState, rstl::rmemory_allocator>::push_back(
-// const CWorldState&)` is rejected with "object ... redefined" whether the member is defined in
-// the class body or declared there and defined afterwards as an `inline` template (both measured,
-// the second with `include/rstl/vector.hpp` edited). Wall, not a spelling to retry.
+// Renaming the retail symbol is the documented mechanism for a name objdiff cannot pair
+// (`docs/RUNNING_THE_DECOMP.md`, "Pairing a function the retail symbol table has no name for"), and
+// it is safe here: nothing references 0x801426E0, so `main.dol` is unchanged and no REL names it.
+// The alternative - an explicit specialization `rstl::vector< CWorldState >::push_back` carrying
+// this body under the mangled name - was measured and **cannot be emitted out of line**:
+// mwcceppc inlines its 56 bytes into both callers (the 144-byte generic is over the project's
+// `inline_max_size(125)` and stays out of line, so before the specialization this unit did pair
+// `StateForWorld` at 100% against a `bl` to it). Defining it also has to precede the first use in
+// the source - declared-then-defined-later is "object ... redefined" - and
+// `#pragma dont_inline on` does not apply to a template member.
 extern "C" void fn_801426E0(SGameStateBlock* self, const void* src) {
   u32* const words = static_cast< u32* >(self->x0c_data);
   const u32 n = self->x04_count;

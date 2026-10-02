@@ -2428,6 +2428,17 @@ config.libs = [
         "DigitalGuardian",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp"),
+            # One function, .text 0x00006144..0x0000617C: `fn_14_6144`, the module's own copy of
+            # `rstl::destroy(It, It)` - two one-pointer iterators by value, copied into the frame
+            # and handed to the module's `destroy_impl` at `fn_14_617C` (0x617C, 0x60, unclaimed).
+            # Its twin is the DOL's `destroy<Q24rstl116pointer_iterator<11CTweakValue,...>>` at
+            # 0x800067A8 (`symbols.txt:128`), byte-identical apart from the `bl` target. The unit
+            # compiles with GC/2.7 per object: 1.3.2 schedules the saved-LR store above the two
+            # loads, 2.7 schedules it where retail has it (the `CLumiteRelTail.cpp` difference).
+            # Both neighbours are unclaimed, so dtk fills them from retail and the module's sha1
+            # still holds.
+            Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianDestroy.cpp",
+                   mw_version="GC/2.7"),
             # Two more functions, .text 0x0001AB24..0x0001AB50, a gap far below the module's
             # behavioural code and its own range: `fn_14_1AB24` resets the one-byte flag at +0xC
             # and returns `this` (the twin is `CUnknownVec3List::ClearFlag()`,

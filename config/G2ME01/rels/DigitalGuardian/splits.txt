@@ -9,6 +9,9 @@ Sections:
 MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp:
 	.text       start:0x00000000 end:0x0000010C
 
+MetroidPrime/ScriptObjects/DigitalGuardianDestroy.cpp:
+	.text       start:0x00006144 end:0x0000617C
+
 MetroidPrime/ScriptObjects/DigitalGuardianVecList.cpp:
 	.text       start:0x0001AB24 end:0x0001AB50
 

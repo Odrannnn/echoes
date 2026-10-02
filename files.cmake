@@ -1179,6 +1179,13 @@ list(APPEND MP_GAME_SOURCES
     # into this unit, so the port's undefined count is unchanged.
     src/MetroidPrime/ScriptObjects/CMetareeSwarmDes.cpp
     src/MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp
+    # Module 15's .text 0x6144..0x617C - one function, `fn_14_6144`, the module's own copy of
+    # `rstl::destroy(It, It)`. Listed for the same reason as the DigitalGuardianAccessors.cpp
+    # entry above, plus one of its own: its only relocation is the call to `fn_14_617C`, which is
+    # this module's unclaimed `destroy_impl` (0x617C, 0x60) and which nothing on the host defines,
+    # so the body is behind the `#ifdef __MWERKS__` guard CLumiteRelTail.cpp uses and the host
+    # object defines nothing - the port's undefined count is unchanged.
+    src/MetroidPrime/ScriptObjects/DigitalGuardianDestroy.cpp
     # Module 15's .text 0x1AB24..0x1AB50 - two functions. Listed for the same reason as the
     # DigitalGuardianAccessors.cpp entry above: it defines neither RELMain nor RELExit, so
     # check_files_cmake.py's MODULE_ENTRY exemption is not needed, and its only relocation
