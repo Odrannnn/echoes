@@ -1497,6 +1497,11 @@ config.libs = [
         "IngSnatchingSwarm",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CIngSnatchingSwarmRel.cpp"),
+            # IngSnatchingSwarm's state-table run, .text 0x35F8..0x383C: eleven functions, the ten
+            # named by the module's own `.data` record tables plus the box-snapshot copier above
+            # them. A third contiguous claim, so it needs its own file and its own entry - one unit
+            # cannot claim two discontiguous ranges.
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngSnatchingSwarmAi.cpp"),
             # Three leaf accessors of the CParticleGen subclass this module carries as a member
             # (vtable index 12 SetDrawFlags, 20 GetGeneratorRate, 22 GetDrawFlags of the table at
             # .data:0x2E0), .text 0x4F28..0x4F44. A second contiguous claim, so it needs its own
