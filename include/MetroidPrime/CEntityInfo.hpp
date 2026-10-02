@@ -163,6 +163,7 @@ enum EScriptObjectState {
   kSS_ScanProcessing = 0x4253434e,
   kSS_ScanDone = 0x53434e44,
   kSS_Patrol = 0x5054524c,
+  kSS_Footstep = 0x464f4f54, // Guessed name
   kSS_Play = 0x504c4159,
   kSS_Connect = 0x434f4e4e,
   kSS_Slave = 0x534c4156,

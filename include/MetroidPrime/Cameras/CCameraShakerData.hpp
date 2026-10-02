@@ -21,6 +21,7 @@ public:
   // assigns a CCameraShakerData, so the definition goes there.
   CCameraShakerData& operator=(const CCameraShakerData& other);
 
+  void SetPosition(const CVector3f& position) { mPosition = position; } // Guessed name
   CCameraShakerData NewTranslation(const CVector3f& position) const;
   CVector3f GetPoint(float time);
   float GetMaxAmplitude();

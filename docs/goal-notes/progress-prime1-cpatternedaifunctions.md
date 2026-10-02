@@ -816,3 +816,45 @@ contribute its 1.0f and FLT_EPSILON, see above) | `Landed` 91.67 |
 
 No `NEW:` line this run: the pool finding is a codegen rule (notes), and the remaining functions are
 either already named by this item or blocked on header members that no single unit owns.
+
+---
+
+# Run 5 (lane L9, 2026-10-02) - `ApplyScreenShake` matched, **33 -> 34 / 39**
+
+Re-measured first: clean tree was 33 / 39 (run 4's source present), not `STALE`. Now **34 / 39**,
+unit 78.50% fuzzy, 68.82% matched code; whole-DOL `12420 / 28465`. `goal_check.sh`: PASS.
+
+| function | before | after | Prime 1 |
+|---|---|---|---|
+| `ApplyScreenShake` | 1.75 | **100** (first build) | none - written from `tools/dis.sh 0x80150FE8 0xE4` |
+
+```cpp
+void CPatterned::ApplyScreenShake(CStateManager& mgr, const CVector3f& position, TUniqueId shaker) {
+  if (shaker == kInvalidUniqueId) shaker = FindConnectedObject(mgr, kSS_Footstep, kSM_Attach);
+  if (CScriptCameraShaker* entity = TCastToPtr< CScriptCameraShaker >(mgr.ObjectById(shaker))) {
+    CCameraShakerData data(entity->GetShakeData());
+    data.SetPosition(position);
+    fn_801E7EC0(mgr.CameraManager(0)->ShakeManager(), data, mgr, 0, 0);
+  }
+}
+```
+
+Facts read off the disassembly: state `0x464F4F54` ('FOOT'), msg `0x41544348` (`kSM_Attach`); the
+`TUniqueId` by-value param is written back (`sth 0(r31)`), so the param itself is assigned;
+`mgr+0x151c` is `mCameraManagers[0]` and `+0x88` of it is `mCameraShakeManager`; the shake copy is at
+`CScriptCameraShaker+0x24` and its `mPosition` at `+0xc` of the copy (`stfs 28..36(r1)`).
+
+Header additions (accessors / one enumerator only, no layout change): `kSS_Footstep` in
+`CEntityInfo.hpp`, `CCameraManager::ShakeManager()`, `CCameraShakerData::SetPosition`,
+`CScriptCameraShaker::GetShakeData`, and `extern "C" fn_801E7EC0(CCameraShakeManager*, const
+CCameraShakerData&, CStateManager&, int, int)` in `CCameraShakeManager.hpp` (arg types of the last two
+are a guess; both 0 at the only call site).
+
+Port link: the first `goal_check` FAILED `probe link-gap` (293 undefined vs baseline 291, GREW) because
+`TCastToPtr<CScriptCameraShaker>` and `fn_801E7EC0` were new gap symbols. Fixed without touching the
+gap list: `PortGlobals.cpp` now defines the cast (`PORT_CAST_TO_PTR`, retail `li r4,41` verified at
+0x80099D0C) and an announcing `ReportedCameraManagerStandIn` body for `fn_801E7EC0`. The count/gate
+is exact (not headroom), so defining callees is the way, not a gap-list entry.
+
+Not touched this run: `PathFind` 99.31 (pool order, needs `ApproachDest`), `Landed` 91.67,
+`PlayerSpot` 1.51, `ApproachDest` 0.39, `fn_80151920` (unnamed). Run 4's analysis of those stands.

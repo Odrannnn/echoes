@@ -14,6 +14,8 @@ public:
   CEntity* TypesMatch(int typeId) const override;
   void AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) override;
 
+  const CCameraShakerData& GetShakeData() const { return mShakeData; } // Guessed name
+
 private:
   CCameraShakerData mShakeData;
   int mPlayerShakeIds[4];

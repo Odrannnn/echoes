@@ -89,6 +89,7 @@
 #include "MetroidPrime/ScriptObjects/CScriptActor.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptCamera.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptTrigger.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptCameraShaker.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptWaypoint.hpp"
 #include "MetroidPrime/TCastTo.hpp"
@@ -829,6 +830,9 @@ PORT_CAST_TO_PTR(CUnknown85, 85)
 // above: `src/MetroidPrime/TypesMatch.cpp` holds the cast and is out of the port build. The class
 // itself is declared in `include/MetroidPrime/CGameHint.hpp`.
 PORT_CAST_TO_PTR(CUnknown46, 46)
+// `TCastToPtr<CScriptCameraShaker>` (0x80099D0C) is the ordinary wrapper with `li r4,41`; it is here
+// for `CPatterned::ApplyScreenShake` (0x80150FE8), and TypesMatch.cpp holds the other copy.
+PORT_CAST_TO_PTR(CScriptCameraShaker, kET_ScriptCameraShaker)
 
 // `TCastToPtr<CPatterned>(CEntity*)` (0x80097584, 0x1C) is not the type-id wrapper the five above
 // are: retail's body is a null test plus `rlwinm. r0,r0,30,29,29` on the byte at `0x20`, which is
@@ -1733,6 +1737,14 @@ TUniqueId fn_8022A640(CHintManager* hints, CStateManager& mgr, const rstl::strin
 
 void CCameraShakeManager::Update(float dt, CStateManager& mgr) {
   ReportedCameraManagerStandIn("CCameraShakeManager::Update(float, CStateManager&)");
+}
+
+// Retail's unnamed fn_801E7EC0 (0x120): the shake manager's "add this shake" entry, called by
+// `CPatterned::ApplyScreenShake`. Its list lives in the unrecovered CCameraShakeManager layout.
+void fn_801E7EC0(CCameraShakeManager* self, const CCameraShakerData& data, CStateManager& mgr,
+                 int arg0, int arg1) {
+  ReportedCameraManagerStandIn("fn_801E7EC0(CCameraShakeManager*, CCameraShakerData const&, "
+                               "CStateManager&, int, int)");
 }
 
 CVector3f CCameraShakeManager::GetShakeOffset(const CStateManager& mgr) const {

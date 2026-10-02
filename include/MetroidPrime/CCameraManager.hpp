@@ -33,6 +33,7 @@ public:
 
   CHintManager* HintManager() { return mCameraHintManager; }
   CFirstPersonCamera* FirstPersonCamera() { return mFpCamera; }
+  CCameraShakeManager* ShakeManager() { return mCameraShakeManager; } // Guessed name
   const CBallCamera* GetBallCamera() const { return mBallCamera; }
   CBallCamera* BallCamera() { return mBallCamera; }
   const CCinematicCamera* GetCinematicCamera() const { return mCinematicCamera; }
