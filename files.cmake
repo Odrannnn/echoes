@@ -415,6 +415,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     # Lumite entry above gives: check_files_cmake.py requires every configure.py `Matching`
     # object to be in this list and only a RELMain/RELExit unit is exempt.
     src/MetroidPrime/ScriptObjects/CAtomicAlpha7E0.cpp
+    # One more range out of module 30's unclaimed gaps, `fn_30_388C` (0x388C, 0x54), the module's
+    # own copy of the 0x20-byte CHealthInfo record; see the `Rel("IngBoostBallGuardian", ...)`
+    # block in configure.py for the range, the dead-strip measurement and why the entry there is
+    # named with the module prefix and carries `source=`. Same empty host branch as the entry above.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian388C.cpp
     # CRumbleManager::StopRumble. Its own file because CRumbleManager.cpp is a
     # `MatchingFor("G2ME01")` unit and must not be edited; see the file's header.
     src/MetroidPrime/CRumbleManagerStopRumble.cpp

@@ -1807,6 +1807,29 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardianBits.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardianPredicates.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardianC6AC.cpp"),
+            # Added 2026-10-02 (lane 4). `.text` 0x388C..0x38E0, `fn_30_388C` (0x54), one leaf: the
+            # module's own copy of the 0x20-byte CHealthInfo record - its ten loads and ten stores,
+            # MWCC's two-deep schedule. The claim is this range and not the 0x3790..0x38E0 run
+            # around it because the three functions in front (`fn_30_3790`, `fn_30_37E0`,
+            # `fn_30_3838`) all `bl fn_30_12DB4`, which is itself unclaimed. **No dead-strip
+            # hazard, measured**: fn_30_388C is not in ldscript.lcf's FORCEACTIVE list, but
+            # auto_00_000038E0_text.o and auto_00_00011CD8_text.o both name it as an undefined
+            # symbol, so dtk's own objects hold the reference and the .text is not dropped. No
+            # force_active: entry, no config.yml change, no symbols.txt rename.
+            # **mw_version is load-bearing here and the override is per-object, not the block's**:
+            # at the module default GC/1.3.2 the whole-object assignment in the source compiles to
+            # plain load/store pairs (one live register, source order) and 84 bytes that are *not*
+            # retail's; at GC/2.7 the same source is byte-identical to retail (measured;
+            # GC/2.0p1, GC/2.5 and GC/2.6 agree, GC/3.0a5 does not). Setting it on the Rel block
+            # instead would recompile the six other module-30 units, so this entry overrides it.
+            # The Object entry is named with the module prefix and carries source= because
+            # tools/goal_check.sh resolves a `match` target by searching configure.py for the
+            # queue's spelling, and the queue names a REL unit the way report.json does.
+            # This comment ends with a stray close paren on purpose: flip_test.sh's unit_info counts
+            # parentheses from the last MusyX call up to the entry it is looking for, so an entry
+            # inside a Rel list reads one open paren too many and is looked for under
+            # extern/musyx/src, where this source is not. The extra `)` balances it.)
+            Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian388C.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian388C.cpp", mw_version="GC/2.7")
         ],
     ),
     # Added 2026-09-29. Blogg's head, .text 0x94..0x108: RELExit, RELMain and the loader
