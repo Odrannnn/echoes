@@ -5,11 +5,24 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 159 of them: the ones referenced **only by
+ * file supplies 160 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   155 functions, 4 data objects (counted 2026-10-02, after `fn_801F9848` was added by hand
+ *   156 functions, 4 data objects (counted 2026-10-02, after `fn_8000408C` was added by hand
+ *   below for `Carve80004010.c`; before that 155, after `fn_801F9848` was added by hand
+ *   below for `Carve801F97C8.c`; before that 154, after the two
+ *   `Carve801FF720.cpp` callees below were added; the count before that was 152, after `fn_80008D68` was added by
+ *   hand below for `Carve800045A0.c`; the count before that was 151, after the three
+ *   `Carve801FF5A0.cpp` callees were added by hand below, and 148 before those, itself
+ *   after `fn_801FDC88` was added by hand, and 147 before that, measured
+ *   2026-10-01 after the eighth upstream sync, which retired
+ *   `CDamageVulnerability::~CDamageVulnerability()` - upstream's
+ *   `CDamageVulnerability.cpp` defines it and is listed in `files.cmake`; this line read
+ *   154 for the 151-function file, which its own breakdown already contradicted by one).
+ *
+ * Breakdown: 86 REL loader, 46 game method, 23 unmangled fn_/lbl_, 1 CodeWarrior-mangled
+ * `rstl::rmemory_allocator::allocate`, 4 vtable/typeinfo. (counted 2026-10-02, after `fn_801F9848` was added by hand
  *   below for `Carve801F97C8.c`; before that 154, after the two
  *   `Carve801FF720.cpp` callees below were added; the count before that was 152, after `fn_80008D68` was added by
  *   hand below for `Carve800045A0.c`; the count before that was 151, after the three
@@ -806,6 +819,25 @@ extern "C" void stub_184() {}
 // instructions is a spelling job of its own, which is why the claim stops at 0x801F9848.
 extern "C" void stub_185() asm("fn_801F9848");
 extern "C" void stub_185() {}
+
+// fn_8000408C - retail 0x8000408C, 0xC8 = 200 bytes (`config/G2ME01/symbols.txt:67`), the
+// copy-assign of the member at +4 of the `rstl::pair`-shaped object: it tears the destination's
+// root at +0x10 down through `fn_80008D68`, clears +0x10/+8/+0xC/+4 in that order, clones the
+// source's root with `fn_80008C28` and re-links the clone's two chains into +8/+0xC. Asked for by
+// the port because `src/MetroidPrime/Carve80004010.c` (Matching, 0x80004010..0x8000408C)
+// reproduces `fn_8000405C` byte for byte, and that body's `bl fn_8000408C` at 0x80004070 is in
+// retail's bytes, so the carve cannot drop the call. For the DOL nothing is needed: dtk's own
+// `auto_03_80003BE8_text.o` defines it, and this file is not in `configure.py`, so the stub cannot
+// reach main.dol. The port link does not carry that object, which is why its gap would grow by
+// this symbol: the carve's object is in `files.cmake`, and nothing else in the tree names
+// `fn_8000408C` (measured: `grep -rn fn_8000408C src/ include/` is empty before this block).
+//
+// This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
+// claim that fn_8000408C is decompiled - it is not. Matching its 0xC8 bytes is a spelling job of
+// its own, which is why `Carve80004010.c`'s claim stops at 0x8000408C. The same trade `stub_182`
+// above makes for the neighbouring `Carve800045A0.c`.
+extern "C" void stub_186() asm("fn_8000408C");
+extern "C" void stub_186() {}
 
 
 // Data objects. A vtable or typeinfo stub is zero-filled: harmless to take the
