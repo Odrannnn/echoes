@@ -409,6 +409,12 @@ src/MetroidPrime/PortLinkStubs.cpp
     # whose body stores a module-local vtable. Its host branch is empty by design (the class and
     # the body are inside `#ifdef __MWERKS__`), for the reason the entries above give.
     src/MetroidPrime/ScriptObjects/CBloggVulnerabilityBase.cpp
+    # AtomicAlpha's (module 2) `rstl::auto_ptr<CAnimData>` deleting destructor at .text
+    # 0x7E0..0x844, the twin answer `tools/twin_scan.py` points later module items at. Its host
+    # branch is empty by design (the body is inside `#ifdef __MWERKS__`), for the reason the
+    # Lumite entry above gives: check_files_cmake.py requires every configure.py `Matching`
+    # object to be in this list and only a RELMain/RELExit unit is exempt.
+    src/MetroidPrime/ScriptObjects/CAtomicAlpha7E0.cpp
     # CRumbleManager::StopRumble. Its own file because CRumbleManager.cpp is a
     # `MatchingFor("G2ME01")` unit and must not be edited; see the file's header.
     src/MetroidPrime/CRumbleManagerStopRumble.cpp

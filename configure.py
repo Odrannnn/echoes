@@ -1631,10 +1631,20 @@ config.libs = [
     # bodies AtomicBetaAccessors.cpp already reproduces at 100%; the two that differ are
     # AtomicAlpha's leading ones, at +0x8C8 and +0x7D8. Everything from fn_2_13C (0x13C) up is
     # left unclaimed, so dtk fills it from retail and the module's sha1 still holds.
+    # Added 2026-10-02 (lane 13). A second unit, `.text 0x7E0..0x844` out of that unclaimed
+    # middle: fn_2_7E0 is the deleting destructor of a two-word `rstl::auto_ptr<T>` - `bool mHas`
+    # at +0, the owned pointer at +4 - and this copy's T is `CAnimData` (the call is
+    # `__dt__9CAnimDataFv`). `CAtomicAlphaRel.cpp`'s range is untouched and the 0x13C..0x7E0 and
+    # 0x844..0x267C bytes between and after the two ranges stay unclaimed, so dtk fills them from
+    # retail and the module's sha1 still holds. `tools/twin_scan.py` pairs it with
+    # `__dt__Q24rstl32auto_ptr<20CScannableObjectInfo>Fv` (CScannableObjectInfo.cpp); it is the
+    # same template with this module's argument, not that function. See the source's header for
+    # the declaration that reproduces the bytes and for why it keeps the `fn_2_7E0` name.
     Rel(
         "AtomicAlpha",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CAtomicAlphaRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CAtomicAlpha7E0.cpp"),
         ],
     ),
     # MysteryFlyer's head, .text 0x0..0x170: fifteen CMysteryFlyer accessors, RELExit, RELMain

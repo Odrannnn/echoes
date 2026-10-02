@@ -29,6 +29,14 @@ modules:
     hash: ade8972eb74648c3c5c99caa022ff457ff2b27fd
     splits: config/G2ME01/rels/AtomicAlpha/splits.txt
     symbols: config/G2ME01/rels/AtomicAlpha/symbols.txt
+    # fn_2_7E0 is the only function of a `Matching` unit (CAtomicAlpha7E0.cpp, .text
+    # 0x7E0..0x844) and nothing in the module references it, so mwldeppc dead-strips it:
+    # measured, the .text comes out 0x64 short, fn_2_844 moves down into 0x7E0, and the
+    # module's sha1 stops matching. dtk 1.8.4 reads this list into the link script's
+    # FORCEACTIVE, which is the documented fix for an unreferenced function in a module;
+    # see docs/RUNNING_THE_DECOMP.md, the ScriptCoin note that first hit it.
+    force_active:
+      - fn_2_7E0
   # Module ID 3
   - object: files/RelProd/DarkCommando.rel
     hash: d9c41deb88a9f9cbe7b0230c3aa1b1b0f822fd3e
