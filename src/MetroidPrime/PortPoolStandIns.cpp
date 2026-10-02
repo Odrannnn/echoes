@@ -287,7 +287,7 @@ const SEntry kEntries[] = {
     // **The object is a STAND-IN: a zeroed `CStringTable`, not the table out of the pak.** What
     // is missing is the English text `Strings.pak` holds; what a PC build has is the header. A
     // zeroed `CStringTable` is observably an *empty* table and provably a safe one:
-    // `GetStringCount()` is 0, `GetStringIndex()` returns -1 without touching `xc_names` (its
+    // `GetStringCount()` is 0, `GetStringIndexByName()` returns -1 without touching `xc_names` (its
     // `x4_nameCount` is 0), and both `GetString` overloads therefore return `skInvalidString`
     // (`src/Kyoto/Text/CStringTable.cpp:102`). Every string in the game will read "Invalid",
     // which is what the class itself answers when an index is out of range - so the failure mode

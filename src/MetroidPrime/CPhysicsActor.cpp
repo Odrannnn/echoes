@@ -26,7 +26,7 @@ struct SCollisionPrimitivePayload {
   CAABox mAabb;
 };
 
-extern "C" void fn_800EA17C(CPhysicsActor* self, const CCollidableAABox& prim);
+extern "C" void SetCollisionPrimitive__13CPhysicsActorFRC16CCollidableAABox(CPhysicsActor* self, const CCollidableAABox& prim);
 
 // Retail 0x800EBD24, 0x1C = 28 bytes, listed in this unit's `.ctors` (asm:2477-2480): the
 // **static constructor** that zeroes a 12-byte object at 0x80410974. **The name is a placeholder**,
@@ -361,7 +361,7 @@ void CPhysicsActor::MoveToWR(const CVector3f& trans, float d) {
   ComputeDerivedQuantities();
 }
 
-void CPhysicsActor::MoveToInOneFrameWR(const CVector3f& trans, float d) {
+void CPhysicsActor::MoveInOneFrameWR(const CVector3f& trans, float d) {
   mMoveImpulse += (trans - GetTranslation()) * GetMass() * (1.f / d);
 }
 
@@ -442,7 +442,7 @@ const CCollisionPrimitive* CPhysicsActor::GetCollisionPrimitive() const {
   return &mCollisionPrimitive;
 }
 
-extern "C" void fn_800EA17C(CPhysicsActor* self, const CCollidableAABox& prim) {
+extern "C" void SetCollisionPrimitive__13CPhysicsActorFRC16CCollidableAABox(CPhysicsActor* self, const CCollidableAABox& prim) {
   *reinterpret_cast< SCollisionPrimitivePayload* >(reinterpret_cast< char* >(self) + 0x238) =
       *reinterpret_cast< const SCollisionPrimitivePayload* >(
           reinterpret_cast< const char* >( &prim ) + 8);

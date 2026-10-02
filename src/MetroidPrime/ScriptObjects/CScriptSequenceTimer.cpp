@@ -134,7 +134,7 @@ CScriptSequenceTimer* LoadSequenceTimer(CStateManager& mgr, CInputStream& input,
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefSLdrEditorProperties(sldrThis.editorProperties, input);
+      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
       break;
 
     case 0xef5c94e9:

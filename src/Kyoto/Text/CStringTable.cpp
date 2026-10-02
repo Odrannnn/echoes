@@ -106,7 +106,7 @@ const wchar_t* CStringTable::GetString(int idx) const {
   return mStrings[idx];
 }
 
-int CStringTable::GetStringIndex(const char* name) const {
+int CStringTable::GetStringIndexByName(const char* name) const {
   SStringName* begin = mNames;
   if (mNameCount > 0 && *name != '\0') {
     SStringName* end = begin + mNameCount;
@@ -121,7 +121,7 @@ int CStringTable::GetStringIndex(const char* name) const {
 }
 
 const wchar_t* CStringTable::GetString(const char* name) const {
-  return GetString(GetStringIndex(name));
+  return GetString(GetStringIndexByName(name));
 }
 
 CStringTable::SReloadData::~SReloadData() {}

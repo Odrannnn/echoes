@@ -642,21 +642,21 @@ extern "C" void reachstub_186() { mpReachStub("_ZN8IElement17CElementAllocator4F
 // stale aliases, not the definitions. `docs/research/boot_path_reachable.tsv` still lists both
 // symbols, so re-running `tools/gen_link_stubs.py --reachable` here puts them back.
 
-// LoadActorParameters(SLdrActorParameters const&)
+// LdrToActorParameters(SLdrActorParameters const&)
 extern "C" void reachstub_189() asm("_Z19LoadActorParametersRK19SLdrActorParameters");
-extern "C" void reachstub_189() { mpReachStub("_Z19LoadActorParametersRK19SLdrActorParameters", "LoadActorParameters(SLdrActorParameters const&)"); }
+extern "C" void reachstub_189() { mpReachStub("_Z19LoadActorParametersRK19SLdrActorParameters", "LdrToActorParameters(SLdrActorParameters const&)"); }
 
 // LoadCAABox(CStateManager&, TAreaId const&, CVector3f const&, CVector3f const&)
 extern "C" void reachstub_190() asm("_Z10LoadCAABoxR13CStateManagerRK7TAreaIdRK9CVector3fS6_");
 extern "C" void reachstub_190() { mpReachStub("_Z10LoadCAABoxR13CStateManagerRK7TAreaIdRK9CVector3fS6_", "LoadCAABox(CStateManager&, TAreaId const&, CVector3f const&, CVector3f const&)"); }
 
-// LoadEchoParameters(SLdrEchoParameters const&)
+// LdrToEchoParameters(SLdrEchoParameters const&)
 extern "C" void reachstub_191() asm("_Z18LoadEchoParametersRK18SLdrEchoParameters");
-extern "C" void reachstub_191() { mpReachStub("_Z18LoadEchoParametersRK18SLdrEchoParameters", "LoadEchoParameters(SLdrEchoParameters const&)"); }
+extern "C" void reachstub_191() { mpReachStub("_Z18LoadEchoParametersRK18SLdrEchoParameters", "LdrToEchoParameters(SLdrEchoParameters const&)"); }
 
-// LoadEditorTransform(SLdrEditorProperties const&)
+// LdrToTransform4f(SLdrEditorProperties const&)
 extern "C" void reachstub_192() asm("_Z19LoadEditorTransformRK20SLdrEditorProperties");
-extern "C" void reachstub_192() { mpReachStub("_Z19LoadEditorTransformRK20SLdrEditorProperties", "LoadEditorTransform(SLdrEditorProperties const&)"); }
+extern "C" void reachstub_192() { mpReachStub("_Z19LoadEditorTransformRK20SLdrEditorProperties", "LdrToTransform4f(SLdrEditorProperties const&)"); }
 
 // LoadModelData(CVector3f const&, unsigned int, SLdrAnimationParameters const&, bool)
 extern "C" void reachstub_193() asm("_Z13LoadModelDataRK9CVector3fjRK23SLdrAnimationParametersb");
@@ -670,9 +670,9 @@ extern "C" void reachstub_193() { mpReachStub("_Z13LoadModelDataRK9CVector3fjRK2
 // the stale alias, not the definition. `docs/research/boot_path_reachable.tsv` still lists the
 // symbol, so re-running `tools/gen_link_stubs.py --reachable` here puts the alias back.
 
-// LoadTypedefSLdrActorParameters(SLdrActorParameters&, CInputStream&)
+// LoadTypedefActorParameters(SLdrActorParameters&, CInputStream&)
 extern "C" void reachstub_195() asm("_Z30LoadTypedefSLdrActorParametersR19SLdrActorParametersR12CInputStream");
-extern "C" void reachstub_195() { mpReachStub("_Z30LoadTypedefSLdrActorParametersR19SLdrActorParametersR12CInputStream", "LoadTypedefSLdrActorParameters(SLdrActorParameters&, CInputStream&)"); }
+extern "C" void reachstub_195() { mpReachStub("_Z30LoadTypedefSLdrActorParametersR19SLdrActorParametersR12CInputStream", "LoadTypedefActorParameters(SLdrActorParameters&, CInputStream&)"); }
 
 // LoadTypedefSLdrAnimationParameters(SLdrAnimationParameters&, CInputStream&)
 extern "C" void reachstub_196() asm("_Z34LoadTypedefSLdrAnimationParametersR23SLdrAnimationParametersR12CInputStream");
@@ -682,9 +682,9 @@ extern "C" void reachstub_196() { mpReachStub("_Z34LoadTypedefSLdrAnimationParam
 extern "C" void reachstub_197() asm("_Z31LoadTypedefSLdrCameraShakerDataR20SLdrCameraShakerDataR12CInputStream");
 extern "C" void reachstub_197() { mpReachStub("_Z31LoadTypedefSLdrCameraShakerDataR20SLdrCameraShakerDataR12CInputStream", "LoadTypedefSLdrCameraShakerData(SLdrCameraShakerData&, CInputStream&)"); }
 
-// LoadTypedefSLdrEchoParameters(SLdrEchoParameters&, CInputStream&)
+// LoadTypedefEchoParameters(SLdrEchoParameters&, CInputStream&)
 extern "C" void reachstub_198() asm("_Z29LoadTypedefSLdrEchoParametersR18SLdrEchoParametersR12CInputStream");
-extern "C" void reachstub_198() { mpReachStub("_Z29LoadTypedefSLdrEchoParametersR18SLdrEchoParametersR12CInputStream", "LoadTypedefSLdrEchoParameters(SLdrEchoParameters&, CInputStream&)"); }
+extern "C" void reachstub_198() { mpReachStub("_Z29LoadTypedefSLdrEchoParametersR18SLdrEchoParametersR12CInputStream", "LoadTypedefEchoParameters(SLdrEchoParameters&, CInputStream&)"); }
 
 // LoadTypedefSLdrPlayerItem(SLdrPlayerItem&, CInputStream&)
 extern "C" void reachstub_199() asm("_Z25LoadTypedefSLdrPlayerItemR14SLdrPlayerItemR12CInputStream");
@@ -997,9 +997,9 @@ extern "C" void reachstub_320() { mpReachStub("_Z18LoadAreaAttributesR13CStateMa
 extern "C" void reachstub_322() asm("_Z25FindMinMaxConnectionTimesRKN4rstl6vectorI14SLdrConnectionNS_17rmemory_allocatorEEE");
 extern "C" void reachstub_322() { mpReachStub("_Z25FindMinMaxConnectionTimesRKN4rstl6vectorI14SLdrConnectionNS_17rmemory_allocatorEEE", "FindMinMaxConnectionTimes(rstl::vector<SLdrConnection, rstl::rmemory_allocator> const&)"); }
 
-// LoadTypedefSLdrDamageInfo(SLdrDamageInfo&, CInputStream&)
+// LoadTypedefDamageInfo(SLdrDamageInfo&, CInputStream&)
 extern "C" void reachstub_323() asm("_Z25LoadTypedefSLdrDamageInfoR14SLdrDamageInfoR12CInputStream");
-extern "C" void reachstub_323() { mpReachStub("_Z25LoadTypedefSLdrDamageInfoR14SLdrDamageInfoR12CInputStream", "LoadTypedefSLdrDamageInfo(SLdrDamageInfo&, CInputStream&)"); }
+extern "C" void reachstub_323() { mpReachStub("_Z25LoadTypedefSLdrDamageInfoR14SLdrDamageInfoR12CInputStream", "LoadTypedefDamageInfo(SLdrDamageInfo&, CInputStream&)"); }
 
 // CAuxWeapon::fn_801D5DD0(int, CStateManager&)
 extern "C" void reachstub_325() asm("_ZN10CAuxWeapon11fn_801D5DD0EiR13CStateManager");

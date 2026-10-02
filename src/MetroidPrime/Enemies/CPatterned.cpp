@@ -519,7 +519,7 @@ void CPatterned::UpdateIngPossession(float dt) {
 
 const CDamageVulnerability* CPatterned::GetDamageVulnerability() const {
   if (mIngPossessionBlend < mIngPossessionTarget) {
-    return &CDamageVulnerability::ImmuneVulnerabilty();
+    return &CDamageVulnerability::ImmuneVulnerability();
   }
   if (IsIngPossessed() && mIngPossessionData.unknown_0xb68c0aa3) {
     return &mIngVulnerability;

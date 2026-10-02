@@ -140,7 +140,7 @@ void CScriptTrigger::UpdateInhabitants(float dt, CStateManager& mgr) {
   // TODO: update linked-trigger overlaps, player filters, damage, force and exit events.
 }
 
-bool CScriptTrigger::HasInhabitant(TUniqueId id) const {
+bool CScriptTrigger::IsObjectInside(TUniqueId id) const {
   for (rstl::list< CObjectTracker >::const_iterator it = mInhabitants.begin();
        it != mInhabitants.end(); ++it) {
     if (it->GetObjectId() == id) {
@@ -193,7 +193,7 @@ uchar CScriptTrigger::ReplaceInhabitant(TUniqueId oldId, TUniqueId newId, CState
     return false;
   }
   bool replaced = false;
-  if (!HasInhabitant(newId)) {
+  if (!IsObjectInside(newId)) {
     for (rstl::list< CObjectTracker >::iterator it = mInhabitants.begin();
          it != mInhabitants.end(); ++it) {
       if (it->GetObjectId() == oldId) {

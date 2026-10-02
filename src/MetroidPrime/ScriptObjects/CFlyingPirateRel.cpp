@@ -8,7 +8,7 @@
 //   0x478 fn_22_478  0x08  li r3,1
 //   0x480 fn_22_480  0x24  byte at +0xbb8, bit 2 -> .rodata:0x3cc (.float 5) / :0x3c8 (.float 50)
 //   0x4A4 fn_22_4A4  0x3C  GetBoundingBox into a local, then fn_22_AA48(out, &box)
-//   0x4E0 fn_22_4E0  0x10  lbl_8041AAB8 -> *((float*)(self + 0x448))
+//   0x4E0 fn_22_4E0  0x10  skDamageHitTime__10CPatterned -> *((float*)(self + 0x448))
 //   0x4F0 fn_22_4F0  0x08  lbz r3, 0x44f(r3)
 //   0x4F8 fn_22_4F8  0x08  li r3,0
 //   0x500 fn_22_500  0x08  li r3,0
@@ -106,7 +106,7 @@
 #include "MetroidPrime/TGameTypes.hpp"
 #include "REL/REL_Setup.h"
 
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 
 // This module's own constants: `.rodata:0x3CC` is `.float 5` and `.rodata:0x3C8` is `.float 50`
 // (build/G2ME01/FlyingPirate/asm/auto_03_00000000_rodata.s). Both are `.obj ..., global`, and
@@ -218,7 +218,7 @@ unsigned char fn_22_4F0(const void* self) {
 
 // .text 0x4E0, 0x10 bytes. stores the default float at +0x448.
 void fn_22_4E0(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 // .text 0x4A4, 0x3C bytes. Returns `optional_object<CAABox>(self->GetBoundingBox())` through the

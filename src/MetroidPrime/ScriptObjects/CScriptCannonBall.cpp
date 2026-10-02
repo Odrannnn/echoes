@@ -38,7 +38,7 @@ void CScriptCannonBall::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
       player->SetTransform(
           CTransform4f(xf.BuildMatrix3f(), player->GetTranslation())); // todo use position
       morph->SwitchToTire();
-      m_fields[player->GetPlayerIndex()].OnIncrementMsg(mgr, 1);
+      m_fields[player->GetPlayerNumber()].OnIncrementMsg(mgr, 1);
     }
     break;
   }
@@ -162,7 +162,7 @@ void CScriptCannonBall::TrackedShot::FreeScriptObject(CStateManager& mgr) {
   mgr.DeleteObjectRequest(m_scriptObject);
 }
 
-CTransform4f LoadEditorTransform(const SLdrEditorProperties&);
+CTransform4f LdrToTransform4f(const SLdrEditorProperties&);
 
 // Retail has this one out of line, in this REL (__dt__14SLdrCannonBallFv at .text 0x1F8).
 SLdrCannonBall::~SLdrCannonBall() {}
@@ -177,7 +177,7 @@ CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEnti
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefSLdrEditorProperties(sldrThis.editorProperties, input);
+      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
       break;
     case 0xb68c6d96:
       sldrThis.effect = input.ReadInt32();
@@ -190,7 +190,7 @@ CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEnti
 
   return new CScriptCannonBall(mgr.AllocateUniqueId(), sldrThis.editorProperties.name,
                                LdrToEntityInfo(info, sldrThis.editorProperties),
-                               LoadEditorTransform(sldrThis.editorProperties), sldrThis.effect
+                               LdrToTransform4f(sldrThis.editorProperties), sldrThis.effect
 
   );
 }

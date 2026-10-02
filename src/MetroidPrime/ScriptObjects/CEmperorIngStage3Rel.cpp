@@ -21,7 +21,7 @@
 //
 // The claim is **not** byte for byte identical to Krocuss's or MysteryFlyer's block, and the
 // differences are visible in the table above rather than guessed:
-//   - this module has no `lbl_8041AAB8` float store at +0x448 and no `lbl_8041B758` float
+//   - this module has no `skDamageHitTime__10CPatterned` float store at +0x448 and no `lbl_8041B758` float
 //     accessor, so the only DOL global its relocations name is `kInvalidUniqueId`;
 //   - there are four `li r3,0` predicates in a row above `fn_18_6C`, not three and not two;
 //   - `fn_18_90` is an always-true predicate where the family usually puts an always-false one;

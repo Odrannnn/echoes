@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (214)
+## other game methods (217)
 
 - `_Z10TCastToPtrI11CScriptDockEPT_P7CEntity`
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
@@ -18,7 +18,10 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z11fn_80041518R11queryOutputRN4rstl10bit_vectorINS1_17rmemory_allocatorEEEt`
 - `_Z14ReadPlayerItemRiR12CInputStream`
 - `_Z15LdrToDamageInfoRK14SLdrDamageInfo`
+- `_Z16LdrToTransform4fRK20SLdrEditorProperties`
 - `_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamRK11CEntityInfo`
+- `_Z19LdrToEchoParametersRK18SLdrEchoParameters`
+- `_Z20LdrToActorParametersRK19SLdrActorParameters`
 - `_Z25FindMinMaxConnectionTimesRKN4rstl6vectorI14SLdrConnectionNS_17rmemory_allocatorEEE`
 - `_Z28GetLockedCacheAllocationBasev`
 - `_ZN10CAuxWeapon11fn_801D5DD0EiR13CStateManager`
@@ -282,17 +285,14 @@ See `port_link_gap.md` for what the groups mean.
 - `lbl_8041A3C0`
 - `lbl_8041C4F4`
 
-## REL module loaders (11)
+## REL module loaders (8)
 
 - `_Z10LoadCAABoxR13CStateManagerRK7TAreaIdRK9CVector3fS6_`
 - `_Z13LoadModelDataRK9CVector3fjRK23SLdrAnimationParametersb`
 - `_Z18LoadAreaAttributesR13CStateManagerR12CInputStreamRK11CEntityInfo`
-- `_Z18LoadEchoParametersRK18SLdrEchoParameters`
-- `_Z19LoadActorParametersRK19SLdrActorParameters`
-- `_Z19LoadEditorTransformRK20SLdrEditorProperties`
-- `_Z25LoadTypedefSLdrDamageInfoR14SLdrDamageInfoR12CInputStream`
-- `_Z29LoadTypedefSLdrEchoParametersR18SLdrEchoParametersR12CInputStream`
-- `_Z30LoadTypedefSLdrActorParametersR19SLdrActorParametersR12CInputStream`
+- `_Z21LoadTypedefDamageInfoR14SLdrDamageInfoR12CInputStream`
+- `_Z25LoadTypedefEchoParametersR18SLdrEchoParametersR12CInputStream`
+- `_Z26LoadTypedefActorParametersR19SLdrActorParametersR12CInputStream`
 - `_Z31LoadTypedefSLdrCameraShakerDataR20SLdrCameraShakerDataR12CInputStream`
 - `_Z34LoadTypedefSLdrAnimationParametersR23SLdrAnimationParametersR12CInputStream`
 

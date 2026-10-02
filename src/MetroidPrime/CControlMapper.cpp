@@ -353,7 +353,7 @@ void CControlMapper::Reset() {
 }
 
 const CTweakPlayerControls* CControlMapper::GetTweakPlayerControls() const {
-  const CTweakPlayerControls* tweak = gpTweakPlayerControlsA.get();
+  const CTweakPlayerControls* tweak = gpTweakPlayerControlExpert.get();
   if (mControlScheme == 1) {
     tweak = gpTweakPlayerControlsB.get();
   }

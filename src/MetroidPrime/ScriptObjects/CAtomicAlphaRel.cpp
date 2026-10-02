@@ -6,7 +6,7 @@
 //
 //   0x00  fn_2_0   0x08   addi r3,r3,0x8c8 / blr
 //   0x08  fn_2_8   0x08   addi r3,r3,0x7d8 / blr
-//   0x10  fn_2_10  0x10   lbl_8041AAB8 -> *((float*)(self + 0x448))
+//   0x10  fn_2_10  0x10   skDamageHitTime__10CPatterned -> *((float*)(self + 0x448))
 //   0x20  fn_2_20  0x08   lbz r3, 0x44f(r3)
 //   0x28  fn_2_28  0x08   li r3,0
 //   0x30  fn_2_30  0x08   li r3,0
@@ -32,7 +32,7 @@
 // `src/MetroidPrime/ScriptObjects/AtomicBetaAccessors.cpp` already reproduces at 100% as a
 // `Matching` unit - but the two blocks are NOT byte for byte identical, and it is worth being
 // exact about why.** AtomicBeta's `.text 0x0..0x9C` and this module's `.text 0x0..0x9C` are both
-// fourteen accessors reading the same three DOL relocations (`lbl_8041AAB8`, `kInvalidUniqueId`,
+// fourteen accessors reading the same three DOL relocations (`skDamageHitTime__10CPatterned`, `kInvalidUniqueId`,
 // `lbl_8041B758` - all three in the DOL, which is why one body serves every module), in the same
 // store/load/predicate/flag/float/member/vector-copy order. The difference is at the front: this
 // module's two *leading* accessors are extra, `fn_2_0` at +0x8C8 and `fn_2_8` at +0x7D8, where
@@ -94,7 +94,7 @@
 #include "MetroidPrime/ScriptLoader.hpp"
 #include "REL/REL_Setup.h"
 
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const float lbl_8041B758;
 extern "C" const unsigned short kInvalidUniqueId;
 
@@ -213,7 +213,7 @@ unsigned char fn_2_20(const void* self) {
 
 // .text 0x10, 0x10 bytes. stores the default float at +0x448.
 void fn_2_10(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 // .text 0x08, 0x08 bytes. the address of the member at +0x7D8.

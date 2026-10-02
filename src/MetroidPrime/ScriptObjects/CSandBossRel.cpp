@@ -8,7 +8,7 @@
 //   0x000 fn_55_0   0x08  li r3,1
 //   0x008 fn_55_8   0x08  li r3,1
 //   0x010 fn_55_10  0x3C  GetBoundingBox into a local, then fn_55_10C78(out, &box)
-//   0x04C fn_55_4C  0x10  lbl_8041AAB8 -> *((float*)(self + 0x448))
+//   0x04C fn_55_4C  0x10  skDamageHitTime__10CPatterned -> *((float*)(self + 0x448))
 //   0x05C fn_55_5C  0x08  lbz r3, 0x44f(r3)
 //   0x064 fn_55_64  0x08  li r3,0
 //   0x06C fn_55_6C  0x08  li r3,0
@@ -80,7 +80,7 @@
 #include "MetroidPrime/TGameTypes.hpp"
 #include "REL/REL_Setup.h"
 
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const float lbl_8041B758;
 
 // `GetBoundingBox__13CPhysicsActorCFv`, the DOL's 0x800EA054, declared through a stand-in rather
@@ -199,7 +199,7 @@ unsigned char fn_55_5C(const void* self) {
 
 // .text 0x4C, 0x10 bytes. stores a DOL float at +0x448.
 void fn_55_4C(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 // .text 0x10, 0x3C bytes. Returns `optional_object<CAABox>(GetBoundingBox())` through the hidden

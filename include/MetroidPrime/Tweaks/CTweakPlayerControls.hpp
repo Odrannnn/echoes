@@ -26,7 +26,7 @@ private:
 };
 CHECK_SIZEOF(CTweakPlayerControls, 0x4)
 
-extern rstl::single_ptr< CTweakPlayerControls > gpTweakPlayerControlsA;
+extern rstl::single_ptr< CTweakPlayerControls > gpTweakPlayerControlExpert;
 extern rstl::single_ptr< CTweakPlayerControls > gpTweakPlayerControlsB;
 
 #endif // _CTWEAKPLAYERCONTROLS

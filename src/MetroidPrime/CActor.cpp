@@ -483,7 +483,7 @@ float CActor::GetYaw() const {
 CHealthInfo* CActor::HealthInfo() { return nullptr; }
 
 const CDamageVulnerability* CActor::GetDamageVulnerability() const {
-  return &CDamageVulnerability::NormalVulnerabilty();
+  return &CDamageVulnerability::NormalVulnerability();
 }
 
 const CDamageVulnerability* CActor::GetDamageVulnerability(const CVector3f&, const CVector3f&,

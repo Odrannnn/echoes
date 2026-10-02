@@ -251,12 +251,12 @@ void CScriptDoor::SetLockState(CStateManager& mgr, ELockState state) {
     break;
   case kLS_Locking:
     SetLockAnimation(mgr, 1);
-    mCurrentVulnerability = CDamageVulnerability::ReflectVulnerabilty();
+    mCurrentVulnerability = CDamageVulnerability::ImmuneRicochetVulnerability();
     mLockState = kLS_Locking;
     break;
   case kLS_Locked:
     SetLockAnimation(mgr, 3);
-    mCurrentVulnerability = CDamageVulnerability::ReflectVulnerabilty();
+    mCurrentVulnerability = CDamageVulnerability::ImmuneRicochetVulnerability();
     mLockState = kLS_Locked;
     mColorDirty = true;
     mLockTimer = 0.f;

@@ -1,6 +1,6 @@
 #include "REL/REL_Setup.h"
 
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const float lbl_8041B758;
 extern "C" const unsigned short kInvalidUniqueId;
 
@@ -63,7 +63,7 @@ unsigned char CWallCrawler_GetByte44F(const void* self) {
   return *reinterpret_cast<const unsigned char*>(static_cast<const char*>(self) + 0x44F);
 }
 void CWallCrawler_SetDefaultFloat448(void* self) {
-  *reinterpret_cast<float*>(static_cast<char*>(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast<float*>(static_cast<char*>(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 } // extern "C"

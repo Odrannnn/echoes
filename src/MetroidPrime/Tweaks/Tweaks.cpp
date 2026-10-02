@@ -144,7 +144,7 @@ void REL_CreateTweakGlobals() {
   gpTweakPlayerB = rs_new CTweakPlayer(gpTweakContents->TweakPlayer2);
   gpTweakPlayerA = rs_new CTweakPlayer(gpTweakContents->TweakPlayer);
   gpTweakPlayerControlsB = rs_new CTweakPlayerControls(gpTweakContents->TweakPlayerControls2);
-  gpTweakPlayerControlsA = rs_new CTweakPlayerControls(gpTweakContents->TweakPlayerControls);
+  gpTweakPlayerControlExpert = rs_new CTweakPlayerControls(gpTweakContents->TweakPlayerControls);
   gpTweakPlayerGunMulti = rs_new CTweakPlayerGun(gpTweakContents->TweakPlayerGunMuli);
   gpTweakPlayerGunSingle = rs_new CTweakPlayerGun(gpTweakContents->TweakPlayerGun);
   gpTweakPlayerRes = rs_new CTweakPlayerRes(gpTweakContents->TweakPlayerRes);
@@ -168,7 +168,7 @@ void REL_FreeTweaks() {
   gpTweakPlayerB = nullptr;
   gpTweakPlayerA = nullptr;
   gpTweakPlayerControlsB = nullptr;
-  gpTweakPlayerControlsA = nullptr;
+  gpTweakPlayerControlExpert = nullptr;
   gpTweakPlayerGunMulti = nullptr;
   gpTweakPlayerGunSingle = nullptr;
   gpTweakPlayerRes = nullptr;

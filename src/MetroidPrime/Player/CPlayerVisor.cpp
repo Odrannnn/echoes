@@ -252,9 +252,9 @@ void CPlayer::UpdateRezbitState(float dt) {
   if (mRezbitRecoveryTimer > 0.f && mRezbitState == kRS_Infected) {
     mRezbitRecoveryTimer -= dt;
     if (mRezbitRecoveryTimer <= 0.f) {
-      // Own statement, as in BeginRezbitRecovery: retail calls `GetPlayerIndex` before it
+      // Own statement, as in BeginRezbitRecovery: retail calls `GetPlayerNumber` before it
       // builds the text, and leaves it in the parms argument mwcceppc builds the text first.
-      const int playerIndex = GetPlayerIndex();
+      const int playerIndex = GetPlayerNumber();
       CSamusHud::DisplayHudMemo(
           rstl::wstring_l(gpStringTable->GetString("RezbitSuitSoftwareVirus")),
           CHUDMemoParms(FLT_MAX, true, false, false, 1 << playerIndex, false));
@@ -268,15 +268,15 @@ void CPlayer::UpdateRezbitState(float dt) {
 // tools/dis.sh 0x8022B1B0 0x78. Retail stores 2 (kRS_Recovering) into mRezbitState first,
 // then shows a hint memo with an *empty* text, the float at -18608(r2) (= 0.0f, measured in
 // .sdata2), clearMemoWindow=false / fadeOutOnly=true / hintMemo=false, the player mask
-// `1 << GetPlayerIndex()` and fadeInText=true. So there is no string-table lookup and no
+// `1 << GetPlayerNumber()` and fadeInText=true. So there is no string-table lookup and no
 // string content in this unit at all - only the `L""` literal, which mwcceppc pools in `.sdata`.
 void CPlayer::BeginRezbitRecovery() {
   mRezbitState = kRS_Recovering;
-  // `GetPlayerIndex` is its own statement. Retail calls it first and parks the result in r31
+  // `GetPlayerNumber` is its own statement. Retail calls it first and parks the result in r31
   // across the `wstring_l` call; left inside the parms argument, mwcceppc hoists the `L""` pool
   // load to the top of the frame and builds the text first instead. The parms object still lands
   // at r1+8 and the text at r1+0x14, i.e. retail's slots, with no copy of either.
-  const int playerIndex = GetPlayerIndex();
+  const int playerIndex = GetPlayerNumber();
   CSamusHud::DisplayHudMemo(rstl::wstring_l(L""),
                             CHUDMemoParms(0.f, false, true, false, 1 << playerIndex, true));
 }

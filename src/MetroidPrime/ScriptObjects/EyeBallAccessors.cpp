@@ -31,7 +31,7 @@
 //   0xac  38 60 00 00 / 4e 80 00 20                              (return false)  x2
 //   0xbc  c0 04 00 54 / d0 03 00 00 / ... / 4e 80 00 20          (copy self[0x54..0x5f] to *out)
 //
-// The relocations name the two globals outright: 0x3e/0x42 are `lbl_8041AAB8` (.sdata2, 2.0f) and
+// The relocations name the two globals outright: 0x3e/0x42 are `skDamageHitTime__10CPatterned` (.sdata2, 2.0f) and
 // 0x76/0x7a are `kInvalidUniqueId` (.sbss, size 0x2), and 0x92/0x96 are `lbl_8041B758`.
 //
 // `rlwinm r3,r0,29,31,31` at 0x88 is the third `bool : 1` of its byte's group, which is what
@@ -47,7 +47,7 @@
 
 #include "types.h"
 
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const float lbl_8041B758;
 extern "C" const unsigned short kInvalidUniqueId;
 
@@ -106,7 +106,7 @@ unsigned char fn_19_4C(const void* self) {
   return *reinterpret_cast< const unsigned char* >(static_cast< const char* >(self) + 0x44F);
 }
 void fn_19_3C(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 #ifdef __MWERKS__

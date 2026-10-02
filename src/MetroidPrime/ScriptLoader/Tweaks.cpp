@@ -299,7 +299,7 @@ void LoadTypedefSLdrTweakPlayer_DarkWorld(SLdrTweakPlayer_DarkWorld& sldrThis, C
       break;
     }
     case 0xf9bf59a2: {
-      LoadTypedefSLdrDamageInfo(sldrThis.damagePerSecond, input);
+      LoadTypedefDamageInfo(sldrThis.damagePerSecond, input);
       break;
     }
     case 0x333b7549: {

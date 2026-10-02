@@ -147,10 +147,10 @@ CPlayer::CPlayer(TUniqueId uid, const CTransform4f& xf, const CAABox& aabb, CAss
 , mTimeMoving(0.f)
 , mControlDir(xf.GetForward())
 , mControlDirFlat(xf.GetForward())
-, mVariaSuitVulnerability(CDamageVulnerability::NormalVulnerabilty())
+, mVariaSuitVulnerability(CDamageVulnerability::NormalVulnerability())
 , mDarkSuitVulnerability(mVariaSuitVulnerability)
 , mLightSuitVulnerability(mDarkSuitVulnerability)
-, mImmuneVulnerability(CDamageVulnerability::ImmuneVulnerabilty())
+, mImmuneVulnerability(CDamageVulnerability::ImmuneVulnerability())
 , mScrewAttackVulnerability(mImmuneVulnerability)
 , mWasDamaged(false)
 , mWasDamagedPrev(false)
@@ -979,7 +979,7 @@ const CDamageVulnerability* CPlayer::GetDamageVulnerability(const CVector3f& pos
   }
   if (mMorphBallState == kMS_Morphed) {
     if (mImmuneTimer > 0.f && !damage.NoImmunity()) {
-      return &CDamageVulnerability::ImmuneVulnerabilty();
+      return &CDamageVulnerability::ImmuneVulnerability();
     }
     if (mPlayerState->GetItemAmount(CPlayerState::kIT_CannonBall, true) != 0) {
       return &mImmuneVulnerability;
@@ -1179,7 +1179,7 @@ const CPlayerGun* CPlayer::GetPlayerGun() const { return mGun.get(); }
 
 CPlayerGun* CPlayer::GetPlayerGun() { return mGun.get(); }
 
-int CPlayer::GetPlayerIndex() const { return mPlayerIndex; }
+int CPlayer::GetPlayerNumber() const { return mPlayerIndex; }
 
 void CPlayer::fn_8000ce94(float dt, CStateManager& mgr) {
   // TODO: Recover the remaining target behavior.
@@ -1207,7 +1207,7 @@ CTweakPlayer* CPlayer::GetTweakPlayer() const {
 }
 
 CTweakPlayerControls* CPlayer::GetTweakPlayerControls() const {
-  CTweakPlayerControls* tweak = gpTweakPlayerControlsA.get();
+  CTweakPlayerControls* tweak = gpTweakPlayerControlExpert.get();
   if (mControlScheme == 1) {
     tweak = gpTweakPlayerControlsB.get();
   }

@@ -215,7 +215,7 @@ extern const char* const lbl_8041D398 = kPower2nd1;
 
 // .sdata2 0x8041E2E6: ffff. `lhz` + `cmplw` in CPowerBeam::Fire against the caller's sfx id, so
 // 0xFFFF is the "caller supplied the id" sentinel.
-extern const ushort lbl_8041E2E6 = 0xFFFF;
+extern const ushort kInternalInvalidSfxId__11CSfxManager = 0xFFFF;
 }
 
 CResFactory* gpResourceFactory;

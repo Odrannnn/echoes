@@ -82,7 +82,7 @@ CEntity* LoadTimeKeyframe(CStateManager& mgr, CInputStream& input, const CEntity
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefSLdrEditorProperties(sldrThis.editorProperties, input);
+      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
       break;
     case 0x44335aff:
       sldrThis.time = input.ReadFloat();

@@ -6,7 +6,7 @@
 // `config/G2ME01/rels/Splinter/symbols.txt`:
 //
 //   0x000 fn_74_0   0x08  addi r3,r3,0x7c4
-//   0x008 fn_74_8   0x10  lbl_8041AAB8 -> *((float*)(self + 0x448))
+//   0x008 fn_74_8   0x10  skDamageHitTime__10CPatterned -> *((float*)(self + 0x448))
 //   0x018 fn_74_18  0x08  lbz r3, 0x44f(r3)
 //   0x020 fn_74_20  0x08  li r3,0x0
 //   0x028 fn_74_28  0x08  li r3,0x0
@@ -130,9 +130,9 @@
 #include "MetroidPrime/TGameTypes.hpp"
 #include "REL/REL_Setup.h"
 
-// The one DOL float this head reads: `lbl_8041AAB8` is `.sdata2:0x8041AAB8` in
+// The one DOL float this head reads: `skDamageHitTime__10CPatterned` is `.sdata2:0x8041AAB8` in
 // `config/G2ME01/symbols.txt`. There is no `lbl_8041B758` here - see the note above.
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 // `kInvalidUniqueId` is declared by the `MetroidPrime/TGameTypes.hpp` include above, as
 // `const TUniqueId` - not redeclared here.
 
@@ -243,7 +243,7 @@ unsigned char fn_74_18(const void* self) {
 
 // .text 0x08, 0x10 bytes. stores the default float at +0x448.
 void fn_74_8(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 // .text 0x00, 0x08 bytes. the address of the member at +0x7c4.

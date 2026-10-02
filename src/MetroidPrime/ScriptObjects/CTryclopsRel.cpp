@@ -7,7 +7,7 @@
 //   0x0   fn_81_0   0x08   addi r3,r3,0x7c4
 //   0x8   fn_81_8   0x08   li r3,1
 //   0x10  fn_81_10  0x3C   GetBoundingBox into a local, then fn_81_4FEC(out, &box)
-//   0x4C  fn_81_4C  0x10   lbl_8041AAB8 -> *((float*)(self + 0x448))
+//   0x4C  fn_81_4C  0x10   skDamageHitTime__10CPatterned -> *((float*)(self + 0x448))
 //   0x5C  fn_81_5C  0x08   the byte at +0x44F
 //   0x64  fn_81_64  0x08   li r3,0
 //   0x6C  fn_81_6C  0x08   li r3,0
@@ -89,7 +89,7 @@
 #include "MetroidPrime/ScriptLoader.hpp"
 #include "REL/REL_Setup.h"
 
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const float lbl_8041B758;
 extern "C" const unsigned short kInvalidUniqueId;
 
@@ -212,7 +212,7 @@ unsigned char fn_81_5C(const void* self) {
 // not to a pointer-to-pointer: `sizeof(char*)` is 4 on this ABI, so a `char**` would scale the
 // displacement by four and still look like an offset into an object.
 void fn_81_4C(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 // .text 0x10, 0x3C bytes. returns `optional_object<CAABox>(GetBoundingBox())` through the hidden

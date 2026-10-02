@@ -159,7 +159,7 @@ extern "C" CEntity* REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamRC11CEnti
     u16 propertySize = input.ReadUint16();
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefSLdrEditorProperties(props, input);
+      LoadTypedefEditorProperties(props, input);
       break;
     default:
       input.ReadBytes(nullptr, propertySize);

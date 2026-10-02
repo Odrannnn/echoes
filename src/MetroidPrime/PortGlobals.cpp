@@ -243,9 +243,9 @@ rstl::single_ptr< CTweakPlayerRes > gpTweakPlayerRes;
 rstl::single_ptr< CTweakSlideShow > gpTweakSlideShow;
 rstl::single_ptr< CTweakTargeting > gpTweakTargeting;
 
-// gpTweakPlayerControlsA/B are DOL .sbss (0x80418F4C and 0x80418F48, four bytes each), null until
+// gpTweakPlayerControlExpert/B are DOL .sbss (0x80418F4C and 0x80418F48, four bytes each), null until
 // the Tweaks module fills them, like gpTweakPlayerA/B above. Upstream's CPlayer references them.
-rstl::single_ptr< CTweakPlayerControls > gpTweakPlayerControlsA;
+rstl::single_ptr< CTweakPlayerControls > gpTweakPlayerControlExpert;
 rstl::single_ptr< CTweakPlayerControls > gpTweakPlayerControlsB;
 
 // ---------------------------------------------------------------------------
@@ -614,8 +614,8 @@ template <> wchar_t rstl::basic_string< wchar_t >::mNull = 0;
 
 /**
  * `lbl_803DA994 = .bss:0x803DA994; size:0xF4` - the run of five `CDamageVulnerability`
- * singletons that `CDamageVulnerability::NormalVulnerabilty()` (retail
- * `NormalVulnerabilty__20CDamageVulnerabilityFv`, 0x800DBB70) hands back pointers into. For
+ * singletons that `CDamageVulnerability::NormalVulnerability()` (retail
+ * `NormalVulnerability__20CDamageVulnerabilityFv`, 0x800DBB70) hands back pointers into. For
  * the matching build this symbol is dtk's `.bss` fill object's (`auto_08_803C5A20_bss.o`) and
  * `src/MetroidPrime/CDamageVulnerabilityStatics.cpp` only *relocates* against it, which is what
  * that file's header says; a host link has no fill object, so the accessor in the port build

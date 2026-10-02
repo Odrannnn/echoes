@@ -7,7 +7,7 @@
 //   0x000 fn_44_0   0x08  addi r3,r3,0x960
 //   0x008 fn_44_8   0x08  addi r3,r3,0xa4c
 //   0x010 fn_44_10  0x08  li r3,0x1
-//   0x018 fn_44_18  0x10  lbl_8041AAB8 -> *((float*)(self + 0x448))
+//   0x018 fn_44_18  0x10  skDamageHitTime__10CPatterned -> *((float*)(self + 0x448))
 //   0x028 fn_44_28  0x08  lbz r3, 0x44f(r3)
 //   0x030 fn_44_30  0x08  li r3,0x0
 //   0x038 fn_44_38  0x10  *self = kInvalidUniqueId
@@ -118,7 +118,7 @@
 #include "MetroidPrime/ScriptLoader.hpp"
 #include "REL/REL_Setup.h"
 
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const float lbl_8041B758;
 extern "C" const unsigned short kInvalidUniqueId;
 
@@ -212,7 +212,7 @@ unsigned char fn_44_28(const void* self) {
 
 // .text 0x18, 0x10 bytes. stores the default float at +0x448.
 void fn_44_18(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 // .text 0x10, 0x08 bytes. a predicate that is always true.

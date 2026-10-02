@@ -27,7 +27,7 @@ CEntity* LoadRelay(CStateManager& mgr, CInputStream& input, const CEntityInfo& i
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefSLdrEditorProperties(sldrThis.editorProperties, input);
+      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
       break;
     case 0xead7b7bb:
       sldrThis.oneShot = input.ReadBool();

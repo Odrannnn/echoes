@@ -9,7 +9,7 @@
 //   0x010 fn_72_10  0x08  li r3,1                     a predicate that is always true
 //   0x018 fn_72_18  0x0C  lhz r0,0xa94(r4) / sth r0,0x0(r3)   a copy of the TUniqueId at +0xa94
 //   0x024 fn_72_24  0x0C  lbl_72_rodata_B00           this module's own .rodata:0xB00, .float 50
-//   0x030 fn_72_30  0x10  lbl_8041AAB8 -> *((float*)(self + 0x448))
+//   0x030 fn_72_30  0x10  skDamageHitTime__10CPatterned -> *((float*)(self + 0x448))
 //   0x040 fn_72_40  0x08  li r3,0                     a predicate that is always false
 //   0x048 fn_72_48  0x0C  the byte at +0x34c, bit 3
 //   0x054 fn_72_54  0x08  addi r3,r3,0x754            the address of the member at +0x754
@@ -100,8 +100,8 @@ struct SSpacePirate_FuncPtrs {
 extern bool (CEntity::*lbl_72_data_8C0)(const TUniqueId*);
 extern void (CEntity::*lbl_72_data_8CC)();
 
-// The DOL's constant, `lbl_8041AAB8`; the same accessor is `fn_22_4E0` in FlyingPirate.
-extern "C" const float lbl_8041AAB8;
+// The DOL's constant, `skDamageHitTime__10CPatterned`; the same accessor is `fn_22_4E0` in FlyingPirate.
+extern "C" const float skDamageHitTime__10CPatterned;
 
 // This module's own constant: `.rodata:0xB00` is `.float 50`
 // (`build/G2ME01/SpacePirate/asm/auto_03_00000000_rodata.s`). It is `.obj ..., global`, and this
@@ -228,7 +228,7 @@ bool fn_72_40(void*) { return false; }
 
 // .text 0x30, 0x10 bytes. stores the default float at +0x448.
 void fn_72_30(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 // .text 0x24, 0x0C bytes. this module's own `lbl_72_rodata_B00`, `.float 50`; the family spelling

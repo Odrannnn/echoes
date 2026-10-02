@@ -77,3 +77,23 @@ written from retail.
 **Still not tried.** Pairing the two DOLs directly (most of the remaining ~480 names live in
 DOL-to-DOL calls that no module imports on the GameCube side) needs a compiler-independent function
 similarity, which nothing here provides yet.
+
+## 2026-10-02 - leftover renames applied in groups
+
+Each group was followed by `./tools/gate.sh`. A symbol rename is safe only when no compiled unit
+defines or calls the old name; otherwise the per-function diff shows GONE entries or the link fails
+with undefined / multiply-defined symbols.
+
+- **A-functions: 3 applied, 1 held.** `fn_8023ACFC`, `fn_800B5FF0` and `fn_800EA17C` renamed together
+  with their `extern "C"` declarations and the `PortLinkStubs.cpp` asm name. `fn_80257A14` held: the
+  new name collides with the inline `GetTriangle` already defined in `CCollisionSurface.o`
+  (multiply-defined). `DisableControls` left alone (Trilogy-only enum).
+- **A-data: 7 applied, 2 held** (the two unconfirmed labels), with ~40 `ScriptObjects` sources plus
+  `CWorldShadow.cpp`, `mainHead.cpp` and `CPowerBeam.cpp` renamed in step.
+- **B: 17 applied, 83 held.** Only renames whose old name is not emitted by any built object went
+  through (the Ldr/Load loaders, vulnerability helpers, `gpTweakPlayerControlsA` ->
+  `gpTweakPlayerControlExpert`). The rest are held because the old mangling is produced by our
+  source (the `TCastToPtr` instantiations, member signatures), because the name is Trilogy-only, or
+  because it needs a wide source rename (`gpTweakContents`). The held rows and reasons are in
+  `trilogy_name_hints.tsv`; the per-row reasons there are grouped, not individually re-verified.
+- `port_link_gap_list.md` was regenerated and the counts in `port_link_gap.md` updated for the renamed loaders.

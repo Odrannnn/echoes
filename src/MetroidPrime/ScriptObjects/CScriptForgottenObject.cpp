@@ -72,7 +72,7 @@ CEntity* LoadForgottenObject(CStateManager& mgr, CInputStream& input, const CEnt
     const u16 propertySize = input.ReadUint16();
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefSLdrEditorProperties(properties.editorProperties, input);
+      LoadTypedefEditorProperties(properties.editorProperties, input);
       break;
     default:
       input.ReadBytes(nullptr, propertySize);

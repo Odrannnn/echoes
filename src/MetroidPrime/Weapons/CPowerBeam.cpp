@@ -16,7 +16,7 @@ extern "C" const char lbl_803AAB80[];
 #include "MetroidPrime/CStateManager.hpp"
 
 // **`const` on this declaration is load-bearing, not tidiness.** `mainHead.cpp` defines the
-// sentinel as `extern const ushort lbl_8041E2E6 = 0xFFFF`, but reading it here through a
+// sentinel as `extern const ushort kInternalInvalidSfxId__11CSfxManager = 0xFFFF`, but reading it here through a
 // *non*-const `extern "C" ushort` makes mwcceppc rank the `lhz r0,0(0) R_PPC_EMB_SDA21` load as an
 // ordinary mutable global, and it schedules the load at its point of use - immediately before
 // `cmplw`, after the whole `stmw r22,32` / `mr r22,r3`..`mr r29,r10` prologue block. Retail's
@@ -24,12 +24,12 @@ extern "C" const char lbl_803AAB80[];
 // pairs, with `cmplw` right after the `fmr f30,f2`. Declaring the global `const` gives the
 // scheduler the same rank it gives retail's own read, and the whole 244-byte function then matches
 // instruction for instruction. It was the last thing standing between this unit and 100%.
-extern "C" const ushort lbl_8041E2E6;
+extern "C" const ushort kInternalInvalidSfxId__11CSfxManager;
 // Retail's `InitializeResources` reads the pool object name from `.sdata2`, not from a `lis`/`addi`
 // pair against this unit's own string pool: `lwz r5, 0x8041D394(r2)` / `lwz r5, 0x8041D398(r2)` hold
 // 0x803AADF2 / 0x803AADFC, which are the `.rodata` strings "ShotSmoke" and "Power2nd_1". Those two
 // pointers are the retail globals this port already defines in `src/MetroidPrime/mainHead.cpp`
-// (which is where the *values* live); declaring them here is the same trick `lbl_8041E2E6` above
+// (which is where the *values* live); declaring them here is the same trick `kInternalInvalidSfxId__11CSfxManager` above
 // uses. It also keeps "ShotSmoke"/"Power2nd_1" out of this unit's `@stringBase0`, which is what
 // lets `rs_new`'s own `??(??)` literal sit at offset 0 - the shape retail's `EnableSecondaryFx` has.
 extern "C" const char* const lbl_8041D394;
@@ -42,7 +42,7 @@ extern "C" const ushort lbl_8041D248[2][2];
 // `.sdata2` is appended past the end of the section by mwldeppc - which moves `.bss2` by 8 bytes
 // and breaks the DOL hash on 43 bytes' worth of `.bss2` pointers. Naming the retail globals keeps
 // the unit's `.sdata2` empty. Same reason as `lbl_8041D394` above, and the same trick as
-// `lbl_8041E2E6`; the values live in `src/MetroidPrime/mainHead.cpp` for the port.
+// `kInternalInvalidSfxId__11CSfxManager`; the values live in `src/MetroidPrime/mainHead.cpp` for the port.
 extern "C" const float lbl_8041D250;
 extern "C" const float lbl_8041D254;
 
@@ -147,7 +147,7 @@ void CPowerBeam::Fire(const TCachedToken< CWeaponDescription >& projectile, bool
                       ushort soundId, TUniqueId* projectileId, CSfxHandle* soundHandle,
                       float chargeFactor1, float chargeFactor2) {
 
-  // `lbl_8041E2E6` (0xFFFF) is the "caller supplied no id" sentinel; on that path retail takes the
+  // `kInternalInvalidSfxId__11CSfxManager` (0xFFFF) is the "caller supplied no id" sentinel; on that path retail takes the
   // per-charge-stage id from `.sdata2 0x8041D248`, a `[multiplayer][chargeStage]` table, so the row is
   // `IsMultiplayer()` and the column `chargeState` (`clrlwi`/`neg`/`or`/`rlwinm r4,r4,3,29,29` is the
   // row select turned into a 0-or-8 byte offset, `slwi r0,r25,1` the column, one `lhzx` the load).
@@ -155,7 +155,7 @@ void CPowerBeam::Fire(const TCachedToken< CWeaponDescription >& projectile, bool
   // register: `lhzx r5,r3,r0` on the taken path and `mr r5,r11` on the other, both feeding
   // `stw r5,8(r1)`. Storing the parameter back emits `stw r11,8(r1)` instead.
   ushort sound;
-  if (soundId == lbl_8041E2E6) {
+  if (soundId == kInternalInvalidSfxId__11CSfxManager) {
     sound = lbl_8041D248[mgr.IsMultiplayer() ? 1 : 0][static_cast< size_t >(chargeState)];
   } else {
     sound = soundId;

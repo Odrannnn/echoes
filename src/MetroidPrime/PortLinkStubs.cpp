@@ -627,8 +627,8 @@ extern "C" void stub_157() {}
 extern "C" void stub_158() asm("fn_801BD654");
 extern "C" void stub_158() {}
 
-// fn_8023ACFC
-extern "C" void stub_159() asm("fn_8023ACFC");
+// LdrToDamageVulnerability__FRC23SLdrDamageVulnerability
+extern "C" void stub_159() asm("LdrToDamageVulnerability__FRC23SLdrDamageVulnerability");
 extern "C" void stub_159() {}
 
 // kCAiSplashDenom
@@ -639,8 +639,8 @@ extern "C" void stub_160() {}
 extern "C" void stub_161() asm("lbl_4_rodata_0");
 extern "C" void stub_161() {}
 
-// lbl_8041AAB8
-extern "C" void stub_162() asm("lbl_8041AAB8");
+// skDamageHitTime__10CPatterned
+extern "C" void stub_162() asm("skDamageHitTime__10CPatterned");
 extern "C" void stub_162() {}
 
 // lbl_8041AAC0

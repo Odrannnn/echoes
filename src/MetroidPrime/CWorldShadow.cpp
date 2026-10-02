@@ -32,14 +32,14 @@ extern "C" float sqrt__Ff(float x);
 
 // `CGraphics::GetDepthNear()` and `CGraphics::GetDepthFar()` read the two static floats
 // `CGraphics::mDepthNear` (`.sbss:0x80419968`) and `CGraphics::mDepthFar` (`.sdata:0x80418AF0`).
-// In retail both are *unnamed* (`lbl_80419968` / `lbl_80418AF0` in `config/G2ME01/symbols.txt`) and
+// In retail both are *unnamed* (`lbl_80419968` / `mDepthFar__9CGraphics` in `config/G2ME01/symbols.txt`) and
 // are defined by dtk's filler objects `auto_10_80419910_sbss.o` and `auto_09_80418AD4_sdata.o`,
 // which no unit in `configure.py` compiles. So the C++ member names leave this object with two
 // undefined symbols and the flip cannot link. `SetDepthRange` is what writes them - `stfs
 // f5,-25624(r13); stfs f6,-29328(r13)` (`tools/dis.sh 0x802BFA38 0xA0`, resolved with
 // `tools/sda.py s:-0x6418` / `s:-0x7290`) - so these are the same two words.
 extern "C" float lbl_80419968; // CGraphics::mDepthNear
-extern "C" float lbl_80418AF0; // CGraphics::mDepthFar
+extern "C" float mDepthFar__9CGraphics; // CGraphics::mDepthFar
 
 extern "C" const char lbl_803A8AB0[];
 
@@ -126,7 +126,7 @@ void CWorldShadow::BuildLightShadowTexture(const CStateManager& mgr, TAreaId are
                                   0);
 
   const float depthNear = lbl_80419968;
-  const float depthFar = lbl_80418AF0;
+  const float depthFar = mDepthFar__9CGraphics;
   CGraphics::SetDepthRange(0.f, 1.f);
   // Upstream's four separate reads, not one `const CViewport` copy: retail loads only the four
   // integer members, so a whole-struct copy both loads the two float members retail never

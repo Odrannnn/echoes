@@ -33,7 +33,7 @@
 //     and then `addi r3,r3,0xbd8`, one word apart - where IngSpaceJumpGuardian opens
 //     `addi r3,r3,0x8d0` and `li r3,1` and Metroid opens `addi r3,r3,0x8c8` and `li r3,1`; so
 //     this module covers two more members at the front than the rest of the family;
-//   - there is **no** `GetBoundingBox` wrapper and **no** `lbl_8041AAB8` store at +0x448, so
+//   - there is **no** `GetBoundingBox` wrapper and **no** `skDamageHitTime__10CPatterned` store at +0x448, so
 //     `lbl_8041B758` is the only DOL global this head's relocations name;
 //   - it runs **two** `li r3,0` predicates (`fn_30_2C`, `fn_30_34`) where the family runs two or
 //     three, and two `li r3,1` (`fn_30_10`, `fn_30_6C`) where Metroid has one; and

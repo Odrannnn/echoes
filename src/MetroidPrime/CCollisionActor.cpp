@@ -32,7 +32,7 @@ CCollisionActor::CCollisionActor(TUniqueId uid, TAreaId areaId, TUniqueId owner,
 , mSpherePrimitive(nullptr)
 , mSphereRadius(0.f)
 , mHealthInfo(0.f, 0.f)
-, mDamageVulnerability(CDamageVulnerability::NormalVulnerabilty())
+, mDamageVulnerability(CDamageVulnerability::NormalVulnerability())
 , mLastTouched(kInvalidUniqueId)
 , mResponseType(kWCR_EnemyNormal)
 , mExtendedTouchBounds(CVector3f::Zero()) {
@@ -59,7 +59,7 @@ CCollisionActor::CCollisionActor(TUniqueId uid, TAreaId areaId, TUniqueId owner,
 , mSpherePrimitive(nullptr)
 , mSphereRadius(0.f)
 , mHealthInfo(0.f, 0.f)
-, mDamageVulnerability(CDamageVulnerability::NormalVulnerabilty())
+, mDamageVulnerability(CDamageVulnerability::NormalVulnerability())
 , mLastTouched(kInvalidUniqueId)
 , mResponseType(kWCR_EnemyNormal)
 , mExtendedTouchBounds(CVector3f::Zero()) {
@@ -86,7 +86,7 @@ CCollisionActor::CCollisionActor(TUniqueId uid, TAreaId areaId, TUniqueId owner,
                                             CMaterialList(kMT_Unknown59, kMT_NoStaticCollision)))
 , mSphereRadius(radius)
 , mHealthInfo(0.f, 0.f)
-, mDamageVulnerability(CDamageVulnerability::NormalVulnerabilty())
+, mDamageVulnerability(CDamageVulnerability::NormalVulnerability())
 , mLastTouched(kInvalidUniqueId)
 , mResponseType(kWCR_EnemyNormal)
 , mExtendedTouchBounds(CVector3f::Zero()) {

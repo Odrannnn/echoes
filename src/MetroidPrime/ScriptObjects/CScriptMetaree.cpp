@@ -30,7 +30,7 @@ public:
 };
 
 extern const TUniqueId kInvalidUniqueId;
-extern float lbl_8041AAB8;
+extern float skDamageHitTime__10CPatterned;
 extern float lbl_8041B758;
 extern "C" CEntity* REL_LoadMetaree(CStateManager&, CInputStream&, const CEntityInfo&);
 void SetLoader_Metaree(FScriptLoader* loader);
@@ -91,6 +91,6 @@ uchar fn_42_334(const void* self) {
 }
 
 void fn_42_324(void* self) {
-  *reinterpret_cast<float*>(static_cast<char*>(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast<float*>(static_cast<char*>(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 }

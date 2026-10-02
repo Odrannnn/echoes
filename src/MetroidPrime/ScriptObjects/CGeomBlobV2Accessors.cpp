@@ -8,7 +8,7 @@
 // **This block is not the shape the other landed heads have, and that is measured rather than
 // assumed.** Krocuss, MysteryFlyer, Tryclops, AtomicAlpha, IngPuddle and EmperorIngStage3 all open
 // with the thirteen-accessor family: the `kInvalidUniqueId` store, the `li r3,0` predicate run,
-// the `+0x44f` byte, the `+0x34c` flag, the `lbl_8041AAB8` / `lbl_8041B758` float pair and the
+// the `+0x44f` byte, the `+0x34c` flag, the `skDamageHitTime__10CPatterned` / `lbl_8041B758` float pair and the
 // `+0x754` address. None of that is here. These are two pointer getters at `+0x15c` and a float
 // setter at `+0x198`, and they name **no DOL global at all**, so the object relocates against
 // nothing outside itself. That is why this file can be listed in `files.cmake`, unlike the module

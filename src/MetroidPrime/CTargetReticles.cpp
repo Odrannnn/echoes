@@ -217,7 +217,7 @@ CCompoundTargetReticle::CCompoundTargetReticle(const CStateManager& mgr, int pla
 , mGrapplePointFactorA(0.f)
 , mGrapplePointFactorB(0.f)
 , mVulnerabilityTarget(kInvalidUniqueId)
-, mTargetVulnerability(CDamageVulnerability::ImmuneVulnerabilty())
+, mTargetVulnerability(CDamageVulnerability::ImmuneVulnerability())
 , mCrosshairsScale(0.f)
 , mSeekerAngle(0.f)
 , mCrosshairsDrawScale(0.f)

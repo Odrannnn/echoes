@@ -5,7 +5,7 @@
 #include "MetroidPrime/TCastTo.hpp"
 
 void fn_80049ED8(CActor*, CStateManager&);
-extern "C" CDamageInfo fn_800B5FF0(const CDamageInfo&, float); // Retail time-scaled damage copy.
+extern "C" CDamageInfo MakeScaledForTime__11CDamageInfoCFf(const CDamageInfo&, float); // Retail time-scaled damage copy.
 extern "C" EMaterialTypes lbl_80418360; // kMT_NoPlatformCollision (20) in retail.
 extern "C" const float lbl_8041A7C0;          // 0.1f touch-bounds allowance.
 extern "C" const float lbl_8041C024;          // Retail's 0.0f constant.
@@ -116,12 +116,12 @@ void CBeamProjectile::UpdateFx(const CTransform4f& xf, float dt, CStateManager& 
   if (TCastToPtr< CActor >(mgr.ObjectById(collideId))) {
     SetCollisionResultData(kDT_Actor, res, collideId);
     if (mEnableTouchDamage) {
-      ApplyDamageToActors(mgr, fn_800B5FF0(mCurDamageInfo, dt));
+      ApplyDamageToActors(mgr, MakeScaledForTime__11CDamageInfoCFf(mCurDamageInfo, dt));
     }
   } else if (res.IsValid()) {
     SetCollisionResultData(kDT_World, res, kInvalidUniqueId);
     if (mEnableTouchDamage) {
-      ApplyBeamWorldDamage(*this, mgr, res.GetPoint(), fn_800B5FF0(mCurDamageInfo, dt), GetFilter());
+      ApplyBeamWorldDamage(*this, mgr, res.GetPoint(), MakeScaledForTime__11CDamageInfoCFf(mCurDamageInfo, dt), GetFilter());
     }
   } else {
     mCollisionPoint = xf * CVector3f(mBeamRadius, mBeamLength, mBeamRadius);

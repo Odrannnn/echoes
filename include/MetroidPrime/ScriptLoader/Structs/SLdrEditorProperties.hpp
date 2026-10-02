@@ -27,6 +27,6 @@ struct SLdrEditorProperties {
   uint unknown_0x5d298a43; // 0x5d298a43
 };
 
-void LoadTypedefSLdrEditorProperties(SLdrEditorProperties& data, CInputStream& input);
+void LoadTypedefEditorProperties(SLdrEditorProperties& data, CInputStream& input);
 
 #endif

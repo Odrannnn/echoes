@@ -25,7 +25,7 @@
 // `CMysteryFlyerRel.cpp`'s 0x170, the two share no two-accessor prefix at all: MysteryFlyer opens
 // `li r3,1` / `addi r3,r3,0x818` and this module opens `addi r3,r3,0x7c0` / the `GetBoundingBox`
 // wrapper, this module has **three** `li r3,0` predicates in a row where MysteryFlyer has two
-// (Tryclops three, Krocuss four), it has **no** `lbl_8041AAB8` float store at +0x448 and **no**
+// (Tryclops three, Krocuss four), it has **no** `skDamageHitTime__10CPatterned` float store at +0x448 and **no**
 // `li r3,1` anywhere, and its `fn_41_94` - the three-float copy - sits at 0x94 where the family
 // usually puts the `lbl_8041B758` accessor. So the set of bodies is the family's and none of the
 // spellings had to be discovered: each is the one `CMysteryFlyerRel.cpp` or

@@ -196,7 +196,7 @@ public:
   // CPlayer
   virtual bool UnkVtable98() const;
 
-  int GetPlayerIndex() const;
+  int GetPlayerNumber() const;
   float GetGunAlpha() const { return mGunAlpha; }
   const CSegId& GetGunParticleLocator() const { return mGunParticleLocator; }
   const CVector3f& GetLookDir() const { return mLookDir; }

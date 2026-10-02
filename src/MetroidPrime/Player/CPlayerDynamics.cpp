@@ -992,12 +992,12 @@ void CPlayer::StartGravityBoost(CStateManager& mgr) {
   // `clrlwi. r0,r3,24` / `bne` on `GetGravityBoostMultipleAllowed`'s bool jumps straight into the
   // body, and when it is false `lbz r0,4700(r31)` (0x125C = `mGravityBoostActive`) / `bne` leaves.
   // Inside, the four exits are, in order: `IsGravityBoostActive()` (0x80183980), the camera's
-  // fluid list through `CStateManager::mCameraManagers[GetPlayerIndex()]->mFpCamera` (0x151C /
+  // fluid list through `CStateManager::mCameraManagers[GetPlayerNumber()]->mFpCamera` (0x151C /
   // 0x18 / 0x110, the same chain `ApplyGravityBoost` and `CPlayerGunBase::Update` use),
   // `mMorphBallState` (0x38C), and **this** actor's own `mFluidIds` count (0x110) - so the boost
   // only starts with the player in a fluid.
   if (GetTweakPlayer()->GetGravityBoostMultipleAllowed() || !mGravityBoostActive) {
-    if (!IsGravityBoostActive() && mgr.CameraManager(GetPlayerIndex())
+    if (!IsGravityBoostActive() && mgr.CameraManager(GetPlayerNumber())
                                       ->FirstPersonCamera()
                                       ->IsInFluid()
         && mMorphBallState == kMS_Unmorphed) {
@@ -1042,7 +1042,7 @@ void CPlayer::ApplyGravityBoost(float dt, CStateManager& mgr) {
   //     `<= 0.f` form.
   if (mGravityBoostDuration > 0.f) {
     mGravityBoostDuration -= dt;
-    if (mGravityBoostDuration <= 0.f || !mgr.CameraManager(GetPlayerIndex())
+    if (mGravityBoostDuration <= 0.f || !mgr.CameraManager(GetPlayerNumber())
                                            ->FirstPersonCamera()
                                            ->IsInFluid()
           || mMorphBallState != kMS_Unmorphed) {

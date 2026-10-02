@@ -5,7 +5,7 @@
 // `config/G2ME01/rels/Lumite/symbols.txt`:
 //
 //   0x000 fn_39_0   0x68  GetBoundingBox, then an **inlined** optional_object<CAABox>
-//   0x068 fn_39_68  0x10  lbl_8041AAB8 -> *((float*)(self + 0x448))
+//   0x068 fn_39_68  0x10  skDamageHitTime__10CPatterned -> *((float*)(self + 0x448))
 //   0x078 fn_39_78  0x08  lbz r3, 0x44f(r3)
 //   0x080 fn_39_80  0x08  li r3,0
 //   0x088 fn_39_88  0x08  li r3,0
@@ -135,7 +135,7 @@ public:
 };
 
 extern "C" {
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const unsigned short kInvalidUniqueId;
 
 // fn_39_190, the module's own entity loader, 0x190, 0x5A8: left retail, named here only so the
@@ -230,7 +230,7 @@ unsigned char fn_39_78(const void* self) {
 
 // .text 0x68, 0x10 bytes. stores the default float at +0x448.
 void fn_39_68(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 // .text 0x0, 0x68 bytes. Returns `rstl::optional_object<CAABox>(self->GetBoundingBox())` through

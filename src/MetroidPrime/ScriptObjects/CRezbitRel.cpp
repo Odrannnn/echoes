@@ -6,7 +6,7 @@
 //   0x000 fn_53_0   0x08  addi r3,r3,0xac0
 //   0x008 fn_53_8   0x08  li r3,1
 //   0x010 fn_53_10  0x3C  GetBoundingBox into a local, then fn_53_88A4(out, &box)
-//   0x04C fn_53_4C  0x10  lbl_8041AAB8 -> *((float*)(self + 0x448))
+//   0x04C fn_53_4C  0x10  skDamageHitTime__10CPatterned -> *((float*)(self + 0x448))
 //   0x05C fn_53_5C  0x08  lbz r3, 0x44f(r3)
 //   0x064 fn_53_64  0x08  li r3,0
 //   0x06C fn_53_6C  0x08  li r3,0
@@ -24,7 +24,7 @@
 // **The block is MysteryFlyer's with two differences, and both are measured rather than assumed
 // from the `fn_<id>_<off>` names, which say nothing about which function is which.** Diffing
 // `build/G2ME01/Rezbit/asm/auto_00_00000000_text.s` over the 0x168 this claims against
-// `CMysteryFlyerRel.cpp`'s 0x170 instruction for instruction: the `lbl_8041AAB8` store at +0x448,
+// `CMysteryFlyerRel.cpp`'s 0x170 instruction for instruction: the `skDamageHitTime__10CPatterned` store at +0x448,
 // the +0x44f byte, the `kInvalidUniqueId` store, the +0x34c bit test, the `lbl_8041B758`
 // accessor, the +0x754 address, the three-float copy, the vtable-0x38 dispatch and the whole
 // RELExit/RELMain/registration trio are the same bodies. The two differences are:
@@ -93,7 +93,7 @@
 #include "MetroidPrime/TGameTypes.hpp"
 #include "REL/REL_Setup.h"
 
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const float lbl_8041B758;
 
 // `GetBoundingBox__13CPhysicsActorCFv`, the DOL's 0x800EA054, declared through a stand-in rather
@@ -215,7 +215,7 @@ unsigned char fn_53_5C(const void* self) {
 
 // .text 0x4C, 0x10 bytes. stores a DOL float at +0x448.
 void fn_53_4C(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 // .text 0x10, 0x3C bytes. Returns `optional_object<CAABox>(GetBoundingBox())` through the hidden

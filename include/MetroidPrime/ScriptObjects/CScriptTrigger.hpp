@@ -70,7 +70,7 @@ public:
   uchar ReplaceInhabitant(TUniqueId oldId, TUniqueId newId, CStateManager& mgr); // Guessed name
   bool IsAI(CStateManager& mgr, CActor& actor) const;                           // Guessed name
   bool GetPlayerInside(int playerIndex) const;
-  bool HasInhabitant(TUniqueId id) const; // Guessed name
+  bool IsObjectInside(TUniqueId id) const; // Guessed name
   void UpdateInhabitants(float dt, CStateManager& mgr);
   void SetPlayerInside(CStateManager& mgr, bool inside, int playerIndex); // Guessed name
   void UpdateCameraInhabitant(TUniqueId id, CStateManager& mgr);          // Guessed name

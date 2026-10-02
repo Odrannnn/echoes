@@ -8,7 +8,7 @@
 //   0x008 fn_75_8   0x08  the address of the member at +0xe5c
 //   0x010 fn_75_10  0x08  a predicate that is always true
 //   0x018 fn_75_18  0x3C  GetBoundingBox into a local, then fn_75_7C44(out, &box)
-//   0x054 fn_75_54  0x10  lbl_8041AAB8 -> *((float*)(self + 0x448))
+//   0x054 fn_75_54  0x10  skDamageHitTime__10CPatterned -> *((float*)(self + 0x448))
 //   0x064 fn_75_64  0x08  the byte at +0x44f
 //   0x06C fn_75_6C  0x08  a predicate that is always false
 //   0x074 fn_75_74  0x08  a predicate that is always false
@@ -55,7 +55,7 @@
 #include "Kyoto/Math/CAABox.hpp"
 #include "MetroidPrime/TGameTypes.hpp"
 
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const float lbl_8041B758;
 
 // `GetBoundingBox__13CPhysicsActorCFv`, the DOL's 0x800EA054, declared through a stand-in rather
@@ -141,7 +141,7 @@ unsigned char fn_75_64(const void* self) {
 
 // .text 0x54, 0x10 bytes. stores a DOL float at +0x448.
 void fn_75_54(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 #ifdef __MWERKS__

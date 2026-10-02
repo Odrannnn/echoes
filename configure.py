@@ -1650,7 +1650,7 @@ config.libs = [
     # of the other accessors besides. **The block is the family in a different order, and that is
     # measured**: it opens with two address accessors a word apart, `addi r3,r3,0xaec` and
     # `addi r3,r3,0xbd8`, where IngSpaceJumpGuardian opens `addi r3,r3,0x8d0` and `li r3,1`; it
-    # has no `GetBoundingBox` wrapper and no `lbl_8041AAB8` store at +0x448, so `lbl_8041B758` is
+    # has no `GetBoundingBox` wrapper and no `skDamageHitTime__10CPatterned` store at +0x448, so `lbl_8041B758` is
     # the only DOL global its relocations name; and its module-local `.rodata` constant accessor
     # sits at 0x18 (`lbl_30_rodata_64`, `.float 1`) rather than 0x10. The setter is the plain DOL
     # symbol `fn_8022FFC4` (0x8022FFC4, `stw r3, gLoader_IngBoostBallGuardian@sda21(r0)`), so
@@ -1683,7 +1683,7 @@ config.libs = [
     # GetBoundingBox wrapper `fn_18_8`, the twelve accessors above it, the vtable entry 0xB4 that
     # calls slot 0x38, and `fn_18_E0`. Module 18. Same arrangement as Krocuss and MysteryFlyer
     # above, and **its accessor block is not byte for byte either of theirs**: this module has no
-    # `lbl_8041AAB8` float store at +0x448 and no `lbl_8041B758` float accessor, so `kInvalidUniqueId`
+    # `skDamageHitTime__10CPatterned` float store at +0x448 and no `lbl_8041B758` float accessor, so `kInvalidUniqueId`
     # is the only DOL global its relocations name; it runs four `li r3,0` predicates in a row where
     # Krocuss runs three and Tryclops two, `fn_18_90` is always-true where the family usually puts
     # always-false, and `fn_18_E0` has no counterpart in the family. `fn_18_8` is instruction for
@@ -1717,7 +1717,7 @@ config.libs = [
     # accessors are not the family shape** - both measured, neither assumed: `fn_25_0` (0x0, 0x1FC)
     # is a real bone-blend loop calling `close_enough__FRC11CQuaternionRC11CQuaternionf`, and none
     # of Krocuss's / MysteryFlyer's / AtomicAlpha's thirteen-accessor set (no `kInvalidUniqueId`
-    # store, no `+0x44f` byte, no `lbl_8041AAB8` / `lbl_8041B758` floats) appears here. The two
+    # store, no `+0x44f` byte, no `skDamageHitTime__10CPatterned` / `lbl_8041B758` floats) appears here. The two
     # loaders are both unnamed DOL setters, `fn_80229EAC` (0x80229EAC, `stw r3, lbl_80419590`) and
     # `fn_802274FC` (0x802274FC, `stw r3, lbl_80419558`), so no `symbols.txt` rename and no DOL
     # change. `fn_25_48A8` / `fn_25_48CC` (the second loader's teardown and registration) and
@@ -1987,7 +1987,7 @@ config.libs = [
     # against `CMysteryFlyerRel.cpp`'s rather than read off the `fn_<id>_<off>` names: it opens
     # `addi r3,r3,0x7c0` and then the `GetBoundingBox` wrapper where MysteryFlyer opens
     # `li r3,1` / `addi r3,r3,0x818`, it runs three `li r3,0` predicates in a row, and it has
-    # **no** `lbl_8041AAB8` store at +0x448 and no `li r3,1` at all. **No dead-strip hazard**:
+    # **no** `skDamageHitTime__10CPatterned` store at +0x448 and no `li r3,1` at all. **No dead-strip hazard**:
     # the module's `ldscript.lcf` puts all twelve of `fn_41_0`..`fn_41_B0` in FORCEACTIVE and
     # `.data:0x5C8` stores every one of them, so no `force_active:` entry is needed (the trap
     # `CGeomBlobV2` hit). The setter import is the plain DOL symbol `fn_80218A6C`
@@ -2106,7 +2106,7 @@ config.libs = [
     # `build/G2ME01/SwampBossStage1/asm/auto_00_00000000_text.s` over the 0x160 this claims
     # against `CMysteryFlyerRel.cpp`'s 0x170 rather than from the `fn_<id>_<off>` names: it
     # opens `li r3,1` and goes straight to the `GetBoundingBox` wrapper (MysteryFlyer opens
-    # `li r3,1` then `addi r3,r3,0x818`), it has **no** `lbl_8041AAB8` store at +0x448, and it
+    # `li r3,1` then `addi r3,r3,0x818`), it has **no** `skDamageHitTime__10CPatterned` store at +0x448, and it
     # runs **three** `li r3,0` predicates to MysteryFlyer's two - 55 instructions over 14
     # accessors here against 59 over 15 there, differing by exactly one `li r3,0` gained, one
     # `addi r3,r3,0x818` lost and the four-instruction float store lost. So the block is
@@ -2149,7 +2149,7 @@ config.libs = [
     # `fn_<id>_<off>` names: 63 instructions over 15 accessors on both sides, differing by
     # exactly one `addi r3, r3, 0x818` lost and one `li r3, 0x0` gained. Against
     # `CSwampBossStage1Rel.cpp` (59 over 14, 0x0..0xEC) the only difference is this module's
-    # four-instruction `lbl_8041AAB8` store at +0x448. So the block is 0x0..0xFC and the head
+    # four-instruction `skDamageHitTime__10CPatterned` store at +0x448. So the block is 0x0..0xFC and the head
     # 0x0..0x170: eighteen functions with nothing missing. **243 is the module's complete text
     # symbol count**: 18 ours + 220 unclaimed + 5 setup, which is exactly the sum of its units'
     # `total_functions` in `build/report.json`.
@@ -2227,7 +2227,7 @@ config.libs = [
     # base, so its vtable is the 0x20-byte table at `.data:0x0` holding six virtuals
     # (`fn_11_B78`, `TypesMatch__27CScriptDarkSamusBattleStageCFi`, `PreThink`, `Think`,
     # `AcceptScriptMsg`, `SetActive`) after two leading words - not a `CActor`'s fourteen.
-    # Hence no `GetBoundingBox` wrapper, no `+0x818` accessor and no `lbl_8041AAB8` store,
+    # Hence no `GetBoundingBox` wrapper, no `+0x818` accessor and no `skDamageHitTime__10CPatterned` store,
     # and nothing missing: `fn_11_74` (0x74, 0x150) is already the module's entity loader.
     # Everything above it stays retail, so dtk fills it and the module's sha1 still holds.
     # **The record is four bytes and the `.bss` dump settles it without a choice** - this
@@ -2563,7 +2563,7 @@ config.libs = [
         # 0x0..0x168 against `CMediumIngRel.cpp`'s over 0x0..0x150 rather than read off the
         # `fn_<id>_<off>` names, which say nothing about which function is which: both open
         # `addi r3,r3,0x7c0` and then the `GetBoundingBox` wrapper, both run **three** `li r3,0`
-        # predicates in a row, and both have **no** `lbl_8041AAB8` float store at +0x448, but
+        # predicates in a row, and both have **no** `skDamageHitTime__10CPatterned` float store at +0x448, but
         # MediumIng goes straight from `addi r3,r3,0x754` to its three-float copy where this
         # module runs `li r3,1`, `li r3,0`, `li r3,0` first. That 0x18 is the whole difference
         # between the two claims (0x168 against 0x150, 18 functions against 15), so no spelling
@@ -2660,7 +2660,7 @@ config.libs = [
         # one, so the `li r3,1` lands third at 0x10; its 0x0C slot at 0x18 holds a **module-local
         # `.rodata` constant** (`lbl_29_rodata_64`, `.float 1`, `.rodata:0x64`) rather than a DOL
         # one, the same distinction `CDarkCommandoRel.cpp` and `CChozoGhostRel.cpp` already
-        # carry; and it has **neither** the `GetBoundingBox` wrapper **nor** the `lbl_8041AAB8`
+        # carry; and it has **neither** the `GetBoundingBox` wrapper **nor** the `skDamageHitTime__10CPatterned`
         # store at +0x448, so the three-float copy sits at 0x74 and the claim ends 0x38 below
         # Rezbit's. Every body below is one a sibling already reproduces at 100%, so no spelling
         # had to be discovered.
@@ -2708,7 +2708,7 @@ config.libs = [
         # read (Ing spends it on `lbl_29_rodata_64`, MinorIng on the DOL one) and the next
         # function is the `+0x754` member address at 0x4C; and it opens with **one**
         # member-address accessor (`+0x7c4` at 0x0) where Ing, IngBoostBallGuardian and
-        # AtomicAlpha each open with two, so the `lbl_8041AAB8` float store is the *second*
+        # AtomicAlpha each open with two, so the `skDamageHitTime__10CPatterned` float store is the *second*
         # function at 0x8. Every body below is one `CIngRel.cpp` or `CMinorIngRel.cpp` already
         # reproduces at 100%, so no spelling had to be discovered for this run.
         #

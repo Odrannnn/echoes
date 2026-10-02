@@ -329,9 +329,9 @@ void CScriptPickup::fn_800B4518(CStateManager& mgr) {
 
 CAABox LoadCAABox(CStateManager& mgr, const TAreaId& areaId, const CVector3f& collisionSize,
                   const CVector3f& collisionOffset);
-CTransform4f LoadEditorTransform(const SLdrEditorProperties&);
-CActorParameters LoadActorParameters(const SLdrActorParameters&);
-SEchoParameters LoadEchoParameters(const SLdrEchoParameters&);
+CTransform4f LdrToTransform4f(const SLdrEditorProperties&);
+CActorParameters LdrToActorParameters(const SLdrActorParameters&);
+SEchoParameters LdrToEchoParameters(const SLdrEchoParameters&);
 // Guessed name; the native reader stores a single item index.
 void ReadPlayerItem(int& item, CInputStream& input);
 
@@ -347,7 +347,7 @@ CScriptPickup* LoadPickup(CStateManager& mgr, CInputStream& input, CEntityInfo& 
     u16 propertySize = input.ReadUint16();
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefSLdrEditorProperties(sldrPickup.editorProperties, input);
+      LoadTypedefEditorProperties(sldrPickup.editorProperties, input);
       break;
     case 0x3a3e03ba:
       sldrPickup.collisionSize = CVector3f(input);
@@ -386,10 +386,10 @@ CScriptPickup* LoadPickup(CStateManager& mgr, CInputStream& input, CEntityInfo& 
       LoadTypedefSLdrAnimationParameters(sldrPickup.animationInformation, input);
       break;
     case 0x7e397fed:
-      LoadTypedefSLdrActorParameters(sldrPickup.actorInformation, input);
+      LoadTypedefActorParameters(sldrPickup.actorInformation, input);
       break;
     case 0x192b0e70:
-      LoadTypedefSLdrEchoParameters(sldrPickup.echoInformation, input);
+      LoadTypedefEchoParameters(sldrPickup.echoInformation, input);
       break;
     case 0xe585f166:
       sldrPickup.activationDelay = input.ReadFloat();
@@ -440,14 +440,14 @@ CScriptPickup* LoadPickup(CStateManager& mgr, CInputStream& input, CEntityInfo& 
   CAABox box =
       LoadCAABox(mgr, info.GetAreaId(), sldrPickup.collisionSize, sldrPickup.collisionOffset);
   if (sldrPickup.collisionSize == CVector3f::Zero()) {
-    box = modelData->GetBounds(CTransform4f(LoadEditorTransform(sldrPickup.editorProperties)));
+    box = modelData->GetBounds(CTransform4f(LdrToTransform4f(sldrPickup.editorProperties)));
   }
   return new CScriptPickup(
       mgr.AllocateUniqueId(), sldrPickup.editorProperties.name,
       LdrToEntityInfo(info, sldrPickup.editorProperties),
-      LoadEditorTransform(sldrPickup.editorProperties), *modelData,
-      LoadActorParameters(sldrPickup.actorInformation),
-      LoadEchoParameters(sldrPickup.echoInformation), box,
+      LdrToTransform4f(sldrPickup.editorProperties), *modelData,
+      LdrToActorParameters(sldrPickup.actorInformation),
+      LdrToEchoParameters(sldrPickup.echoInformation), box,
       CPlayerState::EItemType(sldrPickup.itemToGive), sldrPickup.amount,
       sldrPickup.capacityIncrease, sldrPickup.itemPercentageIncrease, sldrPickup.pickupEffect,
       sldrPickup.absoluteValue, sldrPickup.canHomeByDefault, sldrPickup.autoSpin,

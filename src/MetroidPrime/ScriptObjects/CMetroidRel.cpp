@@ -6,7 +6,7 @@
 //   0x000 fn_40_0   0x08  addi r3,r3,0x8c8
 //   0x008 fn_40_8   0x08  li r3,1
 //   0x010 fn_40_10  0x3C  GetBoundingBox into a local, then fn_40_85F4(out, &box)
-//   0x04C fn_40_4C  0x10  lbl_8041AAB8 -> *((float*)(self + 0x448))
+//   0x04C fn_40_4C  0x10  skDamageHitTime__10CPatterned -> *((float*)(self + 0x448))
 //   0x05C fn_40_5C  0x08  lbz r3, 0x44f(r3)
 //   0x064 fn_40_64  0x08  li r3,0
 //   0x06C fn_40_6C  0x08  li r3,0
@@ -25,7 +25,7 @@
 // **The accessor block is the family close to MysteryFlyer's, but not identical, and that is
 // measured rather than read off the `fn_<id>_<off>` names.** Diffing dtk's
 // `auto_00_00000000_text.s` over the 0x17C this claims against `CMysteryFlyerRel.cpp`'s 0x170: both
-// put the `GetBoundingBox` wrapper third, both have the `lbl_8041AAB8` store at +0x448, the
+// put the `GetBoundingBox` wrapper third, both have the `skDamageHitTime__10CPatterned` store at +0x448, the
 // `0x44f` byte, the `kInvalidUniqueId` store, the `+0x34c` bit test, the `lbl_8041B758` accessor,
 // the `+0x754` address, a `li r3,1` and the closing vtable-0x38 dispatch. The differences are
 // four, and each was read off the disassembly rather than assumed from a sibling:
@@ -147,7 +147,7 @@ extern void (CEntity::*lbl_40_data_358)(CStateManager&);
 
 // The two DOL floats the accessor block stores and returns. Both are the globals every module of
 // this family shares, so one body serves each of them.
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const float lbl_8041B758;
 
 // `GetBoundingBox__13CPhysicsActorCFv`, the DOL's 0x800EA054, declared through a stand-in rather
@@ -264,7 +264,7 @@ unsigned char fn_40_5C(const void* self) {
 
 // .text 0x4C, 0x10 bytes. stores a DOL float at +0x448.
 void fn_40_4C(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 // .text 0x10, 0x3C bytes. Returns `optional_object<CAABox>(GetBoundingBox())` through the hidden

@@ -7,7 +7,7 @@
 //   0x000 fn_3_0    0x08  li r3,1
 //   0x008 fn_3_8    0x0C  lbl_3_rodata_0, this module's own .rodata:0x0
 //   0x014 fn_3_14   0x68  GetBoundingBox, then an **inlined** optional_object<CAABox>
-//   0x07C fn_3_7C   0x10  lbl_8041AAB8 -> *((float*)(self + 0x448))
+//   0x07C fn_3_7C   0x10  skDamageHitTime__10CPatterned -> *((float*)(self + 0x448))
 //   0x08C fn_3_8C   0x08  lbz r3, 0x44f(r3)
 //   0x094 fn_3_94   0x08  li r3,0
 //   0x09C fn_3_9C   0x08  li r3,0
@@ -153,7 +153,7 @@ public:
 };
 
 extern "C" {
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const unsigned short kInvalidUniqueId;
 // This module's own .rodata:0x0, `.float 50`. Defined by dtk's `.rodata` object, which this
 // unit's .text-only split does not claim.
@@ -249,7 +249,7 @@ unsigned char fn_3_8C(const void* self) {
 
 // .text 0x7C, 0x10 bytes. stores the default float at +0x448.
 void fn_3_7C(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 // .text 0x14, 0x68 bytes. Returns `rstl::optional_object<CAABox>(self->GetBoundingBox())` through

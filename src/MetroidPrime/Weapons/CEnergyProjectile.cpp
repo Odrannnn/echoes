@@ -233,7 +233,7 @@ void CEnergyProjectile::Think(float dt, CStateManager& mgr) {
              projectile.GetCurrentFrame() >= projectile.GetLifetime()) {
     mSuppressDecal = true;
     if (Explode(GetTranslation(), GetTransform().GetForward() * -1.f, kWCR_Default, mgr,
-                CDamageVulnerability::NormalVulnerabilty(), kInvalidUniqueId)) {
+                CDamageVulnerability::NormalVulnerability(), kInvalidUniqueId)) {
       mgr.ApplyDamageToWorld(GetOwnerId(), *this, GetTranslation(), GetCurrentDamageInfo(),
                              GetFilter());
     }
@@ -242,7 +242,7 @@ void CEnergyProjectile::Think(float dt, CStateManager& mgr) {
   projectile.UpdateParticleFX();
   if (mActive && mExplodePending) {
     Explode(GetTranslation(), GetExplosionNormal(), kWCR_Default, mgr,
-            CDamageVulnerability::NormalVulnerabilty(), kInvalidUniqueId);
+            CDamageVulnerability::NormalVulnerability(), kInvalidUniqueId);
   }
 
   if (mProjectileLight != kInvalidUniqueId) {
@@ -305,7 +305,7 @@ void CEnergyProjectile::ResolveCollisionWithWorld(const CRayCastResult& result,
       CCollisionResponseData::GetWorldCollisionResponseType(CMaterialList::BitPosition(
           (kCheckMaterial.GetValue() & result.GetMaterial().GetValue()) & 0xffffffff));
   if (Explode(result.GetPoint(), result.GetPlane().GetNormal(), type, mgr,
-              CDamageVulnerability::NormalVulnerabilty(), kInvalidUniqueId)) {
+              CDamageVulnerability::NormalVulnerability(), kInvalidUniqueId)) {
     mgr.ApplyDamageToWorld(GetOwnerId(), *this, result.GetPoint(), GetCurrentDamageInfo(),
                            GetFilter());
   }

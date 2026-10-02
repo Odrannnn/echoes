@@ -14,7 +14,7 @@
 // unit.  It is *not* true of scripted-actor modules in general - `MetareeSwarm` and
 // `PlantScarabSwarm` have no such block at all.  The three globals the relocations name are the
 // same in every module and all three live in the DOL, which is why one body serves all of
-// them; the relocations for this range are `lbl_8041AAB8`, `kInvalidUniqueId` and `lbl_8041B758`.
+// them; the relocations for this range are `skDamageHitTime__10CPatterned`, `kInvalidUniqueId` and `lbl_8041B758`.
 //
 // The dtk `fn_<id>_<off>` names are kept, so `config/G2ME01/rels/Ripper/symbols.txt` needs no
 // rename: the names the retail module defines and the names this object exports are the same
@@ -25,7 +25,7 @@
 
 #include "types.h"
 
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const float lbl_8041B758;
 extern "C" const unsigned short kInvalidUniqueId;
 
@@ -105,7 +105,7 @@ bool fn_54_54(void*) { return false; }
 unsigned char fn_54_4C(const void* self) { return *reinterpret_cast< const unsigned char* >(static_cast< const char* >(self) + 0x44F); }
 
 // .text 0x00003C, 0x10 bytes. stores the default float at +0x448.
-void fn_54_3C(void* self) { *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8; }
+void fn_54_3C(void* self) { *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned; }
 
 #ifdef __MWERKS__
 // .text 0x158C, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line - six

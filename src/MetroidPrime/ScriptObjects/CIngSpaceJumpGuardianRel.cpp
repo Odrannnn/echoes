@@ -8,7 +8,7 @@
 //   0x008 fn_34_8   0x08  li r3,1
 //   0x010 fn_34_10  0x0C  lbl_34_rodata_0, this module's own .rodata:0x0
 //   0x01C fn_34_1C  0x3C  GetBoundingBox into a local, then fn_34_6814(out, &box)
-//   0x058 fn_34_58  0x10  lbl_8041AAB8 -> *((float*)(self + 0x448))
+//   0x058 fn_34_58  0x10  skDamageHitTime__10CPatterned -> *((float*)(self + 0x448))
 //   0x068 fn_34_68  0x08  lbz r3, 0x44f(r3)
 //   0x070 fn_34_70  0x08  li r3,0
 //   0x078 fn_34_78  0x08  li r3,0
@@ -104,7 +104,7 @@
 #include "MetroidPrime/TGameTypes.hpp"
 #include "REL/REL_Setup.h"
 
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 // `kInvalidUniqueId` comes from MetroidPrime/TGameTypes.hpp, which declares it as the
 // `TUniqueId` retail has, so `fn_34_88` is spelled `*id = kInvalidUniqueId` on a `TUniqueId*`
 // rather than the `unsigned short` alias CMysteryFlyerRel.cpp's header comment mentions.
@@ -227,7 +227,7 @@ unsigned char fn_34_68(const void* self) {
 
 // .text 0x58, 0x10 bytes. stores a DOL float at +0x448.
 void fn_34_58(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 // .text 0x1C, 0x3C bytes. Returns `optional_object<CAABox>(GetBoundingBox())` through the hidden

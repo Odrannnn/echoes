@@ -32,7 +32,7 @@ public:
 
   const wchar_t* GetString(int idx) const;
   const wchar_t* GetString(const char* name) const;
-  int GetStringIndex(const char* name) const;
+  int GetStringIndexByName(const char* name) const;
   int GetStringCount() const { return mStringCount; }
 
 private:

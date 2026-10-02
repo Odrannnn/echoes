@@ -282,7 +282,7 @@ CEntity* LoadStreamedAudio(CStateManager& mgr, CInputStream& input, const CEntit
     const uint propertySize = input.ReadUint16();
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefSLdrEditorProperties(data.editorProperties, input);
+      LoadTypedefEditorProperties(data.editorProperties, input);
       break;
     case 0xf6f3de1c: {
       const rstl::string value(input);

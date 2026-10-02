@@ -1,9 +1,9 @@
-// `LoadTypedefSLdrEditorProperties` and its one callee, from retail's own instructions. Both
+// `LoadTypedefEditorProperties` and its one callee, from retail's own instructions. Both
 // addresses are in G2ME01 `config/G2ME01/symbols.txt` and were read with
 // `tools/dis.sh 0x8023EF3C 0x140` and `tools/dis.sh 0x8023F8CC 0x9C`; the one place this file
 // does not spell retail's call out is the vector read, which the last section justifies.
 //
-// (Retail's own name, `LoadTypedefSLdrEditorProperties__FR20SLdrEditorPropertiesR12CInputStream` in
+// (Retail's own name, `LoadTypedefEditorProperties__FR20SLdrEditorPropertiesR12CInputStream` in
 // symbols.txt; the 2026-09-28 upstream merge took it over the port's earlier `LoadTypedefEditorProperties`.)
 //
 // ## Why this file is port-only (in `files.cmake`, absent from `configure.py`)
@@ -15,7 +15,7 @@
 // `tools/flip_test.sh` to flip. Carving the range would be a different job - four files
 // (`configure.py`, `config/G2ME01/splits.txt`, `files.cmake`, the source's own claim) in one
 // change - and is not what this file is for. It is listed in `files.cmake` only, so the
-// port's `mp_game` compiles it and `LoadTypedefSLdrEditorProperties` leaves the port's
+// port's `mp_game` compiles it and `LoadTypedefEditorProperties` leaves the port's
 // undefined-symbol list. `src/MetroidPrime/ScriptLoader/SLdrStructMembers.cpp` is the
 // precedent: a file of `SLdr*` struct bodies that is absent from `configure.py` and listed
 // in `files.cmake` for exactly that reason.
@@ -94,7 +94,7 @@ void LoadTypedefSLdrTransform(SLdrTransform& data, CInputStream& input) {
   data.scale = ReadVector3f(input);
 }
 
-void LoadTypedefSLdrEditorProperties(SLdrEditorProperties& sldrThis, CInputStream& input) {
+void LoadTypedefEditorProperties(SLdrEditorProperties& sldrThis, CInputStream& input) {
   const int propertyCount = input.ReadUint16();
   for (int i = 0; i < propertyCount; ++i) {
     const uint propertyId = input.ReadInt32();

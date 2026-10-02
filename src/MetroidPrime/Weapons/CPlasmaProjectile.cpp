@@ -38,7 +38,7 @@ public:
 };
 
 extern "C" void fn_801BF960(CPlayerKnockBackMgr*, CPlayer*, float); // Retail knock-back freeze.
-extern "C" CDamageInfo fn_800B5FF0(const CDamageInfo&, float);      // Retail time-scaled damage copy.
+extern "C" CDamageInfo MakeScaledForTime__11CDamageInfoCFf(const CDamageInfo&, float);      // Retail time-scaled damage copy.
 
 const int CPlasmaProjectile::kMaxPlasmaLights = 3;
 const float CPlasmaProjectile::kInvMaxPlasmaLights = 1.f / CCast::LtoF(kMaxPlasmaLights - 1);
@@ -237,7 +237,7 @@ void CPlasmaProjectile::UpdatePlayerEffects(float dt, CStateManager& mgr) {
   }
   if (mSustainedDamagePlayerId != kInvalidUniqueId) {
     mgr.ApplyDamage(GetUniqueId(), mSustainedDamagePlayerId, GetOwnerId(),
-                    fn_800B5FF0(mPhazonDamage, dt), GetFilter(), CVector3f::Zero());
+                    MakeScaledForTime__11CDamageInfoCFf(mPhazonDamage, dt), GetFilter(), CVector3f::Zero());
     mPlayerDamageTimer += dt;
     if (mPlayerDamageTimer >= mPlayerDamageDuration) {
       if (CPlayer* player = TCastToPtr< CPlayer >(mgr.ObjectById(GetOwnerId()))) {

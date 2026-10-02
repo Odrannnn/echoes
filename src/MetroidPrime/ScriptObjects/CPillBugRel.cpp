@@ -21,7 +21,7 @@
 // The thirteen short accessors at 0x0..0x90 are the accessor set the REL loader generator emits
 // at the head of a scripted-actor module. The same thirteen already reproduce, in the DOL, as
 // `MetroidPrime/ScriptObjects/GlowbugAccessors.cpp` and the other `*Accessors.cpp` units, sharing
-// the three globals the relocations name - `lbl_8041AAB8`, `kInvalidUniqueId` and `lbl_8041B758`
+// the three globals the relocations name - `skDamageHitTime__10CPatterned`, `kInvalidUniqueId` and `lbl_8041B758`
 // - all of which live in the DOL, so one body serves every module of the family. PillBug's
 // fourteenth function, fn_48_90, is a vtable call the Glowbug block does not have, so this is the
 // same thirteen, not the same fourteen: read the offsets out of this module's own symbols.txt,
@@ -92,7 +92,7 @@ public:
 };
 
 extern "C" {
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const float lbl_8041B758;
 extern "C" const unsigned short kInvalidUniqueId;
 
@@ -183,6 +183,6 @@ unsigned char fn_48_10(const void* self) {
 
 // .text 0x0, 0x10 bytes. stores the default float at +0x448.
 void fn_48_0(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 }

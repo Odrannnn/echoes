@@ -28,7 +28,7 @@
 // nothing about which function is which. Diffing dtk's `auto_00_00000000_text.s` for the 0x168
 // this module claims against `CMediumIngRel.cpp`'s 0x150: both open `addi r3,r3,0x7c0` and then
 // the `GetBoundingBox` wrapper, both run three `li r3,0` predicates in a row and both have **no**
-// `lbl_8041AAB8` store at +0x448, but MediumIng goes straight from `addi r3,r3,0x754` to its
+// `skDamageHitTime__10CPatterned` store at +0x448, but MediumIng goes straight from `addi r3,r3,0x754` to its
 // three-float copy where this module runs `li r3,1`, `li r3,0`, `li r3,0` first - which is the
 // whole of the 0x18-byte difference between the two claims (0x150 vs 0x168, 18 functions against
 // 15). So none of the spellings had to be discovered: each is the one `CMediumIngRel.cpp` or

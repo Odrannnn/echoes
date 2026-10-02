@@ -21,7 +21,7 @@
 //
 // **This head is PillBug's, re-ordered, and the diff is measured rather than assumed**: both
 // `.text 0x0..0xBC`-ish accessor runs come from the same generator, the same three DOL
-// relocations (`lbl_8041AAB8`, `kInvalidUniqueId`, `lbl_8041B758`) and the same three float-copy
+// relocations (`skDamageHitTime__10CPatterned`, `kInvalidUniqueId`, `lbl_8041B758`) and the same three float-copy
 // and vtable-call shapes, so every body below is the one `CPillBugRel.cpp` already reproduces at
 // 100% and `AtomicBetaAccessors.cpp` reproduces in the DOL. PillBug's block opens with the 0x10-byte
 // float store and runs four `li r3,0; blr` predicates in the run right after the byte read, six
@@ -99,7 +99,7 @@ public:
 };
 
 extern "C" {
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const float lbl_8041B758;
 extern "C" const unsigned short kInvalidUniqueId;
 
@@ -189,7 +189,7 @@ unsigned char fn_12_18(const void* self) {
 
 // .text 0x8, 0x10 bytes. stores the default float at +0x448.
 void fn_12_8(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 // .text 0x0, 0x08 bytes. the address of the member at +0x7c0.

@@ -71,7 +71,7 @@ CScriptAreaProperties* LoadAreaProperties(CStateManager& mgr, CInputStream& inpu
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefSLdrEditorProperties(sldrThis.editorProperties, input);
+      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
       break;
     case 0x95d4bee7:
       sldrThis.needSky = input.ReadBool();

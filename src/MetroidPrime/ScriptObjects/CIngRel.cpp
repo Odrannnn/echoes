@@ -34,7 +34,7 @@
 //     `.float 1`) rather than a DOL one - the same distinction `CDarkCommandoRel.cpp`'s
 //     `lbl_3_rodata_0` and `CChozoGhostRel.cpp`'s `lbl_8_rodata_0` already carry, so the spelling
 //     is an ordinary `extern "C"` declaration and nothing more;
-//   - it has **neither** the `GetBoundingBox` wrapper **nor** the `lbl_8041AAB8` store at +0x448,
+//   - it has **neither** the `GetBoundingBox` wrapper **nor** the `skDamageHitTime__10CPatterned` store at +0x448,
 //     so the three-float copy sits at 0x74 and the claim ends 0x38 below Rezbit's.
 //
 // Two accessors read oddly in dtk's rendering, and they are dtk's rendering rather than the

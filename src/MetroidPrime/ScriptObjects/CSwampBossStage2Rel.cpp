@@ -6,7 +6,7 @@
 //
 //   0x000 fn_79_0   0x08  li r3,1
 //   0x008 fn_79_8   0x3C  GetBoundingBox into a local, then fn_79_D4E8(out, &box)
-//   0x044 fn_79_44  0x10  lbl_8041AAB8 -> *((float*)(self + 0x448))
+//   0x044 fn_79_44  0x10  skDamageHitTime__10CPatterned -> *((float*)(self + 0x448))
 //   0x054 fn_79_54  0x08  lbz r3, 0x44f(r3)
 //   0x05C fn_79_5C  0x08  li r3,0
 //   0x064 fn_79_64  0x08  li r3,0
@@ -30,7 +30,7 @@
 // nothing about which function is which. Both are 63 instructions over 15 accessors and the two
 // multisets differ by exactly one `addi r3, r3, 0x818` lost and one `li r3, 0x0` gained;
 // nothing else. Against `CSwampBossStage1Rel.cpp` (59 instructions over 14 accessors, 0x0..0xEC)
-// the only difference is this module's four-instruction `lbl_8041AAB8` store at +0x448, which
+// the only difference is this module's four-instruction `skDamageHitTime__10CPatterned` store at +0x448, which
 // SwampBossStage1 does not have. So the block is 0x0..0xFC with fifteen functions, and the head is
 // 0x0..0x170 with eighteen - MysteryFlyer's shape exactly. Nothing is missing: every head
 // function this module has is a vtable entry of the 0x148-byte table at `.data:0x424`
@@ -81,7 +81,7 @@
 #include "MetroidPrime/TGameTypes.hpp"
 #include "REL/REL_Setup.h"
 
-extern "C" const float lbl_8041AAB8;
+extern "C" const float skDamageHitTime__10CPatterned;
 extern "C" const float lbl_8041B758;
 
 // `GetBoundingBox__13CPhysicsActorCFv`, the DOL's 0x800EA054, declared through a stand-in rather
@@ -208,7 +208,7 @@ unsigned char fn_79_54(const void* self) {
 
 // .text 0x44, 0x10 bytes. stores a DOL float at +0x448.
 void fn_79_44(void* self) {
-  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8;
+  *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = skDamageHitTime__10CPatterned;
 }
 
 // .text 0x8, 0x3C bytes. Returns `optional_object<CAABox>(GetBoundingBox())` through the hidden

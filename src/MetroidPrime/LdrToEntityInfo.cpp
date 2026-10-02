@@ -1,6 +1,6 @@
 // `LdrToEntityInfo`, both overloads, read off retail's own instructions:
 // `tools/dis.sh 0x80239BD4 0x38`, which is the whole of
-// `LdrToEntityInfo__FR11CEntityInfoRC20SLdrEditorProperties` in `config/G2ME01/symbols.txt`.
+// `LdrToEntityInfo__FRC11CEntityInfoRC20SLdrEditorProperties` in `config/G2ME01/symbols.txt`.
 //
 // ## Which of the two is the forwarder - asked and answered before either was written
 //

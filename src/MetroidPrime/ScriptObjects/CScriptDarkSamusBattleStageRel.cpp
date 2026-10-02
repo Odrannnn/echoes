@@ -20,7 +20,7 @@
 // `AcceptScriptMsg__7CEntityFR13CStateManagerRC10CScriptMsg` and `SetActive__7CEntityFb`
 // after two leading words - six virtuals off a `CEntity` base, not a `CActor`'s fourteen.
 // So there is no `GetBoundingBox` wrapper, no `+0x818` member accessor and no
-// `lbl_8041AAB8` store to reproduce, and nothing is missing from the block: `fn_11_74`
+// `skDamageHitTime__10CPatterned` store to reproduce, and nothing is missing from the block: `fn_11_74`
 // (0x74, 0x150) is already the module's own entity loader.
 //
 // Everything between fn_11_74 and the module's `REL_Setup` tail (0x74..0xD94) is left

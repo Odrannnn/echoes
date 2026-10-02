@@ -496,7 +496,7 @@ CProjectileTouchResult CRagDoll::ProjectileCollision(const CGameProjectile& proj
     }
     if (hit) {
       float impulse = 0.2f * projectile.GetCurrentDamageInfo().GetKnockBackPower(
-                                 CDamageVulnerability::NormalVulnerabilty(), 0.f);
+                                 CDamageVulnerability::NormalVulnerability(), 0.f);
       mParticles[hitParticle].mImpactResponseDelta += impulse * direction;
       mHitByProjectile = true;
       return CProjectileTouchResult(actorId,

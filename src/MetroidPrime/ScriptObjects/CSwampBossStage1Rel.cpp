@@ -27,11 +27,11 @@
 // `CMysteryFlyerRel.cpp`'s, not from the `fn_<id>_<off>` names, which say nothing about which
 // function is which. MysteryFlyer opens `li r3,1` then `addi r3,r3,0x818`; this one opens `li
 // r3,1` and then goes straight to the `GetBoundingBox` wrapper, so it has no `+0x818` member
-// accessor. MysteryFlyer also carries the `lbl_8041AAB8` store at +0x448 and runs two `li r3,0`
-// predicates; this one carries **no** `lbl_8041AAB8` store and runs **three** `li r3,0`
+// accessor. MysteryFlyer also carries the `skDamageHitTime__10CPatterned` store at +0x448 and runs two `li r3,0`
+// predicates; this one carries **no** `skDamageHitTime__10CPatterned` store and runs **three** `li r3,0`
 // predicates in a row. The two multisets of instructions over the block are 55 here against 59
 // there, and differ by exactly one `li r3,0` gained (+2), one `addi r3,r3,0x818` lost (-2) and
-// the four-instruction `lbl_8041AAB8` store lost (-4) - the two differences above and nothing
+// the four-instruction `skDamageHitTime__10CPatterned` store lost (-4) - the two differences above and nothing
 // else. So the block is 14 functions and 0x0..0xEC where MysteryFlyer's is 15 and 0x0..0xFC, and
 // the head is 17 functions ending at 0x160 rather than 18 ending at 0x170. Nothing is missing:
 // every head function this module has is a vtable entry of the 0x148-byte table at `.data:0x510`
