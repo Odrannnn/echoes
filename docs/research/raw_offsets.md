@@ -38,12 +38,15 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **185 sites in 79 files** (`python3 tools/check_raw_offsets.py`
-prints `186 raw-offset site(s) in 80 file(s)`, and the 80 `##` headings below sum to 186; measured
-2026-10-02, after the `progress-twin-rel-ingboostballguardian` item added module 30's accessor
-block - `CIngBoostBallGuardian194C.cpp` (1 site), `CIngBoostBallGuardianC6AC.cpp` (1) and
-`CIngBoostBallGuardianPredicates.cpp` (7), nine sites over three new files. This line read 176 in
-76 while the tool already measured 185 in 79 before the edit, so the totals here are re-derived
+the count here fails the gate. **191 sites in 82 files** (`python3 tools/check_raw_offsets.py`
+prints `191 raw-offset site(s) in 82 file(s)`, and the 82 `##` headings below sum to 191; measured
+2026-10-02, after the `progress-twin-rel-sandboss` item added module 55's two new units -
+`CSandBossRelTail3.cpp` (2 sites, the `CGameProjectile` destructor's two subobjects) and
+`CSandBossRelTail2.cpp` (3 sites, the `CCameraShakerData` destructor's three splines) - on top of
+the `progress-twin-rel-ingboostballguardian` item's module 30 accessor block -
+`CIngBoostBallGuardian194C.cpp` (1 site), `CIngBoostBallGuardianC6AC.cpp` (1) and
+`CIngBoostBallGuardianPredicates.cpp` (7), nine sites over three new files. The line before those
+two read 176 in 76 while the tool already measured 185 in 79, so the totals here are re-derived
 from the tool rather than accumulated by hand).
 
 **This line has been wrong before, five times over, and the failure was always the same one.**
@@ -492,6 +495,57 @@ free functions over a `void*` because `CRezbit` has no header here, and the only
 the offsets is the module's own retail bytes. Blocker: the same CActor/CPatterned hierarchy that
 module 53's entity loader `fn_53_168` (0x168, 0x330) needs before its other 146 class functions
 can move.
+
+## `src/MetroidPrime/ScriptObjects/CSandBossRelTail3.cpp` (2 sites)
+
+- `+0x1F8` and `+0x238`, both in `fn_55_10B48` (module 55, `.text 0x10B48`, 0x7C = 124 bytes,
+  `Object(Matching, ...)` in `configure.py`; `progress-twin-rel-sandboss`). The class is
+  `CGameProjectile` and both are subobjects retail destroys in place: `CProjectileWeapon` at
+  +0x238 through the imported `__dt__17CProjectileWeaponFv`, the member at +0x1F8 through
+  **this module's own** out-of-line copy at 0x480C (dtk's `fn_55_480C`, 0x54). **Kind B, and the
+  member spelling is measured to be worse than the offsets**: compiling the DOL's own
+  `CGameProjectile::~CGameProjectile() {}` (`src/MetroidPrime/Weapons/CGameProjectile.cpp:302`)
+  for this module emits `__dt__15CGameProjectileFv` (0x7C, right size) *plus* an out-of-line weak
+  `__dt__Q24rstl56optional_object<Q218CImpactVisorEffect15SParticleEffect>Fv` (0x5C), a local
+  `destroy<...>` (0x48) and an 0x8C-byte local `__vt__15CGameProjectile` in `.data` - measured
+  with a scratch compile of that one line under the module's flags and `nm --defined-only`. Every
+  one of those extra definitions moves bytes, and the +0x1F8 teardown would resolve to the DOL,
+  not to the module's 0x480C that retail's `bl` names. The function must also stay a free
+  `extern "C"` definition: retail's symbol is the anonymous `fn_55_10B48`
+  (`config/G2ME01/rels/SandBoss/symbols.txt:307`), and a member definition emits
+  `__dt__15CGameProjectileFv` and pairs with nothing in objdiff.
+  Removed by: nothing available to a carve. It goes if the module's copy at 0x480C is ever named
+  by a header (it would have to be the member's own type) or the two claims merge, a change this
+  unit does not need and must not make. The other three functions in the claim spell no counted
+  raw offset: `fn_55_10AE8` and `fn_55_10C18` store a vtable at +0 and call a destructor on the
+  receiver unchanged, and `fn_55_10BC4` reaches `+0xC`, a single-character offset the checker's
+  two-character minimum does not count (the `CFlyerSwarmRelTail.cpp` section above).
+
+## `src/MetroidPrime/ScriptObjects/CSandBossRelTail2.cpp` (3 sites)
+
+- `+0x18`, `+0x5C` and `+0xA0`, all three in `fn_55_4D78` (module 55, `.text 0x4D78`, 0x70 = 112
+  bytes, `Object(Matching, ...)` in `configure.py`; `progress-twin-rel-sandboss`). These are the
+  three `CMayaSpline` members of `CCameraShakerData`
+  (`include/MetroidPrime/Cameras/CCameraShakerData.hpp`, `CHECK_SIZEOF(CCameraShakerData, 0xf4)`:
+  `mHorizontalMotion` +0x18, `mForwardMotion` +0x5C, `mVerticalMotion` +0xA0), destroyed in reverse
+  declaration order - the instruction is `addi r3,r30,0xA0 / li r4,-1 / bl fn_55_4DE8`, three
+  times. **Kind B, and the blocker is access, not layout**: all three members are `private` and the
+  class has no accessor for them, so a free function cannot name them (`&self->mVerticalMotion`
+  fails with `illegal access to protected/private member`, the same wall `CTweakPlayerRes` above
+  measures). The function also has to stay a free `extern "C"` definition: retail's symbols are the
+  anonymous `fn_55_4D78`/`fn_55_4DE8`
+  (`config/G2ME01/rels/SandBoss/symbols.txt:305-308`, the module's own names for those addresses),
+  and a member definition would emit `__dt__17CCameraShakerDataFv` and pair with nothing in
+  objdiff. The bodies are the DOL's own, matched at 100.00% in `build/report.json`:
+  `__dt__17CCameraShakerDataFv` (0x8009D174, `main/MetroidPrime/TypesMatch`),
+  `__dt__11CMayaSplineFv` (0x800327FC) and `fn_80032854` (0x80032854), the last two in
+  `main/MetroidPrime/Factories/Carve80032774`.
+  Removed by: nothing available to a carve. It goes if `CCameraShakerData.hpp` gets public
+  accessors for the three splines (or the destructor is claimed under its own mangled name), a
+  header change this unit does not need and must not make. The other two functions in the claim
+  spell no counted raw offset: `fn_55_4E40` reaches `+0xC` and `fn_55_4DE8` reaches `+8`, both
+  single-character offsets the checker's two-character minimum does not count, the rule the
+  `CFlyerSwarmRelTail.cpp` section above states.
 
 ## `src/MetroidPrime/ScriptObjects/CSandBossRel.cpp` (1 site)
 

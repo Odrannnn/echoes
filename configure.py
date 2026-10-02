@@ -1996,11 +1996,33 @@ config.libs = [
     # from retail and the module's sha1 still holds. Not in `files.cmake`, for the reason the
     # other landed heads measure: it calls `fn_55_178` and `fn_802189D0`, which the port cannot
     # link.
+    #
+    # `CSandBossRelTail2.cpp` (2026-10-02) is the middle block, .text 0x4D78..0x4E94: the
+    # `CCameraShakerData` / `CMayaSpline` destruction cluster, three functions whose bodies are
+    # word for word DOL functions already at 100.00% (`__dt__17CCameraShakerDataFv`,
+    # `__dt__11CMayaSplineFv` and `fn_80032854`, all in `main/` units), written as free functions
+    # over offsets - the spelling `Carve80032774.cpp` uses for the same two destructors. Its three
+    # callees resolve inside its own object or to the DOL's `CMemory::Free`. Named `...Tail2`
+    # after `CSandwormRelTail2.cpp`, the same second-unit arrangement for a sibling module.
+    #
+    # `CSandBossRelTail3.cpp` (2026-10-02, same item) is the projectile-destructor chain above
+    # `fn_55_108E4`, .text 0x10AE8..0x10C78: `CBeamProjectile`'s and `CGameProjectile`'s deleting
+    # destructors, the `rstl::vector<int>` member destructor at +0x598 and the module's own
+    # class's destructor. Written as free functions over offsets for the reason
+    # `docs/research/raw_offsets.md` records: the DOL's `CGameProjectile::~CGameProjectile() {}`
+    # spelling emits three extra out-of-line destructors and a local vtable for this module, and
+    # the +0x1F8 member has to resolve to the module's own copy at 0x480C, which no member
+    # spelling can name. Its callees are the DOL's `__vt__15CBeamProjectile` / `__vt__15CGameProjectile`
+    # / `__dt__17CProjectileWeaponFv` / `__dt__7CWeaponFv` (all already undefined symbols of this
+    # module's auto objects) and the module's own `fn_55_480C` / `fn_55_108E4` / `lbl_55_data_9AC`.
+    # (322 text symbols: 39 ours, 5 `REL_Setup`, 283 unclaimed.)
     Rel(
         "SandBoss",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CSandBossRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CSandBossRelTail2.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CSandBossRelTail.cpp", mw_version="GC/2.7"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CSandBossRelTail3.cpp"),
         ],
     ),
     # Added 2026-09-30 (goal item `progress-rel-head-sandworm`). 4 functions, .text

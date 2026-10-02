@@ -81,3 +81,113 @@ same target (`module:SandBoss`) this item already names.
 Note for the driver: `docs/HANDOFF.md` and `docs/RUNNING_THE_DECOMP.md` show as modified in
 `git status` - that is `goal_check.sh`'s own `MP_GATE_DOCS_WRITE=1 ./tools/gate.sh` rewriting the
 derived counts, not an edit of mine.
+
+---
+
+# Run 2 (2026-10-02, same day) — PASS, module 32 -> 39
+
+**Result: PASS.** `./tools/goal_check.sh build/goal/item.json` -> `PASS progress-twin-rel-sandboss`.
+`module:SandBoss` matched functions **32 -> 39** (of 322); project `matched_functions`
+**13343 -> 13350**, `linked` **6391 -> 6398**; `build/G2ME01/SandBoss/SandBoss.rel` sha1
+`0a28cddbe1a04c8c4ca2bf6a6750d0467b9e805e` == `config/G2ME01/config.yml` and `cmp` against
+`orig/G2ME01/files/RelProd/SandBoss.rel` prints nothing. `All:` line
+`37.40% fuzzy, 30.83% matched, 13.70% linked (13350 / 28465 functions)`.
+
+Two new `Matching` units, 7 functions, all 100.00% in `build/report.json` (they were 0.00% and
+unclaimed before - the runs were `auto_00_00000178_text` / `auto_00_0001073C_text`):
+
+| unit (claim) | retail | fn | size | before | after | what it is |
+| --- | --- | --- | --- | --- | --- | --- |
+| `CSandBossRelTail2.cpp` (.text 0x4D78..0x4E94) | 0x4D78 | `fn_55_4D78` | 0x70 | 0.00% | 100.00% | `CCameraShakerData::~CCameraShakerData()` |
+| | 0x4DE8 | `fn_55_4DE8` | 0x58 | 0.00% | 100.00% | `CMayaSpline::~CMayaSpline()` |
+| | 0x4E40 | `fn_55_4E40` | 0x54 | 0.00% | 100.00% | `~vector<CMayaSplineKnot>` (the member at +8) |
+| `CSandBossRelTail3.cpp` (.text 0x10AE8..0x10C78) | 0x10AE8 | `fn_55_10AE8` | 0x60 | 0.00% | 100.00% | `CBeamProjectile::~CBeamProjectile()` |
+| | 0x10B48 | `fn_55_10B48` | 0x7C | 0.00% | 100.00% | `CGameProjectile::~CGameProjectile()` |
+| | 0x10BC4 | `fn_55_10BC4` | 0x54 | 0.00% | 100.00% | `~vector<int>`, the +0x598 member |
+| | 0x10C18 | `fn_55_10C18` | 0x60 | 0.00% | 100.00% | module-local class dtor (vtable `lbl_55_data_9AC`) |
+
+## The twin list judged again: it is a map, not an order
+
+The previous list's "left for the next run" named 0x1073C.., 0x10AE8.. and 0x108E4. The
+**0x4D78..0x51BC** six-function run (rank 1 of the item's own list) was not in it and is what the
+first unit took; 0x10AE8.. is the second. The two runs the item ranks first are exactly the two
+that landed, so read the item's ordering, not just the previous notes.
+
+## Four mechanical facts this run measured, in the order they blocked
+
+1. **A body may be copied from the DOL's own free-function spelling, not just its twin's source.**
+   All three functions of the first unit exist in the DOL as *free* functions over `void*`:
+   `__dt__17CCameraShakerDataFv` (0x8009D174, 112 B), `__dt__11CMayaSplineFv` (0x800327FC, 88 B)
+   and `fn_80032854` (84 B), the last two in `src/MetroidPrime/Factories/Carve80032774.cpp` and all
+   100.00% in `build/report.json`. Copying those bodies verbatim, with the module's own names for
+   the callees, is 100.00% on the first build - no spelling search at all. `CLumiteRelTail`'s
+   `mw_version="GC/2.7"` was **not** needed here: the module's default GC/1.3.2 gives all three
+   100.00%, so the 2.7 override is a property of the *tail* (0x10548..), not of the module.
+2. **The auto objects carry relocations for module-internal calls, so `force_active:` is not
+   needed for a function retail's own code calls** - `build/G2ME01/SandBoss/obj/auto_00_00000178_text.o`
+   has `R_PPC_REL24 ... fn_55_4D78` at 0x4BC4 (`powerpc-eabi-readelf -r`). That is the whole
+   difference from the previous run's `fn_55_10588`/`fn_55_1064C`: nothing in the module calls
+   those two, so they were dead-stripped. None of the seven functions here needed a
+   `config.yml force_active:` entry, and the ldscript's FORCEACTIVE list already had
+   `fn_55_10C18` and `lbl_55_data_9AC` from the retail relocations.
+3. **A module-local callee can be called by dtk's own name for it, and a DOL import the auto
+   object lists as `U` resolves.** `nm -u` on the auto object first: `fn_55_480C` (0x480C, its own
+   `T` definition, the module's copy of the +0x1F8 member's destructor), `fn_55_108E4`
+   (0x108E4, still unclaimed and retail's), `lbl_55_data_9AC` (`.data:0x9AC`, 0x98 = the module's
+   own vtable, `auto_04_00000000_data.o`), and the DOL's `__vt__15CBeamProjectile`,
+   `__vt__15CGameProjectile`, `__dt__17CProjectileWeaponFv`, `__dt__7CWeaponFv`. `nm -u` on the
+   new object is exactly those eight names, and the module hashes.
+4. **A member-function spelling is the *wrong* spelling for these, and that is now measured, not
+   assumed.** A scratch compile of the DOL's own `CGameProjectile::~CGameProjectile() {}`
+   (`src/MetroidPrime/Weapons/CGameProjectile.cpp:302`) under the module's flags gives
+   `__dt__15CGameProjectileFv` (0x7C, right size) **plus** an out-of-line weak
+   `__dt__Q24rstl56optional_object<Q218CImpactVisorEffect15SParticleEffect>Fv` (0x5C), a local
+   `destroy<...>` (0x48) and an 0x8C `__vt__15CGameProjectile` in `.data` (`nm --defined-only`).
+   Retail's module has none of those extras: its +0x1F8 teardown is the module's own 0x480C and
+   its vtable is the imported DOL one. The same argument covers the whole family - it is also why
+   the item's "write it as a member of a declared class" hint did not apply to any of the seven.
+
+## Gate/detail notes worth keeping
+
+- A compile error on the first `CSandBossRelTail3.cpp` build: `fn_55_10B48(SFn55_10AE8*, int)`
+  does not match `fn_55_10B48(SFn55_10B48*, short)`. Fixed with
+  `reinterpret_cast< SFn55_10B48* >(self)`, the pointer types do not change the bytes.
+- `docs/research/raw_offsets.md` needed a section per new file (the gate's `raw-offsets` step is
+  fatal, not a warning): 3 sites for Tail2 (`+0x18`/`+0x5C`/`+0xA0`) and 2 for Tail3
+  (`+0x1F8`/`+0x238`); the tool now prints `191 raw-offset site(s) in 82 file(s)` and the totals
+  line in that file is re-derived to match. `+0xC`/`+8`/`+0` are *not* counted (the checker keys
+  on two hex digits).
+- `docs/HANDOFF.md` and `docs/RUNNING_THE_DECOMP.md` show as modified in `git status`: that is
+  `goal_check.sh`'s own `MP_GATE_DOCS_WRITE=1 ./tools/gate.sh` rewriting the derived counts, not an
+  edit of mine. Same as the previous run.
+
+## Left for the next run (measured, not attempted)
+
+- **0x4E94..0x51BC** (3 functions, immediately above Tail2, the rest of the item's rank-1 run):
+  `fn_55_4E94` (0xAC, `CCameraShakerData` copy ctor), `fn_55_4F40` (0xAC, `CMayaSpline` copy ctor)
+  and `fn_55_4FEC` (0x1D0, `vector<CMayaSplineKnot>` copy ctor, `mulli 0x1c` + the 4-element
+  unrolled copy). All three call each other, so one claim of 0x4E94..0x51BC covers the run; the
+  first two are mostly word/float copies in retail's 2-deep `lwz/lwz/stw/stw` pipeline (the
+  previous run's `fn_55_106E0` note is the same problem), the third is the one to be careful with.
+- **0x1073C..0x107B0**: `fn_55_1073C` (0x24, `MakeInvalid`) and `fn_55_10760` (0x50). Both are a
+  0x2C-byte record's constructor; note it writes words at **+0x20 and +0x24 and a byte at +0x28**,
+  so the module's class is *not* the repo's `CRayCastResult` (`CHECK_SIZEOF 0x30`, `mValid` at
+  +0x24) - copy the offsets from the asm, not the header. `fn_55_10760` reads
+  `lbl_55_rodata_B8` (module rodata, `auto_03_00000000_rodata.o`, `R lbl_55_rodata_B8`) and
+  `sRightVector__9CVector3f` (DOL), both of which resolve.
+- **0x108E4** (0x204, `CPlasmaProjectile::~CPlasmaProjectile()`, 516 B, the biggest single item
+  left): its two module-local callees are now claimed in `CSandBossRelTail3.cpp`, so a claim of
+  0x108E4..0x10C78 in one unit is possible and would absorb Tail3's four (one unit, one range);
+  its body is fourteen member teardowns at +0x620..+0x69C whose shapes are each a typed
+  `optional_object`/smart-pointer/`CToken` destructor, so it is a spelling job per member, not one
+  body. `U __vt__17CPlasmaProjectile` and `U __dt__6CTokenFv` are already imports.
+- The `0x2FB4..0x3044` run (3 functions with DOL twins: `reserved_vector<SDSPStreamVoice,4>::push_back`,
+  `__sys_free`, `construct_impl<CPASAnimState>`) is the other small contiguous run in the
+  unclaimed middle, if a cheaper target than the copy ctors is wanted.
+
+No `WALL:` line: nothing was left at a sub-100% score - every function written this run matched on
+its first build. No `STALE:`: the module's 39 were 32 at the baseline.
+
+`NEW:` - none filed, same reasoning as the previous run: the remaining work is the same target
+(`module:SandBoss`) this item already names, and the three findings above are lessons for the notes
+file, not new queue items.

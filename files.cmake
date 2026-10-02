@@ -395,6 +395,18 @@ src/MetroidPrime/PortLinkStubs.cpp
     # 80) and `fn_21_14E4`, this module's own unclaimed 0x14E4 - are names nothing on the host
     # defines, so a host definition would grow the port's undefined count.
     src/MetroidPrime/ScriptObjects/CFlyerSwarmRelTail.cpp
+    # SandBoss's (module 55) out-of-line destruction cluster, `fn_55_4D78`..`fn_55_4E40`: the
+    # `CCameraShakerData` / `CMayaSpline` destructors. Its host branch is empty by design (the
+    # bodies are inside `#ifdef __MWERKS__`), so listing it adds no undefined reference; it is
+    # listed because check_files_cmake.py requires every configure.py `Matching` object to be in
+    # this list, and only a RELMain/RELExit unit is exempt.
+    src/MetroidPrime/ScriptObjects/CSandBossRelTail2.cpp
+    # SandBoss's (module 55) projectile-destructor chain, `fn_55_10AE8`..`fn_55_10C18`: the
+    # CBeamProjectile / CGameProjectile / CPlasmaProjectile-base deleting destructors the module
+    # emitted for the classes its unclaimed `fn_55_108E4` belongs to. Its host branch is empty by
+    # design (the bodies are inside `#ifdef __MWERKS__`), so listing it adds no undefined
+    # reference.
+    src/MetroidPrime/ScriptObjects/CSandBossRelTail3.cpp
     # SandBoss's (module 55) out-of-line template tail, `fn_55_10548`..`fn_55_106E0`. Its host
     # branch is empty by design (the bodies are inside `#ifdef __MWERKS__`), so listing it adds
     # no undefined reference; it is listed because check_files_cmake.py requires every

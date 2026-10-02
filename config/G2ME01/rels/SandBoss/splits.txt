@@ -9,8 +9,14 @@ Sections:
 MetroidPrime/ScriptObjects/CSandBossRel.cpp:
 	.text       start:0x00000000 end:0x00000178
 
+MetroidPrime/ScriptObjects/CSandBossRelTail2.cpp:
+	.text       start:0x00004D78 end:0x00004E94
+
 MetroidPrime/ScriptObjects/CSandBossRelTail.cpp:
 	.text       start:0x00010548 end:0x0001073C
+
+MetroidPrime/ScriptObjects/CSandBossRelTail3.cpp:
+	.text       start:0x00010AE8 end:0x00010C78
 
 REL/REL_Setup.cpp:
 	.text       start:0x00011B30 end:0x00011CD4
