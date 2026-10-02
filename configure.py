@@ -2706,6 +2706,43 @@ config.libs = [
             # at +0x764 - `DigitalGuardianAccessors.cpp`'s `fn_14_D8` (+0x754) with this module's
             # offset. Both are in the module's `ldscript.lcf` FORCEACTIVE list.
             Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianMemberPtr.cpp"),
+            # Four virtual forwarders the module's own classes define, each a pure
+            # prologue/call/epilogue with the arguments passed straight through:
+            # `fn_14_179E0` (0x179E0, 0x20, `GetDamageVulnerability` ->
+            # `CDamageVulnerability::PassThruVulnerability`), `fn_14_17A00` (0x17A00, 0x44,
+            # `AddToRenderer` -> `CPatterned::AddToRenderer` then
+            # `CPatterned::Render`), `fn_14_17A44` (0x17A44, 0x20, `PreRender` ->
+            # `CPatterned::PreRender`), `fn_14_A384` (0xA384, 0x20, the same
+            # `PreRender` forward), `fn_14_A688` (0xA688, 0x20, `PreThink` ->
+            # `CPatterned::PreThink`) and `fn_14_9FE4` (0x9FE4, 0x20, the same
+            # `GetDamageVulnerability` forward). Added 2026-10-02
+            # (progress-vt-rel-digitalguardian). Five units, because the module recipe allows
+            # one contiguous range per unit and these five ranges are not contiguous with each
+            # other; the three at 0x179E0..0x17A64 do share one, so they are one file. All six
+            # are in the module's `ldscript.lcf` FORCEACTIVE list, so none is dead-stripped, and
+            # every range's neighbours stay unclaimed so dtk fills them from retail.
+            Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianDoorWrappers.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianPreThink.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianPreRender.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianVulnerability.cpp"),
+            # .text 0x0000D774..0x0000D7DC - two adjacent functions: `fn_14_D774` (0x48 B),
+            # the module's other copy of the copy-the-record-if-flagged accessor (its twin is
+            # `fn_14_1AB50`, already `DigitalGuardianContact.cpp`, at this module's other offset
+            # set), and `fn_14_D7BC` (0x20 B), a `GetDamageVulnerability` forward identical to
+            # `fn_14_9FE4` above. Both are in the module's FORCEACTIVE list and both neighbours
+            # stay unclaimed.
+            Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianTouchBounds.cpp"),
+            # .text 0x00009DBC..0x00009DFC - one function, `fn_14_9DBC` (0x40 B), the module's
+            # `GetScannableObjectInfo` override: bit 25 of the word at +0x128C and a non-null
+            # pointer at +0xE68 select the module's own answer, anything else falls through to
+            # `CPatterned::GetScannableObjectInfo`. Both neighbours stay unclaimed.
+            Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianScannable.cpp"),
+            # .text 0x0001A12C..0x0001A168 - one function, `fn_14_1A12C` (0x3C B), the module's
+            # state-reading `GetDamageVulnerability`: the word at +0x708 being 1 or 3 returns
+            # the receiver's own record at +0x734, anything else the shared pass-through one.
+            # The state member is signed - retail's compares are `cmpwi`, not `cmplwi`. Both
+            # neighbours stay unclaimed.
+            Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianStateVulnerability.cpp"),
         ],
     ),
     Rel(

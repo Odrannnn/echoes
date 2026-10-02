@@ -12,6 +12,27 @@ MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp:
 MetroidPrime/ScriptObjects/DigitalGuardianDestroy.cpp:
 	.text       start:0x00006144 end:0x0000617C
 
+MetroidPrime/ScriptObjects/DigitalGuardianScannable.cpp:
+	.text       start:0x00009DBC end:0x00009DFC
+
+MetroidPrime/ScriptObjects/DigitalGuardianVulnerability.cpp:
+	.text       start:0x00009FE4 end:0x0000A004
+
+MetroidPrime/ScriptObjects/DigitalGuardianPreRender.cpp:
+	.text       start:0x0000A384 end:0x0000A3A4
+
+MetroidPrime/ScriptObjects/DigitalGuardianPreThink.cpp:
+	.text       start:0x0000A688 end:0x0000A6A8
+
+MetroidPrime/ScriptObjects/DigitalGuardianTouchBounds.cpp:
+	.text       start:0x0000D774 end:0x0000D7DC
+
+MetroidPrime/ScriptObjects/DigitalGuardianDoorWrappers.cpp:
+	.text       start:0x000179E0 end:0x00017A64
+
+MetroidPrime/ScriptObjects/DigitalGuardianStateVulnerability.cpp:
+	.text       start:0x0001A12C end:0x0001A168
+
 MetroidPrime/ScriptObjects/DigitalGuardianVecList.cpp:
 	.text       start:0x0001AB24 end:0x0001AB50
 

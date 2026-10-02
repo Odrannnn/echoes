@@ -1342,6 +1342,36 @@ list(APPEND MP_GAME_SOURCES
     # unchanged.
     src/MetroidPrime/ScriptObjects/DigitalGuardianContact.cpp
     src/MetroidPrime/ScriptObjects/DigitalGuardianMemberPtr.cpp
+    # Module 15's .text 0x179E0..0x17A64, 0xA384..0xA3A4, 0xA688..0xA6A8 and 0x9FE4..0xA004 -
+    # six virtual forwarders in four units. Listed for the same reason as the two
+    # DigitalGuardianContact entries above: none of them defines RELMain or RELExit, so
+    # check_files_cmake.py's MODULE_ENTRY exemption is not needed, and every relocation any of
+    # them carries is a call to a DOL function - `PassThruVulnerability__20CDamageVulnerabilityFv`,
+    # `PreRender__10CPatternedFR13CStateManager`, `PreThink__10CPatternedFfR13CStateManager`,
+    # `AddToRenderer__10CPatternedCFRC13CStateManager` or `Render__10CPatternedCFRC13CStateManager`
+    # - which nothing in the port defines, so every body is behind the `#ifdef __MWERKS__`
+    # guard and `powerpc-eabi-nm -u` on the host objects prints nothing. The port's undefined
+    # count is unchanged.
+    src/MetroidPrime/ScriptObjects/DigitalGuardianDoorWrappers.cpp
+    src/MetroidPrime/ScriptObjects/DigitalGuardianPreThink.cpp
+    src/MetroidPrime/ScriptObjects/DigitalGuardianPreRender.cpp
+    src/MetroidPrime/ScriptObjects/DigitalGuardianVulnerability.cpp
+    # Module 15's .text 0xD774..0xD7DC - two functions, the module's other
+    # copy-the-record-if-flagged accessor and a `GetDamageVulnerability` forward. Listed for the
+    # same reason as the four entries above: it defines neither RELMain nor RELExit, and its
+    # only relocation is a call to a DOL function the port does not define, so the body is
+    # behind the `#ifdef __MWERKS__` guard and the host object defines nothing.
+    src/MetroidPrime/ScriptObjects/DigitalGuardianTouchBounds.cpp
+    # Module 15's .text 0x9DBC..0x9DFC - one function, the module's `GetScannableObjectInfo`
+    # override. Listed for the same reason as the entries above: it defines neither RELMain nor
+    # RELExit, and its only relocation is a call to a DOL function the port does not define, so
+    # the body is behind the `#ifdef __MWERKS__` guard.
+    src/MetroidPrime/ScriptObjects/DigitalGuardianScannable.cpp
+    # Module 15's .text 0x1A12C..0x1A168 - one function, the module's state-reading
+    # `GetDamageVulnerability`. Listed for the same reason as the entries above: it defines
+    # neither RELMain nor RELExit, and its only relocation is a call to a DOL function the port
+    # does not define, so the body is behind the `#ifdef __MWERKS__` guard.
+    src/MetroidPrime/ScriptObjects/DigitalGuardianStateVulnerability.cpp
     # Module 1's .text 0x48C0..0x491C - one function, the module's 0x5C deleting destructor, the
     # REL twin of the DOL's __dt__21CArchMsgParmUserInputFv. Listed for the same reason as the
     # entries above: it defines neither RELMain nor RELExit, so check_files_cmake.py's MODULE_ENTRY
