@@ -320,6 +320,14 @@ on their base and must be redone on the moved branch; and a lane may claim less 
 run when one function will not match (`carve-801fdb5c`), which leaves that function for a later
 item. Rstl template twins (`vector` dtors, `destroy_impl`) are the likely hard ones in plain C.
 
+**Failed-once items are the hard lane's while it is alive (2026-10-02; supersedes "then take a
+failed-once item" above for that case).** The hard lane, now `mp2-goal@9` on
+`claude-code/claude-sonnet-5-5`, writes its pid to `build/goal/hard-lane.pid` in `wt-mp2-goal`. A
+free lane with nothing fresh still seeds once per head, but then waits ten minutes instead of
+taking a failed-once item if that pid is a live `run_goal.sh`; with the hard lane stopped it takes
+one as before. Measured backlog when this landed: 141 queued items at `fails=1` against one hard
+lane, so that band drains slowly and on Claude usage; stop lane 9 to hand it back to the free lanes.
+
 **A Go usage limit is not an item's fail (2026-10-02).** Lanes 10-13 (`deepseek-v4.1-flash`) ran
 on an exhausted OpenCode Go workspace for about fifteen minutes: every run died in 2-3 s with
 `GoUsageLimitError` and was charged to its item, 14 items in all, ten of them sent to review on it.

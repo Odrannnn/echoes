@@ -98,6 +98,7 @@ LANEARG=(); [ -n "$LANE" ] && LANEARG=(--lane "$LANE")
 # MP_GOAL_TAKE_MIN_FAILS=1, so an item's last attempt goes to the stronger model; both are set by
 # systemd drop-ins (tools/goal_lanes.sh), and unset means any item.
 [ -n "${MP_GOAL_TAKE_MIN_FAILS:-}" ] && LANEARG+=(--min-fails "$MP_GOAL_TAKE_MIN_FAILS")
+[ -n "${MP_GOAL_TAKE_MIN_FAILS:-}" ] && echo $$ >"$SHARED/hard-lane.pid"   # read by the free lanes, below
 [ -n "${MP_GOAL_TAKE_MAX_FAILS:-}" ] && LANEARG+=(--max-fails "$MP_GOAL_TAKE_MAX_FAILS")
 # The agent command. Overridable only so the self-test can drive the loop with a scripted agent
 # (a good change, a bad change, an agent error) without spending a model run; the unit never sets it.
@@ -750,6 +751,15 @@ while :; do
     fi
     WIDEARG=(); [ -n "$LANE" ] && WIDEARG=(--lane "$LANE")
     WIDEARG+=(--min-fails 1)
+    # ...unless a hard lane is alive: then the failed-once items are its, and a free lane taking
+    # one spends the item's last attempt on the model that already failed it. The hard lane
+    # leaves its pid in $SHARED/hard-lane.pid; a dead or missing pid means nobody is coming for
+    # them (the 2026-09-30 idle above), so the free lane takes one as before.
+    HARD_PID=$(cat "$SHARED/hard-lane.pid" 2>/dev/null)
+    if [ -n "$HARD_PID" ] && grep -qs run_goal "/proc/$HARD_PID/cmdline"; then
+      say "nothing fresh for this lane - failed-once items are left for the hard lane (pid $HARD_PID) - waiting 10 min"
+      sleep 600; continue
+    fi
     if Q has-next "${WIDEARG[@]}" >/dev/null 2>&1; then
       say "nothing fresh for this lane - taking a failed-once item"
       TAKEARG=("${WIDEARG[@]}"); HN=0
