@@ -301,16 +301,22 @@ read a batch of them before seeding the remaining 26 zero-same-size units.
 The rules are in the repo `AGENTS.md`; `python3 tools/check_docs_claims.py` enforces the derivable
 ones. The longer form that used to be here is in `docs/history/handoff-to-2026-10-01.md`.
 
-**Carve seeding, on trial since 2026-10-02.** The `unit` kind ran dry too: 25 sourced DOL units
+**Carve seeding, default since 2026-10-02.** The `unit` kind ran dry too: 25 sourced DOL units
 were left unqueued and every cheap lane was taking failed-once items on their last attempt. The work
 that is left sits in the 333 unsourced `auto_*` DOL units (3,283 unmatched functions), so
 `goal_seed.py --only carve` now proposes carves from them: runs of up to four adjacent `fn_`
 functions, each a byte-shape twin of a matched function (631 measured) or at most 64 bytes. 612
-items, about 1,100 functions. It is **opt-in** and not part of a lane's automatic refill: ten items
-(`carve-*`: four 4-function twin runs, three single twins, three tiny no-twin) were seeded by hand
-and their pass rate is **unmeasured**. Read their verdicts in `build/goal/run-L*.log` and their
-notes before adding `carve` to the default kinds (drop it from `opt_in` in `main()`). Expect rstl
-template twins (`vector` dtors, `destroy_impl`) to be the hard ones in plain C.
+items, about 1,100 functions. Ten trial items
+(`carve-*`: four 4-function twin runs, three single twins, three tiny no-twin) were seeded by hand.
+Measured the same day: five landed `Matching` on the first attempt within ten minutes of being
+taken (a 4-function twin run, +4; two single twins; two tiny no-twin), a sixth passed the judge
+with three of its four functions and was released for a rebase, one failed once, one was still
+running, and two never ran (their only attempt died on a Go quota error). So `carve` is now the
+last default kind and lanes refill from it when the others are dry. Two things to expect: carves
+all edit `configure.py`, `splits.txt` and the generated doc tables, so parallel carves often pass
+on their base and must be redone on the moved branch; and a lane may claim less than the seeded
+run when one function will not match (`carve-801fdb5c`), which leaves that function for a later
+item. Rstl template twins (`vector` dtors, `destroy_impl`) are the likely hard ones in plain C.
 
 **Queue triage, 2026-10-01.** `goal_seed.py` has run dry ("nothing to seed"): its three kinds (REL
 heads, Prime 1 donors, near-done `match` units) do not cover a DOL unit that has source but is far

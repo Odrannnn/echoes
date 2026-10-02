@@ -30,7 +30,7 @@ Four kinds of candidate, in this order:
     when it is done the unit is proposed again with what is left, and a unit set aside in review
     is not. Last, so the kinds with a better pass rate are used up first.
 
-A fifth kind is **opt-in** (`--only carve`), on trial since 2026-10-02:
+A fifth kind comes last of all (opt-in until its trial passed on 2026-10-02):
 
   * **carve** (`match` items, `<Dir>/Carve<ADDR>`) - first-attempt work from the functions no
     source file claims. A run of up to CARVE_MAX_FNS adjacent `fn_` functions in one dtk `auto_*`
@@ -463,7 +463,7 @@ def main() -> int:
     ap.add_argument("--max", type=int, default=10, help="most items to seed in total (default: 10)")
     ap.add_argument("--only", choices=("rel-head", "prime1", "match", "unit", "carve"),
                     default=None,
-                    help="seed one kind of candidate only; `carve` is seeded only when asked for")
+                    help="seed one kind of candidate only")
     ap.add_argument("--prime1-min-same", type=int, default=0,
                     help="Prime 1 items need at least this many same-size shared functions")
     ap.add_argument("--apply", action="store_true",
@@ -499,7 +499,7 @@ def main() -> int:
              "match": lambda: match_candidates(report),
              "unit": lambda: unit_candidates(report),
              "carve": lambda: carve_candidates(report)}
-    opt_in = {"carve"}  # on trial: not part of a lane's automatic refill until its pass rate is known
+    opt_in = set()  # kinds on trial: seeded only with --only, not by a lane's automatic refill
     cands = [c for k, f in kinds.items()
              if (args.only == k if k in opt_in else args.only in (None, k)) for c in f()]
     seen_ids, picked = set(), []

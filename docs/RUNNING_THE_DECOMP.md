@@ -2383,7 +2383,7 @@ only writes code: it reads `build/G2ME01/main.elf`, masks what the linker fills 
 already-matched function of the same shape. An item is one run of up to four adjacent functions in
 one `auto_*` unit, twins or at most 64 bytes, with the range, each twin's name and source file and
 the directory of the nearest claimed range below. Runs stop at a real-named function, since that
-needs its own mangling and a `.cpp`. Opt-in while its pass rate is unmeasured; see `HANDOFF.md`.
+needs its own mangling and a `.cpp`. A default kind, seeded last; the trial result is in `HANDOFF.md`.
 
 Carving one retail function out of a dtk `auto_*` range as its own `Matching` unit is the
 highest-yield thing in this tree: **11 units / 14 functions** in one batch, and 62 units / 188
