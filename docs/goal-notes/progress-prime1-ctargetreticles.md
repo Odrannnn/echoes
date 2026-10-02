@@ -1264,3 +1264,373 @@ down in the second section of this file; it needs the third carve-out, for
 `TCastToPtr<CSandwormEye>`, before it can be measured at all). The cheapest by size is
 `DrawOrbitZoneGroup` (724 B) or `UpdateNextLockOnGroup` (860 B), both of which need Echoes'
 `gpRender`/tweak accessor names identified from retail before any body can be written.
+
+---
+
+# Eighth run (2026-10-02), lane 8 (wt-mp2-goal-L8) — PASS, 31 -> 32 / 44
+
+Re-measured first with `tools/fast_try.sh MetroidPrime/CTargetReticles`, as the third run's
+lesson requires: the tree is at the **other lane's** `progress-unit-ctargetreticles` state
+(commit 81482b2b), **31/44, 27.069% fuzzy**. `build/goal/judge/report.base.json` agrees.
+That commit's `CTargetingManager::Draw` is the seventh run's + the `SetPerspective` discovery;
+the seventh run's own four functions (`Draw__22CCompoundTargetReticle`, `DrawCrosshairs`,
+`COrbitPointMarker::Update`/`Draw`) are **not** in this tree, so this run's "+1" is on top of a
+different base than the seventh run's.
+
+## Result, measured
+
+`build/report.json` and the judge's baseline, `main/MetroidPrime/CTargetReticles`:
+
+| | before | after |
+| --- | --- | --- |
+| `matched_functions` | 31 | **32** |
+| `total_functions` | 44 | 44 |
+| `fuzzy_match_percent` | 27.067 | **29.996** |
+
+Whole build: `All: 35.33% fuzzy, 29.15% matched, 12.91% linked (12495 / 28465 functions)`;
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`build/gate-diff.log`:
+
+```
+matched  12494 -> 12495   linked 5870 -> 5870   (+1 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/CTargetReticles :: UpdateNextLockOnGroup__22CCompoundTargetReticleFfRC13CStateManager
+no regression
+```
+
+`build-port-link/link_undefined.txt` is **291 lines before and after**, so **no gap-list edit
+was needed**; `check_decl_order.py --unit MetroidPrime/CTargetReticles` -> `ok`;
+`check_symbol_names.py` -> `checked 525 units; 0 declared names are missing from their object`;
+`./tools/goal_check.sh build/goal/item.json` -> **PASS**
+(`target rose: main/MetroidPrime/CTargetReticles: 31 -> 32 / 44 functions`, `no asm added`).
+
+| function | before | after | what Prime 1's source needed |
+| --- | --- | --- | --- |
+| `UpdateNextLockOnGroup__22CCompoundTargetReticleFfRC13CStateManager` | 0.47% | **100.00%** | **first spelling reached 98.47%, three operand-order fixes reached 100%.** Prime 1 line 531 is a near-direct ancestor; five Echoes differences, below. |
+
+The unit stays `NonMatching` (12 functions unmatched, and the other lane's note records it 10 540
+bytes short of retail with 15 extra COMDAT weak symbols), so no `flip_test.sh` was run - this is a
+`progress` item judged on `report.json`.
+
+## `UpdateNextLockOnGroup`: Prime 1 line 531, and the five things Echoes changed
+
+Prime 1's body carries over essentially verbatim. What differs, all read off retail
+(`./tools/dis.sh 0x800B0C5C 0x35C`) rather than guessed:
+
+1. **`mgr.GetPlayer()` becomes `mgr.GetPlayer(mPlayerIndex)`** (`lwz r3,0(r3)` /
+   `slwi` / `add` / `lwz r3,5372(r3)`). Every other function in this unit already does this.
+2. **The scan guard is on `mPreviousState`, not on the visor.** Retail reads `lwz r0,36(r30)`
+   (= +0x24, `mPreviousState`), `cmpwi r0,1`, and if it equals 1 (`kRS_Scan`) sets
+   `nextTargetId = kInvalidUniqueId` - the *opposite* polarity to Prime 1's
+   `GetCurrentVisor() == kPV_Scan && GetOrbitTargetId() != kInvalidUniqueId`, and with no
+   second condition at all. `lhz r0,988(r3)` = `CPlayer::mOrbitNextTargetId` at +0x3DC.
+3. **The `lag` test is `kRS_Echo || kRS_Dark` (2 and 3)**, the same pair the first run found in
+   `UpdateTargetParameters`, and the ternary arms are `lag ? mLaggingTargetPosition (+0x14C) :
+   mTargetPosition (+0x140)` - the same polarity as retail's, which is the *opposite* of Prime 1's.
+4. **`CVector3f::Zero()` is read out of a `.rodata` global** at 0x80417550
+   (`lis r3,-32703 / lwzu r4,29872(r3) / lwz r6,4(r3) / lwz r7,8(r3)`), so retail passed it by
+   reference into a by-value parameter - no special spelling needed, `CVector3f::Zero()` returning
+   `const CVector3f&` reproduces it.
+5. **`CalculateClampedScale` is not called here**, so the static `int playerIndex` tail parameter
+   that the sixth run had to add to it is irrelevant; `IsGrappleTarget`, the three
+   `GetNextLockOn*Duration` getters and `GetGrappleMinClampScale` all already existed in
+   `CTweakTargeting.hpp` and all resolve in the port.
+
+That every member offset in retail's `mNextGroup*` block matched this header with no change is
+worth stating, because it is the reason this function was cheap: +0x1C0 `mNextGroupInterpolated`,
++0x1E0 `A`, +0x200 `B`, +0x220 `mNextGroupDuration`, +0x224 `mNextGroupTimer`, +0x13E
+`mNextTargetId`, +0x140 / +0x14C the two positions. **The `TCachedToken<CModel>` is 0x0C, not
+0x10** - that is what puts `mGrapple` at +0x98, which `DrawGrappleGroup` confirms
+(`addi r3,r27,152; bl GetObj`); recomputing the header with 0x10 puts `mGrapple` at +0x58 or
++0x98 depending on where you start, which is how that number is easy to get wrong.
+
+## Three operand orders, all of them `kInvalidUniqueId`
+
+The first spelling scored **98.47%**. An opcode-by-opcode diff of our object against retail, with
+relocations normalised, left **exactly three real differences** and nothing else - every other
+line differed only in a branch/call/SDA displacement:
+
+| # | retail | ours (first spelling) | fix |
+| --- | --- | --- | --- |
+| 1 | `lhz r0,SDA(r13)` / `cmplw r0,r3` | `lhz r0,SDA(r13)` / `cmplw r3,r0` | spell the branch test `kInvalidUniqueId == nextTargetId`, **constant first** |
+| 2 | `lfs f0,544(r30)` / `stfs f0,548(r30)` / `lhz r0,SDA(r13)` / `sth r0,318(r30)` | `lhz r0,20(r1)` **before** the `lfs`, then `sth r0,318(r30)` | `mNextTargetId = kInvalidUniqueId;` - retail assigns the **literal**, not the local it is provably equal to |
+| 3 | `lhz r3,SDA(r13)` / `lhz r0,318(r30)` | `lhz r3,318(r30)` / `lhz r0,SDA(r13)` | spell the ternary test `kInvalidUniqueId == mNextTargetId`, **constant first** |
+
+All three are the same rule: **MW keeps the operand order of an equality test, and it puts a
+literal in the register it is written into.** Retail loads `-27740(r13)` first and compares it
+against the value it just loaded. Nothing else in the function needed moving.
+
+#2 is worth flagging for the reviewer, because it is the one that reads like a behaviour change
+and is not: branch 1 is guarded by `kInvalidUniqueId == nextTargetId`, so
+`mNextTargetId = kInvalidUniqueId` and `mNextTargetId = nextTargetId` are the same assignment.
+Retail's own bytes say it wrote the literal (`lhz r0,-27740(r13)`, not a reload of `r1+20`), and
+branch 2 - which is *not* guarded that way - does reload `lhz r0,20(r1)` and stores that. Both
+spellings are present in retail, one per branch, which is why this is a spelling and not a guess.
+
+## Codegen rules learned (not `NEW:` items)
+
+- **MW preserves the operand order of `==` on two values, literal included, down to which `lhz`
+  comes first.** This is the cheapest fix in this repo's toolkit and it is invisible in a fuzzy
+  percentage until you diff: it cost three instructions here and would have cost a whole lane if
+  98.47% had looked like a wall. Whenever a function is 98-99% and the remaining lines are
+  `lhz`/`cmplw`/`sth`, **read the register order as the source's**, and prefer the spelling that
+  puts the constant first.
+- **`kInvalidUniqueId` is 0xFFFF** (`lhz r0,-27740(r13)`, i.e. a real global, not an immediate),
+  and every `== kInvalidUniqueId` test in a function reloads it rather than comparing against an
+  immediate - so the operand order is always observable.
+- **Normalising a diff is worth the ten seconds.** `sed` away `<symbol>` comments, branch/call
+  targets and `-NNNN(r2)` / `-NNNN(r13)` displacements from both sides and the residue is exactly
+  the real differences. `tools/bytesdiff.sh` compares bytes; this compares *intent*.
+- **`TCachedToken<CModel>` is 12 bytes** (`{ +0 name/type, +4 loading flag, +8 cached ptr }`), so
+  `SOuterItemInfo` is 0x1C and every token in `CCompoundTargetReticle` advances by 0x0C. Getting
+  this wrong makes every offset in the class look wrong at once.
+
+## Files changed
+
+- `src/MetroidPrime/CTargetReticles.cpp` - `UpdateNextLockOnGroup`'s body only. `git diff --stat`
+  is 1 file, +41/-1.
+- `include/MetroidPrime/Player/CPlayer.hpp` - one inline accessor, `GetOrbitNextTargetId()`.
+  Methods only, no member added, no layout change, `CHECK_SIZEOF(CPlayer, ...)` untouched.
+- **No** `configure.py`, `splits.txt`, `files.cmake`, `config/`, `symbols.txt`, `asm`, gap-list
+  entry, or new port symbol (291 undefined before and after). `docs/HANDOFF.md` carries only the
+  gate's own derived-count rewrite, which the driver discards.
+
+## Not attempted, and why
+
+- **`DrawGrapplePoint` (572 B, 0.70%)** - I read retail's 0x800B0514..0x800B074C and mapped most
+  of it (the colour chain, `fmadds` scale, the two chained `CModelFlags`, the `CVector3f` copy at
+  r1+76, `gpRender` vtable slot 16), and it is **not** as close as it looks. Three things stand in
+  the way and none is cheap:
+  1. `point.GetOrbitPosition(mgr)` is a **virtual** call - `lwz r12,0(r4); lwz r12,80(r12);
+     mtctr r12; bctrl`, slot 20 - and this repo's `CScriptGrapplePoint` is
+     `class CScriptGrapplePoint : public CActor {};` with no vtable and no key function. Getting
+     the indirect call right means adding a `virtual` to a class whose base `CActor` vtable this
+     tree does not model slot-for-slot.
+  2. `lbz r0,388(r3)` / `rlwinm. r0,r0,25,31,31` is **bit 6** of the byte at +0x184 (not bit 7 -
+     the seventh run's note says bit 7; `rlwinm(sh=25,BI=31)` gives bit `31-25 = 6`, and
+     `DrawGrappleGroup`'s `lbz r5,339(r4); clrlwi r5,r5,28` is bit 3 of +0x153). `CActor` here is
+     `CHECK_SIZEOF(CActor, 0x158)`, so +0x184 is past the base class and there is **no
+     `CGrappleParameters` in this repo**. Placing that bit means inventing members.
+  3. It calls `TCastToPtr<19CScriptGrapplePoint>__FR7CEntity`, the **`CEntity&`** overload, which is
+     not in the port's undefined list - the 291 entries hold the **`CEntity*`** overload only.
+     That is a 292nd symbol and `--strict` fails on growth. Writing `TCastToPtr<T>(&point)` would
+     emit the same bytes (r3 is the address either way) and hit the existing entry, but that is
+     changing retail's declaration to dodge a gate, not the reverse.
+- **`DrawGrappleGroup` (648 B, 0.62%)** - retail's body maps onto Prime 1 line 618 and I have the
+  `hideLockOn` two-element loop, the `CObjectList` linked-list walk, the per-player bitmask at
+  +0x153, the occlusion check (`mAreaInfoTable.mItems[areaId]` at `+0x24`, then +0xF4, +0x104,
+  +0x13C) and all four grapple-point members (`+0x228/0x22A/0x22C/0x230`) identified. It is
+  blocked on the same two things as `DrawGrapplePoint` plus `CGrappleParameters`, and it needs
+  `CPlayerState::HasPowerUp(kIT_GrappleBeam)` to be item 23 - worth checking that one first, it is
+  a single `li r4,23`.
+- **`CalculateOrbitZoneReticlePosition` (380 B, 99.68%)** - re-read this run, not re-attempted.
+  The residue is still exactly the f2/f3 pair the other lane recorded, and I can now state it
+  more precisely than "a register swap": retail is
+  `lfd f3,POOL` / `lfs f2,224.0f` / `fsubs f3,f1,f3` / `fdivs f31,f2,f3` against our
+  `lfd f2,POOL` / `lfs f3,224.0f` / `fsubs f2,f1,f2` / `fdivs f31,f3,f2` - **same instruction
+  order, same frame, same GPRs**, and the *earlier*-materialised value gets the *higher* register
+  number in retail. That inversion is the clue the 18 spellings do not explain, and it is not
+  an expression-tree difference (the other lane's standalone `mwcceppc` run produced retail's
+  assignment for every one of those shapes), so it is something about the translation unit.
+- **`CalculateRadiusWorld` (576 B, 1.35%)**, **`__ct__` (2280 B, 59.40%)**, `Update`,
+  `UpdateCurrLockOnGroup`, the `Draw*` family and `DrawOrbitZoneGroup`: untouched, all at their
+  measured positions. `CalculateRadiusWorld` still needs the `TCastToPtr<CSandwormEye>` port
+  definition and then still is not 100% (96.81% and 99.375% are the two runs' best), so it is two
+  problems to solve for no count.
+
+## What the next run should do
+
+`DrawGrappleGroup` and `DrawGrapplePoint` are the two functions where the *layout work* is the
+whole task and I have already identified every offset and callee they need; doing that
+investigation once would unlock both, and `DrawGrappleGroup` is the one that does **not** need
+the virtual `GetOrbitPosition`. If the next run prefers a smaller question,
+`CalculateOrbitZoneReticlePosition` is four instructions from 100% and the lead worth following
+is the inverted register numbering, not the expression tree.
+
+---
+
+# Eighth run (2026-10-02), lane 8 (wt-mp2-goal-L8) — PASS, 31 -> 32 / 44
+
+**Re-measure first, and the tree is at the *other* lane's state, not at the end of this file.**
+HEAD is `81482b2b progress: progress-unit-ctargetreticles` — a **different** goal item that
+worked this same unit on the same day. `tools/fast_try.sh MetroidPrime/CTargetReticles` on the
+clean tree gives **31/44, 27.067% fuzzy**: the seventh run's 30 plus that lane's
+`CTargetingManager::Draw` at 100%. `build/goal/judge/report.base.json` agrees (31/44, 27.067).
+So the seventh section's four functions are in `HEAD` and the second run's two reverted bodies
+(`CalculateRadiusWorld`, `Draw__17CTargetingManager`) are still not.
+
+## Result, measured
+
+`build/report.json`, `main/MetroidPrime/CTargetReticles`:
+
+| | before | after |
+| --- | --- | --- |
+| `matched_functions` | 31 | **32** |
+| `total_functions` | 44 | 44 |
+| `fuzzy_match_percent` | 27.067 | **29.996** |
+
+Whole build: `All: 35.33% fuzzy, 29.15% matched, 12.91% linked (12495 / 28465 functions)`;
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`build/gate-diff.log`:
+
+```
+matched  12494 -> 12495   linked 5870 -> 5870   (+1 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/CTargetReticles :: UpdateNextLockOnGroup__22CCompoundTargetReticleFfRC13CStateManager
+no regression
+```
+
+`build-port-link/link_undefined.txt` is **291** lines, unchanged, so **no gap-list edit and no
+`files.cmake` carve-out were needed**; `check_decl_order.py --unit MetroidPrime/CTargetReticles`
+-> `ok`; `check_symbol_names.py` -> `checked 525 units; 0 declared names are missing`;
+`./tools/goal_check.sh build/goal/item.json` -> **PASS** (`target rose: 31 -> 32 / 44`,
+`no asm added`). No `flip_test.sh`: the unit stays `NonMatching` (13 functions below 100%).
+
+| function | before | after | what Prime 1's source needed |
+| --- | --- | --- | --- |
+| `UpdateNextLockOnGroup__22CCompoundTargetReticleFfRC13CStateManager` | 0.47% | **100.00%** | small edits, all four measured — see below. Two spellings. |
+
+## What landed: `UpdateNextLockOnGroup`, 0.47% -> 100.00% in two spellings
+
+Prime 1's donor is `prime-ref/src/MetroidPrime/CTargetReticles.cpp:531`. It is ~45 lines and
+maps onto retail 0x800B0C5C..0x800B0FB4 with **four** Echoes differences, all read off retail:
+
+1. **The scan guard is `mPreviousState == kRS_Scan`, not the visor.** Retail 0x800B0C88:
+   `lwz r0,36(r30)` (= `this->mPreviousState` at +0x24) / `cmpwi r0,1` / `bne` and, on
+   equality, `lhz r0,-27740(r13)` (kInvalidUniqueId) staged into the same frame slot as the
+   orbit id. Prime 1 tests `mgr.GetPlayerState()->GetCurrentVisor() == kPV_Scan &&`
+   `player->GetOrbitTargetId() != kInvalidUniqueId`, and Echoes keeps **only** the first half of
+   that and reads `mPreviousState` instead. There is no `GetCurrentVisor()` call in the body.
+2. **`mgr.GetPlayer(mPlayerIndex)`, not `mgr.GetPlayer()`** — `lwz r3,0(r3)` is
+   `mPlayerIndex`, `slwi/add r3,r31` then `lwz r3,5372(r3)` is `GetPlayer(index)`.
+3. **`lag` is `(mPreviousState == kRS_Echo || mPreviousState == kRS_Dark)`** — the same
+   `cmpwi 2 / beq / cmpwi 3` shape that the already-matched `UpdateTargetParameters` uses, and
+   the *same* ternary polarity: `lag ? mLaggingTargetPosition : mTargetPosition`
+   (retail `addi r8,r30,332` vs `addi r8,r30,320`, i.e. +0x14C vs +0x140). Prime 1 has the
+   arms the other way round.
+4. **The tail's `1.f - mNextGroupTimer / mNextGroupDuration`** is a bare expression in retail
+   (`fdivs f0,f1,f0` / `fsubs f1,f2,f0`) — no named local is needed here, unlike
+   `CalculateOrbitZoneReticlePosition` 20 bytes below.
+
+Everything else is Prime 1's line verbatim: `mNextGroupA = mNextGroupInterpolated` +
+`SetIsOrbitZoneIdlePosition(false)` (retail keeps the dead `stb r3,508` before `stb r0,508`),
+the two `CTargetReticleRenderState` constructions, `rstl::max_val(0.f, timer - dt)`, and
+`InterpolateWithClamp(mNextGroupA, mNextGroupInterpolated, mNextGroupB, t)`.
+
+**The header's layout is confirmed exactly, which is the useful part for the rest of this unit.**
+Retail's field reads are `mPreviousState` 0x24, `mNextTargetId` 0x13E, `mTargetPosition` 0x140,
+`mLaggingTargetPosition` 0x14C, `mNextGroupInterpolated` 0x1C0, `mNextGroupA` 0x1E0,
+`mNextGroupB` 0x200, `mNextGroupDuration` 0x220, `mNextGroupTimer` 0x224 — all exactly where
+`include/MetroidPrime/CTargetReticles.hpp` already puts them, and `CPlayer::mOrbitNextTargetId`
+is 0x3DC (`lhz 988(r3)`), also already right. So the only accessor this needed is
+`GetOrbitNextTargetId()`, which did not exist.
+
+## The two spellings, and what each one moved
+
+Same body, same declarations, measured with `tools/fast_try.sh`:
+
+| # | spelling | score |
+| --- | --- | --- |
+| 1 | Prime 1's spelling throughout: `if (nextTargetId == kInvalidUniqueId)`, `mNextTargetId = nextTargetId;`, `(mNextTargetId == kInvalidUniqueId) ? Enter : Switch` | **98.47%** |
+| 2 | the literal first in all three places: `if (kInvalidUniqueId == nextTargetId)`, `mNextTargetId = kInvalidUniqueId;`, `(kInvalidUniqueId == mNextTargetId) ? Enter : Switch` | **100.00%** (kept) |
+
+The opcode diff after spelling 1 was **three** differences and nothing else — every other line
+was either identical or a relocation:
+
+```
+retail  lhz r0,SDA(r13)      lhz r0,SDA(r13)      lhz r3,SDA(r13)
+        cmplw r0,r3          (n/a)                 lhz r0,318(r30)
+ours    cmplw r3,r0          lhz r0,20(r1)         lhz r3,318(r30)
+                                                          lhz r0,SDA(r13)
+```
+
+i.e. (a) `cmplw` operand order, (b) an extra `lhz r0,20(r1)` re-reading the frame slot where
+retail reloads the constant, and (c) the two loads of the enter/switch compare swapped.
+**MW emits the operands of a `==` in source order, and hoists a constant only when the source
+names it.** `kInvalidUniqueId == x` and `x == kInvalidUniqueId` are different code; for `==`
+against a named global, write the **global first**. That is the whole 1.53%.
+
+In spelling 2, `mNextTargetId = kInvalidUniqueId;` is not a behaviour change: the branch is
+guarded by `kInvalidUniqueId == nextTargetId`, so the two spellings assign the same value. It is
+only what retail's bytes say (`lhz r0,-27740(r13); sth r0,318(r30)`).
+
+## Codegen rules learned (not `NEW:` items)
+
+- **For `==`/`!=` against a named constant, MW emits `lhz`/load in the order written and puts the
+  operands of the `cmplw` in that order too.** `kInvalidUniqueId == x` -> `lhz r0,<const>` then
+  `cmplw r0,rx`; `x == kInvalidUniqueId` -> `cmplw rx,r0`. Same operator, different code. This is
+  the integer sibling of the float rule the seventh run recorded for `rstl::min_val`/`max_val`,
+  and it is worth checking first on any 98-99% function whose only diff is a `cmplw`.
+- **Where a comparison's operand comes from decides whether it is reloaded.** Retail reloads
+  `kInvalidUniqueId` from `.sdata` in all three places instead of reusing the value already
+  staged in `r1+20`; naming the constant in the source is what reproduces that, because MW then
+  has no reason to keep the copy it made for the first use.
+- **`mPreviousState` is the scan guard in Echoes' next-lock-on path.** Prime 1's
+  `GetCurrentVisor() == kPV_Scan &&` is not there at all — worth knowing before starting
+  `UpdateCurrLockOnGroup` (2628 B) or `Update` (2524 B), which will have the same substitution
+  somewhere and are the two largest untouched functions left.
+
+## Not attempted, and why
+
+- **`DrawGrapplePoint` (572 B, 0.70%)** — read and mapped in full this run, and it is the best
+  remaining target *if* its two blockers are solved first; neither is cheap:
+  1. retail 0x800B0534 calls `point.GetOrbitPosition(mgr)` **virtually** — `lwz r12,0(r4)`,
+     `lwz r12,80(r12)` (vtable slot 20), `mtctr`/`bctrl` — while
+     `include/MetroidPrime/ScriptObjects/CScriptGrapplePoint.hpp` is
+     `class CScriptGrapplePoint : public CActor {};` with no members and, by its own comment, no
+     emitted vtable. Reaching slot 20 means declaring it `virtual` and hoping `CActor`'s vtable
+     here already has 20 entries, which is a layout question nobody has answered.
+  2. retail 0x800B05A0 reads `lbz r0,388(r3)` / `rlwinm. r0,r0,25,31,31` — **bit 6** of the byte
+     at 0x184 of the grapple point (Prime 1's `GetGrappleParameters().GetLockSwingTurn()`).
+     `CActor` here is `CHECK_SIZEOF(CActor, 0x158)`, so 0x184 needs invented members. The item
+     forbids changing a layout to Prime 1's, and this one would have to be derived, not copied.
+  3. minor, but it blocks the same body: retail's cast is the **reference** overload
+     (`TCastToPtr<19CScriptGrapplePoint>__FR7CEntity`), and the port already has
+     `CScriptGrapplePoint* TCastToPtr<CScriptGrapplePoint>(CEntity*)` undefined and counted in the
+     291 baseline but **not** the `CEntity&` one, so the obvious spelling would add a 292nd
+     undefined symbol and fail `link_check --strict` exactly as `TCastToPtr<CSandwormEye>` did.
+- **`CalculateOrbitZoneReticlePosition` (99.68%, 380 B)** — the other lane's `WALL` stands as a
+  record of 18 spellings. I re-measured the residual rather than re-trying it, and it is exactly
+  **four** instructions, an `f2`/`f3` swap and nothing else:
+  `lfd <pool>,-29464(r2)` into **f3** and `lfs 224.0f,-29428(r2)` into **f2** in retail, with
+  `fsubs f3,f1,f3` / `fdivs f31,f2,f3`; ours has the pool in **f2**, `224.0f` in **f3**,
+  `fsubs f2,f1,f2` / `fdivs f31,f3,f2`. Prologue, GPR allocation, all four call sites and the
+  epilogue are byte-identical, and both objects materialise the pool constant *before* the
+  `224.0f` yet hand **f2** to the later one in retail and to the earlier one here. That
+  asymmetry is the thing to attack, and it is not reachable by re-associating the division.
+  **Not a `WALL:` from this run** — no new spelling was tried here.
+- **`CalculateRadiusWorld` (1.35%, 576 B)**, **`__ct__` (59.40%, 2280 B)**, the
+  `DrawCurrLockOnGroup`/`DrawNextLockOnGroup`/`DrawSeeker`/`DrawScanTargetGroup` family, and
+  **`DrawGrappleGroup` (648 B, 0.62%)**: unchanged reasons. `DrawGrappleGroup` is the one worth
+  recording for the next run, because its retail body (0x800B0750) is fully mapped too and its
+  blocker is *narrower* than `DrawGrapplePoint`'s: it never casts, it reads the object list
+  directly, and every `CCompoundTargetReticle` offset it uses (0x2C `mNoDrawTicks`, 0x98
+  `mGrapple`, 0x24 `mPreviousState`, 0x228/0x22A `mGrapplePointA/B`, 0x22C/0x230
+  `mGrapplePointFactorA/B`) is already right in this header. Its **only** unknown is one byte of
+  the *grapple point* at 0x153 bit 3 (`lbz r5,339(r4); clrlwi r5,r5,28` then `1 << mPlayerIndex`
+  `and.`) — the same `CScriptGrapplePoint` layout question as above, one member instead of two,
+  and no virtual call.
+
+## Files changed
+
+- `src/MetroidPrime/CTargetReticles.cpp` — `UpdateNextLockOnGroup`'s body, 40 lines replacing a
+  one-line TODO. Nothing else in the file touched.
+- `include/MetroidPrime/Player/CPlayer.hpp` — one inline accessor, `GetOrbitNextTargetId()`.
+  Methods only, no member added, no layout change, no `CHECK_SIZEOF` affected.
+- `docs/HANDOFF.md` — only the gate's own derived-count rewrite (12494 -> 12495 and
+  `DOL units 10946 -> 10947`); the driver discards it.
+- `git diff --stat` for the two source files: 2 files, +43/-2. No `configure.py`, no `config/`,
+  no `files.cmake`, no gap-list entry, no `asm`, **no new port symbol** (291 undefined before and
+  after, which is why the strict link gate is untouched).
+
+## What the next run should do
+
+The cheapest remaining thing is `DrawGrappleGroup` (648 B) or `DrawGrapplePoint` (572 B), and both
+reduce to **one question this run did not answer: what is `CScriptGrapplePoint`'s layout at
+0x153 and 0x184?** Everything else both bodies need already exists in this tree
+(`GetGrappleIconScale/ScaleInactive/MinRadiusViewport/MaxRadiusViewport/Color/ColorInactive`,
+`GetLockedGrapplePointColor`, `CColor::White`, `CColor::Lerp`, `CVector3f::Zero`,
+`CMatrix3f::Scale`, `CModelFlags::Additive(...).DepthCompareUpdate(zEqual, false)`,
+`CalculateClampedScale`, `CGraphics::SetDepthRange`, `close_enough`,
+`IsGrappleTarget`, `TryCache`/`GetObject`). Answer that from the grapple point's own retail
+methods (`0x8009D580` is its destructor) rather than from Prime 1, and both become writable.
+`CalculateOrbitZoneReticlePosition` at 99.68% is one `f2`/`f3` swap away and is the cheapest by
+distance if anyone wants a different kind of problem.

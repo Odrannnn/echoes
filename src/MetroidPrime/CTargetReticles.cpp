@@ -280,7 +280,46 @@ void CCompoundTargetReticle::UpdateCurrLockOnGroup(float dt, const CStateManager
 }
 
 void CCompoundTargetReticle::UpdateNextLockOnGroup(float dt, const CStateManager& mgr) {
-  // TODO: next-target transition and interpolation.
+  const CPlayer* player = mgr.GetPlayer(mPlayerIndex);
+  TUniqueId nextTargetId = player->GetOrbitNextTargetId();
+  if (mPreviousState == kRS_Scan) {
+    nextTargetId = kInvalidUniqueId;
+  }
+
+  if (nextTargetId != mNextTargetId) {
+    if (kInvalidUniqueId == nextTargetId) {
+      mNextGroupA = mNextGroupInterpolated;
+      mNextGroupA.SetIsOrbitZoneIdlePosition(false);
+      const bool lag = mPreviousState == kRS_Echo || mPreviousState == kRS_Dark;
+      mNextGroupB = CTargetReticleRenderState(
+          kInvalidUniqueId, 1.f, lag ? mLaggingTargetPosition : mTargetPosition, 0.f, 1.f, true);
+      mNextGroupDuration = gpTweakTargeting->GetNextLockOnExitDuration();
+      mNextGroupTimer = mNextGroupDuration;
+      mNextTargetId = kInvalidUniqueId;
+    } else {
+      mNextGroupA = mNextGroupInterpolated;
+      mNextGroupA.SetIsOrbitZoneIdlePosition(false);
+      const float scale =
+          IsGrappleTarget(nextTargetId, mgr) ? gpTweakTargeting->GetGrappleMinClampScale() : 1.f;
+      mNextGroupB =
+          CTargetReticleRenderState(nextTargetId, 1.f, CVector3f::Zero(), 1.f, scale, true);
+      mNextGroupDuration = (kInvalidUniqueId == mNextTargetId)
+                              ? gpTweakTargeting->GetNextLockOnEnterDuration()
+                              : gpTweakTargeting->GetNextLockOnSwitchDuration();
+      mNextGroupTimer = mNextGroupDuration;
+      mNextTargetId = nextTargetId;
+    }
+  }
+
+  if (mNextGroupTimer > 0.f) {
+    UpdateTargetParameters(mNextGroupA, mgr);
+    UpdateTargetParameters(mNextGroupB, mgr);
+    mNextGroupTimer = rstl::max_val(0.f, mNextGroupTimer - dt);
+    CTargetReticleRenderState::InterpolateWithClamp(
+        mNextGroupA, mNextGroupInterpolated, mNextGroupB, 1.f - mNextGroupTimer / mNextGroupDuration);
+  } else {
+    UpdateTargetParameters(mNextGroupInterpolated, mgr);
+  }
 }
 
 void CCompoundTargetReticle::UpdateOrbitZoneGroup(float dt, const CStateManager& mgr) {

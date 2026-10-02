@@ -203,6 +203,9 @@ public:
   const CVector3f& GetMovementDirection() const { return mMoveDir; }
   NPlayer::EPlayerMovementState GetPlayerMovementState() const { return mMovementState; }
   TUniqueId GetOrbitTargetId() const { return mOrbitTargetId; }
+  // Retail reads +0x3DC (`lhz 988(r3)`) in `CCompoundTargetReticle::UpdateNextLockOnGroup`
+  // (0x800B0C9C) and stages it into a frame slot rather than keeping it in a register.
+  TUniqueId GetOrbitNextTargetId() const { return mOrbitNextTargetId; }
   // Added for `CPlayer::UpdateAimTarget` (retail 0x8011F2E8): it reads `mAimTarget` and stages
   // it in a temp before passing it on, so the argument is the result of a call and not the
   // member itself. Plain `mAimTarget` gives one `sth` where retail has two. No layout change.
