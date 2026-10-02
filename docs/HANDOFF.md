@@ -389,6 +389,25 @@ to 0 in the queue (`carve-8000447C`, `carve-80032674`, `carve-802188e4`,
 `fails=1` (backups `*.bak-dberr-*` in the goal dir). A lane runs the script it started with, so
 the change takes effect at each lane's next restart.
 
+**Next two loop improvements, measured 2026-10-02, neither built yet.** (1) *Judged-PASS work is
+thrown away at publish.* Of 464 agent runs that day, 316 passed the judge and 225 landed; 97 were
+released by `rebase_onto_tip()` in `tools/run_goal.sh` ("does not apply on H") for a whole new agent
+run. By conflicted non-docs file: 46 `src/MetroidPrime/PortLinkStubs.cpp` alone, about 65 involving
+it, 16 `patch too large` (the docs-bloat period, fixed), and nearly all the rest only `configure.py`,
+`files.cmake`, `config/G2ME01/splits.txt`. `PortLinkStubs.cpp` collides because every carve
+hand-edits the counted prose in its header comment (lines 1-153: "supplies N of them", "N functions,
+M data objects (counted ... after the X carve") although `tools/gen_link_stubs.py` owns that text.
+The fix is a resolver beside `tools/union_docs_conflicts.sh`: for the three additive config files
+take the tip's version and re-insert the item's added entries; for `PortLinkStubs.cpp` take the
+tip's header and apply only the item's `stub_N` add/retire hunks (better: derive the header counts
+so agents stop writing them); the existing re-judge then decides. (2) *Twins.* `tools/twin_scan.py`
+(reloc-masked word hash of every function in the target objects against `build/report.json`) finds
+3,725 of the 14,997 unmatched functions over 8 bytes byte-shape-identical to an already matched one:
+888 DOL, 2,837 REL, 2,088 over 64 bytes, 329,012 bytes; 1,678 more are duplicates of each other.
+Top modules: DigitalGuardian 90, DarkSamus 84, EmperorIngStage1 82, SandBoss 81. `goal_seed.py`'s
+`code_shape()` only does this for DOL `auto_*` carves; a twin seed kind naming the matched source to
+copy from is the next seed source. Seeding edits the queue, so it needs the user's approval.
+
 **Queue triage, 2026-10-01.** `goal_seed.py` has run dry ("nothing to seed"): its three kinds (REL
 heads, Prime 1 donors, near-done `match` units) do not cover a DOL unit that has source but is far
 from done. 94 such units (2,080 unmatched functions, 77 with a Prime 1 counterpart) were queued by
