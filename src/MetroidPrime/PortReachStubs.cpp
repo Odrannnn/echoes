@@ -1041,9 +1041,10 @@ extern "C" void reachstub_341() { mpReachStub("_ZN12CWorldShadowD1Ev", "CWorldSh
 extern "C" void reachstub_342() asm("_ZN13CScriptEffectC1E9TUniqueIdRKN4rstl12basic_stringIcNS1_11char_traitsIcEENS1_17rmemory_allocatorEEERK11CEntityInfoRK12CTransform4fRK9CVector3fjbbbbffffbfffbbbRK16CLightParametersbRK15CGameSplineDescbbbNS_12ERenderOrderE");
 extern "C" void reachstub_342() { mpReachStub("_ZN13CScriptEffectC1E9TUniqueIdRKN4rstl12basic_stringIcNS1_11char_traitsIcEENS1_17rmemory_allocatorEEERK11CEntityInfoRK12CTransform4fRK9CVector3fjbbbbffffbfffbbbRK16CLightParametersbRK15CGameSplineDescbbbNS_12ERenderOrderE", "CScriptEffect::CScriptEffect(TUniqueId, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CEntityInfo const&, CTransform4f const&, CVector3f const&, unsigned int, bool, bool, bool, bool, float, float, float, float, bool, float, float, float, bool, bool, bool, CLightParameters const&, bool, CGameSplineDesc const&, bool, bool, bool, CScriptEffect::ERenderOrder)"); }
 
-// CScriptPickup::ShowAllKeysCollectedAlert(CStateManager&, CPlayerState*, CPlayerState::EItemType)
-extern "C" void reachstub_343() asm("_ZN13CScriptPickup25ShowAllKeysCollectedAlertER13CStateManagerP12CPlayerStateNS2_9EItemTypeE");
-extern "C" void reachstub_343() { mpReachStub("_ZN13CScriptPickup25ShowAllKeysCollectedAlertER13CStateManagerP12CPlayerStateNS2_9EItemTypeE", "CScriptPickup::ShowAllKeysCollectedAlert(CStateManager&, CPlayerState*, CPlayerState::EItemType)"); }
+// CScriptPickup::ShowAllKeysCollectedAlert is defined for real in
+// src/MetroidPrime/ScriptObjects/CScriptPickup.cpp (retail 0x800B41FC), so reachstub_343 was
+// retired here by hand on 2026-10-02; the two definitions otherwise collide in the boot probe,
+// which links with this file. Same hand-edit AllocateRenderer needed above.
 
 // CSkinnedModel::CSkinnedModel(TLockedToken<CModel> const&, TLockedToken<CSkinRules> const&, TLockedToken<CCharLayoutInfo> const&)
 extern "C" void reachstub_345() asm("_ZN13CSkinnedModelC1ERK12TLockedTokenI6CModelERKS0_I10CSkinRulesERKS0_I15CCharLayoutInfoE");

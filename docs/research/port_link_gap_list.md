@@ -8,6 +8,7 @@ See `port_link_gap.md` for what the groups mean.
 
 ## other game methods (214)
 
+- `_ZN10CExplosionC1ERK12TLockedTokenI15CGenDescriptionE9TUniqueIdRK11CEntityInfoRKN4rstl12basic_stringIcNS9_11char_traitsIcEENS9_17rmemory_allocatorEEERK12CTransform4fjRK9CVector3fRK6CColori`
 - `_Z10TCastToPtrI11CScriptDockEPT_P7CEntity`
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI15CScriptPlatformEPT_P7CEntity`
@@ -62,7 +63,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN13CRelayTrackerC1Ev`
 - `_ZN13CRelayTrackerD1Ev`
 - `_ZN13CScriptEffectC1E9TUniqueIdRKN4rstl12basic_stringIcNS1_11char_traitsIcEENS1_17rmemory_allocatorEEERK11CEntityInfoRK12CTransform4fRK9CVector3fjbbbbffffbfffbbbRK16CLightParametersbRK15CGameSplineDescbbbNS_12ERenderOrderE`
-- `_ZN13CScriptPickup25ShowAllKeysCollectedAlertER13CStateManagerP12CPlayerStateNS2_9EItemTypeE`
 - `_ZN13CSkinnedModelC1ERK12TLockedTokenI6CModelERKS0_I10CSkinRulesERKS0_I15CCharLayoutInfoE`
 - `_ZN13CSkinnedModelD1Ev`
 - `_ZN13CStateManager11fn_800366e4EP6CActor`
