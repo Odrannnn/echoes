@@ -11,6 +11,11 @@
 
 #include "Kyoto/Animation/CInt32POINode.hpp"
 #include "Kyoto/Math/CloseEnough.hpp"
+#include "MetroidPrime/CEntityInfo.hpp"
+#include "MetroidPrime/CModelData.hpp"
+#include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/ScriptLoader.hpp"
+#include "MetroidPrime/ScriptLoader/SLdrActor.hpp"
 
 #include <float.h>
 
@@ -282,6 +287,58 @@ CTransform4f CScriptActor::GetPrimitiveTransform() const {
   CTransform4f xf = GetTransform();
   xf.SetTranslation(xf.GetTranslation() + GetPrimitiveOffset());
   return xf;
+}
+
+extern "C" CAABox fn_8024242C(CStateManager& mgr, const TAreaId& areaId, const CVector3f& scale,
+                              const CTransform4f& xf, const CVector3f& collisionSize,
+                              const CVector3f& collisionOffset);
+
+rstl::optional_object< CModelData > LdrToModelData(const CVector3f&, CAssetId asset,
+                                                  const SLdrAnimationSet&, bool);
+CHealthInfo LdrToHealthInfo(const SLdrHealthInfo& data);
+CDamageVulnerability LdrToDamageVulnerability(const SLdrDamageVulnerability& data);
+
+CEntity* LoadActor(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
+  SLdrActor sldrThis;
+#include "MetroidPrime/ScriptLoader/SLdrActor.inc"
+
+  CMaterialList list;
+  if (sldrThis.immovable) {
+    list.Add(kMT_Immovable);
+  }
+  if (sldrThis.isSolid) {
+    list.Add(kMT_Unknown59);
+  }
+  if (sldrThis.isCameraThrough) {
+    list.Add(kMT_CameraPassthrough);
+  }
+  if (sldrThis.isScanThrough) {
+    list.Add(kMT_ScanPassthrough);
+  }
+
+  rstl::optional_object< CModelData > modelData =
+      LdrToModelData(sldrThis.editorProperties.transform.scale, sldrThis.model,
+                    sldrThis.animationInformation, sldrThis.isLoop);
+  if (!modelData) {
+    return nullptr;
+  }
+
+  CAABox box = sldrThis.collisionBox == CVector3f::Zero()
+                   ? modelData->GetBounds(LdrToTransform4f(sldrThis.editorProperties).GetRotation())
+                   : fn_8024242C(mgr, info.GetAreaId(), sldrThis.editorProperties.transform.scale,
+                                 LdrToTransform4f(sldrThis.editorProperties),
+                                 sldrThis.collisionBox, sldrThis.collisionOffset);
+  return new CScriptActor(
+      mgr.AllocateUniqueId(), sldrThis.editorProperties.name,
+      LdrToEntityInfo(info, sldrThis.editorProperties),
+      LdrToTransform4f(sldrThis.editorProperties), *modelData, box, list, sldrThis.mass,
+      sldrThis.gravity, LdrToHealthInfo(sldrThis.health),
+      LdrToDamageVulnerability(sldrThis.vulnerability),
+      LdrToActorParameters(sldrThis.actorInformation),
+      LdrToEchoParameters(sldrThis.echoInformation), sldrThis.isLoop,
+      sldrThis.renderTextureSet, sldrThis.drawsShadow, sldrThis.scaleAnimation,
+      sldrThis.aiShootThrough, sldrThis.randomAnimationOffset, sldrThis.projectile,
+      LdrToDamageInfo(sldrThis.projectileDamage), sldrThis.collisionModel);
 }
 
 bool CScriptActor::CheckActorRenderOnly() const {

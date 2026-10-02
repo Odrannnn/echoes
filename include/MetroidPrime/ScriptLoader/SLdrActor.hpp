@@ -2,6 +2,7 @@
 #ifndef _SLDRACTOR_HPP
 #define _SLDRACTOR_HPP
 
+#include "Kyoto/Graphics/CColor.hpp"
 #include "Kyoto/Math/CVector3f.hpp"
 #include "Kyoto/SObjectTag.hpp"
 #include "Kyoto/Streams/CInputStream.hpp"
@@ -44,8 +45,11 @@ struct SLdrActor {
 };
 
 inline SLdrActor::SLdrActor() : editorProperties(), collisionBox(CVector3f::Zero()), collisionOffset(CVector3f::Zero()), health(), vulnerability(), model(kInvalidAssetId), collisionModel(kInvalidAssetId), animationInformation(), actorInformation(), echoInformation(), projectile(kInvalidAssetId), projectileDamage() {
+  editorProperties.unknown_0x5d298a43 = 0x00000003u;
   mass = 1.0f;
   gravity = 0.0f;
+  actorInformation.lighting.ambientColor = CColor(1.0f, 1.0f, 1.0f, 1.0f);
+  actorInformation.visor.visorFlags = 0x0000000fu;
   isLoop = true;
   immovable = true;
   isSolid = true;
