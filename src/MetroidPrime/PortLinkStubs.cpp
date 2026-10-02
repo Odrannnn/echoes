@@ -5,18 +5,20 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 154 of them: the ones referenced **only by
+ * file supplies 156 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   151 functions, 4 data objects (counted 2026-10-02, after the three
- *   `Carve801FF5A0.cpp` callees were added by hand below; the count before those was
- *   148, itself after `fn_801FDC88` was added by hand, and 147 before that, measured
+ *   152 functions, 4 data objects (counted 2026-10-02, after `fn_80008D68` was added by
+ *   hand below for `Carve800045A0.c`; the count before that was 151, after the three
+ *   `Carve801FF5A0.cpp` callees were added by hand below, and 148 before those, itself
+ *   after `fn_801FDC88` was added by hand, and 147 before that, measured
  *   2026-10-01 after the eighth upstream sync, which retired
  *   `CDamageVulnerability::~CDamageVulnerability()` - upstream's
- *   `CDamageVulnerability.cpp` defines it and is listed in `files.cmake`).
+ *   `CDamageVulnerability.cpp` defines it and is listed in `files.cmake`; this line read
+ *   154 for the 151-function file, which its own breakdown already contradicted by one).
  *
- * Breakdown: 86 REL loader, 46 game method, 21 unmangled fn_/lbl_, 1 CodeWarrior-mangled
+ * Breakdown: 86 REL loader, 46 game method, 22 unmangled fn_/lbl_, 1 CodeWarrior-mangled
  * `rstl::rmemory_allocator::allocate`, 4 vtable/typeinfo.
  *
  * **Eighteen more were deleted by hand in the 2026-09-28 upstream merge**, each now defined by an
@@ -738,6 +740,28 @@ extern "C" void stub_180() {}
 
 extern "C" void stub_181() asm("fn_801FD638");
 extern "C" void stub_181() {}
+
+// fn_80008D68 - retail 0x80008D68, 0x80 = 128 bytes (`config/G2ME01/symbols.txt:180`), the
+// recursive node teardown of the 3-node string-keyed tree: destroy both subtrees, release the
+// node's 28-byte key, `CMemory::Free` the node. Asked for by the port because
+// `src/MetroidPrime/Carve800045A0.c` (Matching, 0x800045A0..0x80004744) reproduces `fn_800046D0`
+// byte for byte, and that body's `lwz r4,0x10(r30) / cmplwi / beq / bl fn_80008D68` at
+// 0x800046F0..0x80004700 is in retail's bytes, so the carve cannot drop the call. For the DOL
+// nothing is needed: `src/MetroidPrime/main.cpp:301` writes this function
+// (`extern "C" void fn_80008D68(void* self, SNode* node)`), `main.cpp` is in `configure.py` but
+// not in `files.cmake`, and this file is not in `configure.py` at all, so the stub cannot reach
+// main.dol. The port link does not carry that object, which is why its gap grows by this symbol:
+// measured in this tree with the stub removed, `python3 tools/link_gap.py --rebuild` exits 1,
+// prints `287 MISSING` and names `gap grew: fn_80008D68 is not in port_link_gap_list.md`; with
+// the stub in place the same command prints `286 MISSING`, all accounted for, and the gate's
+// probe reports `LINKED (291 undefined, 0 duplicates)`.
+//
+// This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
+// claim that fn_80008D68 is decompiled into the port - it is a GameCube-only TU's function and
+// the port has no body for it. `docs/research/port_link_gap_list.md` regenerates unchanged
+// because the symbol is now defined here rather than MISSING.
+extern "C" void stub_182() asm("fn_80008D68");
+extern "C" void stub_182() {}
 
 
 // Data objects. A vtable or typeinfo stub is zero-filled: harmless to take the
