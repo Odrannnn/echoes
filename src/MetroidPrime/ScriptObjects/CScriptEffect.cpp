@@ -414,6 +414,17 @@ bool CScriptEffect::IsSystemDeletable() const {
 
 bool CScriptEffect::CanRenderUnsorted(const CStateManager&) const { return false; }
 
+// The empty box in `PreRenderAllViewports` has to be a *temporary*, not a named local: retail
+// allocates it at `r1+20`, between the `CVector3f` at `r1+8` and the two `optional_object<CAABox>`
+// arm temporaries at `r1+44`/`r1+72`, and a named local is allocated after the arms instead
+// (40 spellings over four runs could not move it). Returning it by value from an inline helper
+// and binding a reference to the call makes mwcceppc give the call's return slot that same
+// `r1+20`, *and* keep the address out of a register, so the twelve payload reads go through
+// `r1`-relative displacements as retail has them instead of loading through the callee's
+// returned pointer in `r3`. A file-local `static inline` helper is the same device as
+// `ClearTrans` at the top of this file.
+static inline CAABox MakeEmptyEffectBounds(const CVector3f& p) { return CAABox(p, p); }
+
 void CScriptEffect::PreRenderAllViewports(CStateManager& mgr) {
   const rstl::optional_object< CAABox > bounds =
       mParticleSystem.get() != nullptr
@@ -425,7 +436,7 @@ void CScriptEffect::PreRenderAllViewports(CStateManager& mgr) {
     mCanRender = true;
   } else {
     const CVector3f position = GetTranslation();
-    const CAABox emptyBounds(position, position);
+    const CAABox& emptyBounds = MakeEmptyEffectBounds(position);
     SetOtherBounds(emptyBounds);
     SetRenderBounds(emptyBounds);
     mCanRender = false;

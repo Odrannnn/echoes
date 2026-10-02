@@ -1403,3 +1403,248 @@ Helpers left in `.tmp/opencode/` (not part of the change): `tryop.py` (patch the
 assignment bodies and rebuild, which is how the spellings above were measured),
 `rewrite.py` (write them with their comments), `fdiff.py` (instruction diff of one function
 across our object and retail's), `insndiff.py`.
+
+---
+
+# progress-unit-cscripteffect — run 8 (`wt-mp2-goal-L4`): 27/35 -> 29/35
+
+**Result: two functions to 100.00% — `uninitialized_copy<pointer_iterator<CMayaSplineKnot>,...>`
+(the function retail calls `fn_80082E74`, so a `symbols.txt` rename, 0.00%/unpaired -> 100.00%,
+92 bytes) and `PreRenderAllViewports` 99.84% -> 100.00% (436 bytes, 0 differing instructions of
+109). `./tools/goal_check.sh build/goal/item.json` -> `PASS` (matched 12356 -> 12358, target rose
+27 -> 29, linked 5863 unchanged, no `asm` added).** The unit stays `NonMatching`, as a `progress`
+item requires.
+
+Two files changed: `config/G2ME01/symbols.txt` (one line, a rename) and
+`src/MetroidPrime/ScriptObjects/CScriptEffect.cpp` (+12/-3, one file-local `static inline` helper
+plus the one call site that uses it). No header, no `tools/`, no `build/goal/` file edited by hand.
+Nothing committed.
+
+Re-measured on this tree first: the unit really was at 27/35, `matched_code` 5616/11284, DOL
+matched 12356, so runs 1-7's numbers were current and nothing had landed upstream.
+
+## Measured
+
+| | before | after |
+|---|---|---|
+| unit `matched_functions` | 27 / 35 | **29 / 35** |
+| unit `matched_code` | 5616 / 11284 (49.77%) | **6144 / 11284 (54.44%)** |
+| unit `fuzzy_match_percent` | 70.28% | **71.11%** |
+| DOL `matched_functions` | 12356 / 28465 | **12358 / 28465** |
+| DOL `linked` | 5863 | 5863 (unchanged) |
+| `Tweaks/MetroidPrime/ScriptLoader/Tweaks` | 242 / 245, 99.99% fuzzy | **242 / 245 (unchanged)** |
+| `All:` | 34.90% fuzzy, 28.52% matched | 34.90% fuzzy, **28.53%** matched (12358 / 28465) |
+
+| function | before | after | size |
+|---|---|---|---|
+| `uninitialized_copy<Q24rstl124pointer_iterator<15CMayaSplineKnot,...>` (was `fn_80082E74`) | 0.00% (not paired) | **100.00%** | 92 |
+| `PreRenderAllViewports__13CScriptEffectFR13CStateManager` | 99.84% | **100.00%** | 436 |
+| everything else in the unit | unchanged | unchanged | — |
+
+Nothing anywhere got worse: `tools/report_diff.py build/goal/judge/report.base.json
+build/report.json` prints `+2 functions at 100%` and `no regression`.
+
+## 1. `fn_80082E74`: **run 7's wall was wrong — this one pairs**
+
+Run 7 concluded, in bold, that "`fn_80082E74` was renamed too and then reverted, because objdiff
+will not pair it in this unit", and listed what it had ruled out (the name, the scope, the offset,
+the size, the section, the order). **One line of `config/G2ME01/symbols.txt` and it pairs at
+100.00%.** What run 7 got wrong is almost certainly the *name* it used: the rename has to be the
+exact `nm` symbol, which is not
+`uninitialized_copy<Q24rstl124pointer_iterator<15CMayaSplineKnot,Q24rstl52vector<...>,Q24rstl17rmemory_allocator>,P15CMayaSplineKnot>`
+but that plus the `__4rstlF...` scope suffix and both full template argument lists:
+
+```
+uninitialized_copy<Q24rstl124pointer_iterator<15CMayaSplineKnot,Q24rstl52vector<15CMayaSplineKnot,
+  Q24rstl17rmemory_allocator>,Q24rstl17rmemory_allocator>,P15CMayaSplineKnot>__4rstlFQ24rstl124pointer_
+  iterator<15CMayaSplineKnot,Q24rstl52vector<15CMayaSplineKnot,Q24rstl17rmemory_allocator>,
+  Q24rstl17rmemory_allocator>Q24rstl124pointer_iterator<15CMayaSplineKnot,Q24rstl52vector<15CMayaSpline
+  Knot,Q24rstl17rmemory_allocator>,Q24rstl17rmemory_allocator>P15CMayaSplineKnot = .text:0x80082E74;
+```
+
+(the line is one line in `symbols.txt`; wrapped here for reading). Get it from
+`nm -S build/G2ME01/src/MetroidPrime/ScriptObjects/CScriptEffect.o`, do not retype it.
+**So the local/global scope question run 7 spent time on is a non-issue: retail's symbol is `T`
+(global) and ours is `t` (local), and objdiff pairs them anyway.** The other three renames in this
+unit were to ordinary mangled names (`__as__...`, `clear__...`), which is probably why nobody
+expected the long template one to work.
+
+## 2. `PreRenderAllViewports` 99.84% -> 100.00%: the empty box must be a temporary
+
+Runs 1-6 recorded 40+ spellings of this one function and five of them wrote a `WALL:` line saying
+the `CAABox`'s stack slot was unreachable. It is reachable, and the reason is a **general rule
+about how mwcceppc allocates stack slots** that none of those runs had stated:
+
+> **Temporaries are allocated in creation order; named locals are allocated after all of them.**
+
+Retail's frame is `position`@`r1+8`, empty `CAABox`@`r1+20`, ternary-arm temporary@`r1+44`,
+`GetBounds()` return slot@`r1+72`, `bounds` copy@`r1+100`. Ours was `position`@8, arm@20,
+return-slot@48, **box@76**, `bounds`@100 — the same order, with the box moved to the end because
+`const CAABox emptyBounds(position, position);` is a **named local**. Retail's box is a
+**temporary**. That is the whole of the 40-spelling wall, and it is why hoisting the declaration
+(run 3, run 6: 81.33%) and permuting it could never work: declaration order is not the lever,
+*local-vs-temporary* is.
+
+With that, the fix is one line:
+
+```cpp
+// src/MetroidPrime/ScriptObjects/CScriptEffect.cpp:421
+static inline CAABox MakeEmptyEffectBounds(const CVector3f& p) { return CAABox(p, p); }
+...
+    const CAABox& emptyBounds = MakeEmptyEffectBounds(position);   // was: const CAABox emptyBounds(position, position);
+```
+
+A **call's by-value return slot** is a temporary, so it lands at `r1+20` — retail's slot. And
+because it is a *call* rather than a constructor written in place, mwcceppc does **not** keep the
+returned pointer in `r3`: the twelve payload reads go through `r1`-relative displacements
+(`lwz r4,20(r1) ; lwz r0,24(r1) ; ...`) as retail has them. Result: 109 instructions on both
+sides, 436 bytes on both sides, 0 differing instructions.
+
+`static inline` + a by-value return is the same device as `ClearTrans` at the top of this file,
+and the helper is fully inlined, so nothing is added to the object.
+
+### The one spelling that was tried and is the near miss
+
+`const CAABox& emptyBounds = CAABox(position, position);` (run 6's line) is **right about the
+slots and wrong about the register**: it measures 98.88%, 18 differing instructions, and every
+one is the payload load base:
+
+```
+retail:  lwz r4,20(r1) ; li r3,0 ; lwz r0,24(r1) ; stw r4,204(r30) ; ...
+ours:    lwz r5,0(r3)  ; li r4,0 ; lwz r0,4(r3)  ; stw r5,204(r30) ; ...
+```
+
+mwcceppc's constructor convention returns `this` in `r3`, and a *reference variable's* value is
+coalesced with that return register, so the allocator keeps `r3` live through the whole copy. A
+plain function returning by value breaks the coalescing. That is the entire difference between
+the two spellings.
+
+### Spellings measured in THIS run, all sub-100% (so the next run skips them)
+
+Measured with a compile-only loop (mwcceppc with the build's exact flags, no ninja/link/report —
+0.35 s per variant) and a per-instruction diff against retail's 109. "difflines" is instructions
+differing out of 109; the baseline is **17**.
+
+| spelling | difflines | objdiff |
+|---|---|---|
+| baseline: `const CAABox emptyBounds(position, position)` | 17 | 99.84% |
+| non-`const` named local (`CAABox emptyBounds(...)`) | 17 | - |
+| `CVector3f position` (non-`const`) | 17 | - |
+| an extra `const CVector3f position2 = position;` before the box | 32 | - |
+| `const CAABox emptyBounds{position, position}` | compile error | - |
+| `const CAABox& emptyBounds = CAABox(position, position)` | 18 | 98.88% |
+| ... plus a second reference `b2` that both calls go through | 18 | 98.88% |
+| ... plus a pointer `const CAABox* box = &emptyBounds;` and `*box` | 18 | 98.88% |
+| ... initialised from a comma expression `(position, CAABox(position, position))` | 18 | 98.88% |
+| ... with `static_cast< const CAABox& >(emptyBounds)` on the first call | 18 | - |
+| ... with the whole call pair in a nested `{}` | 18 | - |
+| ... with `mCanRender = false;` written first | 22 | - |
+| reference bound to a **named** local (`tmp` + `const CAABox& = tmp`) | 17 | back to the baseline |
+| `rstl::optional_object_null()` instead of the default ctor in the else arm | 28 | - (no change from the reference form) |
+| the temporary passed twice: `SetOtherBounds(CAABox(p,p)); SetRenderBounds(CAABox(p,p));` | 55 | no CSE — two boxes, frame blows up |
+| a file-local `static void SetBothEffectBounds(CActor&, const CAABox&)` doing both sets | 28 | MW does **not** inline it: a real `bl` |
+| `CActorParameters`-style hoisting of `position` + box above the ternary | 79 | 81.33% (re-measured; matches runs 3 and 6) |
+| **`static inline CAABox MakeEmptyEffectBounds(...)` + `const CAABox&` = the call** | **0** | **100.00%** |
+
+Run 6's line about `const CVector3f& position` (37 difflines) and run 2's early-return shapes were
+not re-tried; they are not needed.
+
+## 3. Re-measured this run so the next run does not repeat it
+
+**The four remaining 0.00% functions are genuinely unwritten, and this run pins down why three of
+them cannot be written from this file at all.** `nm -S` on
+`build/G2ME01/src/MetroidPrime/ScriptObjects/CScriptEffect.o` lists every symbol the object emits
+and there is nothing at 24, 124, 248 or 1772 bytes.
+
+- **`fn_80082ED0` (24 B)** — `lfs f0,-30788(r2) ; lis r3,-32706 ; stfsu f0,-22272(r3) ;
+  stfs f0,4(r3) ; stfs f0,8(r3) ; blr`. **Run 1 recorded the address as `0x8045A900`; that is
+  wrong** — `lis r3,-32706` is `0x803E0000`, so the three floats are at **`0x803DA900`**.
+  `nm -n build/G2ME01/main.elf` shows `0x803DA900` is **`B lbl_803DA900`**, an *unnamed* 16-byte
+  `.bss` blob. No C++ can name it, so no translation unit can emit a store to it and the function
+  cannot be written. That is a `symbols.txt`-names-a-bss-label problem, not a source problem.
+- **`fn_80080FCC` (248 B)** and **`fn_80080F50` (124 B)** — the constructor and deleting destructor
+  of the class `fn_80080394` loads. The constructor is `__ct__20SLdrEditorPropertiesFv` on `this`,
+  then **`bl fn_802405CC` (196 B) on `this+0x70`** and **`bl fn_80241CCC` (12 B) on `this+0xB4`**,
+  then `__ct__11CMayaSplineFv` on `this+0xB8`, eight `lfs` constants into `this+0x44..0x63`, and a
+  `CColorFffff` into `this+0x84`. **Both `fn_802405CC` and `fn_80241CCC` are unnamed functions in
+  *other* objects** (`config/G2ME01/symbols.txt:10188` and `:10221`), so writing our own copies
+  would add symbols retail's `CScriptEffect.o` does not define — which `tools/unit_fit.sh` fails —
+  and would collide at link. So these two are blocked on naming those two constructors, which is a
+  different unit, not on `CScriptEffect.cpp`. The class itself is worth writing once they are
+  named: `SLdrEditorProperties` (0x00), `CMotionSpline`-ish ints at 0x38/0x3C, flags at 0x40,
+  floats at 0x44, `CMayaSpline` at 0xB8, total 0x102.
+- **`fn_80080394` (1772 B)** — the token-parsing SLdr loader. Re-confirmed from the disassembly
+  that it is a 14-way comparison tree over 4-byte ids read from a `CInputStream` at `this+8`, and
+  that it is the only caller of `fn_80080FCC`/`fn_80080F50`. Its float constants come from
+  `lfs fX,-30816(r2)` .. `-30784(r2)`, i.e. the same `.sdata2` block that already holds `1.0f` at
+  `-30788(r2)` (used by `UpdateGeneratorRate`, which is 100% matched), so the offsets are
+  reachable — but 1772 bytes have to be byte-exact and it needs the two names above.
+
+**`__ct__13CScriptEffect` is 88.24% and its first divergence is confirmed to be `CModelDataNull`
+(run 2/3/6 are right, my own first read of the diff was not).** Side by side with relocations:
+
+```
+retail 272c: addi r3,r1,324 ; bl CModelDataNull__10CModelDataFv
+ours   2104: addi r3,r1,324 ; bl __ct__10CModelDataFv
+```
+
+`include/MetroidPrime/CModelData.hpp:183` is `static CModelData CModelDataNull() { return
+CModelData(); }`, defined in class and therefore implicitly inline, and **13 translation units**
+call it; runs 3 and 6 measured that taking its address or spelling it `CModelData::`-qualified
+does not stop the inline. A second, independent difference in the same region: retail builds
+`CActorParameters()` into `r1+132` and lets `WithAlphaSorting(true)` return into `r1+228`, we
+build it into `r1+228` and let `WithAlphaSorting` return into `r1+132` — the same
+temporary/local allocation inversion as `PreRenderAllViewports`, in the argument list of a
+constructor. Not attempted here; it is inside `CModelData.hpp` and `CActorParameters`.
+
+**`AcceptScriptMsg` is unchanged at 48.56% and is a rewrite, not a spelling.** Re-measured:
+ours 477 instructions / 1908 bytes, retail 468 / 1872, **409 differing instructions**. Not
+attempted.
+
+NEW: match-or-progress | MetroidPrime/CModelData | `CModelData::CModelDataNull()` is defined in-class at include/MetroidPrime/CModelData.hpp:183, so mwcceppc always inlines it; retail carries it out of line at 0x80036184 and `__ct__CScriptEffect` calls it. Getting the call instead of the inline body unblocks the first divergence of `CScriptEffect`'s 1100-byte constructor — but it must not move the 12 other call sites, so it needs a measured fix for each, not a plain header edit
+
+## Gates
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12356 -> 12358   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    All:  34.90% fuzzy, 28.53% matched, 12.90% linked (12358 / 28465 functions)
+  ok    target rose: main/MetroidPrime/ScriptObjects/CScriptEffect: 27 -> 29 / 35 functions
+  ok    no asm added
+goal_check: PASS progress-unit-cscripteffect
+```
+
+Also measured: `sha1sum build/G2ME01/main.dol` -> `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`tools/report_diff.py build/goal/judge/report.base.json build/report.json` -> `+2 functions at
+100%`, `no regression`; `tools/probe_sources.sh` -> `752 files, 0 failed, 0 errors; link: LINKED
+(289 undefined, 0 duplicates)`, the same 289 as `build/goal/judge/undef.base.count`;
+`python3 tools/check_symbol_names.py` -> `checked 525 units; 0 declared names are missing from
+their object`; `python3 tools/check_decl_order.py --unit
+MetroidPrime/ScriptObjects/CScriptEffect` -> `ok: 1 unit(s) checked, none emits its functions out
+of retail order`; `python3 tools/check_docs_claims.py` -> `docs claims agree with the tree`.
+No `tools/`, no `docs/`, no `build/goal/` file was edited by hand; nothing committed.
+(`docs/HANDOFF.md`'s state block shows 12358/10810 — that is `goal_check.sh` rewriting derived
+counts, not an edit of mine.)
+
+Helpers left in `.tmp/opencode/` (not part of the change): `cc.sh` (compile `CScriptEffect.cpp`
+with the build's exact flags only — 0.35 s, no ninja/link/report), `pv2.py` (per-instruction
+diff of `PreRenderAllViewports` between `/tmp/opencode/probe.o` and retail, branch targets and
+register numbers normalised), `pb.sh` (splice a function body from a file, compile, report
+difflines and the `r1` slot map), `full.sh` (same for a whole file), `slots.py`, `score.sh`.
+
+## Three codegen rules this run, generalisable
+
+1. **Temporaries are allocated in creation order; named locals after all temporaries.** If retail's
+   frame puts a stack object *before* something your source creates later, that object is a
+   temporary in retail and a named local in yours. Rewriting the declaration will not move it;
+   changing it into a temporary will.
+2. **A call's by-value return slot is a temporary, and a constructor call's `this` pointer is not.**
+   `const T& x = CAABox(a, b);` gives the right slot but mwcceppc coalesces the reference's value
+   with the `this`/return register and keeps it live across the call. `const T& x = Make(a, b);`
+   where `Make` returns by value gives the same slot *and* leaves the address as an `r1`-relative
+   address constant.
+3. **objdiff pairs by exact name, template instantiations included.** A rename in `symbols.txt`
+   has to be the byte-exact `nm` symbol including the `__4rstlF...` scope suffix; an abbreviated
+   or tidied version silently does not pair and looks exactly like "objdiff will not pair it".
