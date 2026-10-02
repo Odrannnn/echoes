@@ -2634,6 +2634,44 @@ config.libs = [
         ],
     ),
     Rel(
+        # Added 2026-09-29 (goal item `progress-rel-head-shrieker`). 17 functions, .text
+        # 0x000000..0x000154: the module head - the fourteen short accessors the REL loader
+        # generator emits, `fn_69_10` (this module's `GetBoundingBox` wrapper), `fn_69_B4`'s
+        # vtable call on slot 0x38, and RELExit, RELMain and the loader registration `fn_69_124`.
+        # Module 69. **Its accessor block is `CMysteryFlyerRel.cpp`'s with three differences,
+        # measured** by diffing `build/G2ME01/Shrieker/asm/auto_00_00000000_text.s` over
+        # 0x0..0x154 against `CMysteryFlyerRel.cpp`'s over 0x0..0x170 rather than read off the
+        # `fn_<id>_<off>` names, which say nothing about which function is which: the first two
+        # are swapped in role (this module opens `addi r3,r3,0x8c4` where MysteryFlyer opens
+        # `li r3,1`, so the member offset is 0x8C4 against 0x818), and this module has **no**
+        # three-float copy, so its vtable entry sits at 0xB4 rather than 0xD0. Everything from
+        # 0x4C to 0xB4 - the `lbl_8041AAB8` store at +0x448, the `lbl_8041B758` accessor, the
+        # `+0x34c` bit 3, `+0x754`, `+0x44f` and the five predicates - is the same block. So no
+        # spelling had to be discovered: every body is one `CMysteryFlyerRel.cpp` or
+        # `CGrenchlerRel.cpp` already reproduces at 100%. **`fn_69_10` is not an
+        # `optional_object` template problem**: retail *calls* the converting constructor out of
+        # line at 0x6EE4 (six words copied out of `r4+0x00..r4+0x14`, then `stb 1, 0x18(r3)`),
+        # and that function stays unclaimed, so it is one call by its dtk name - see the
+        # source's header. The record is four bytes at `.bss:0x60` (`lbl_69_bss_60`), **not
+        # `.bss:0x0`**, because this module's `.bss` holds nine objects
+        # (`build/G2ME01/Shrieker/asm/auto_05_00000000_bss.s`) and `.bss:0x0` is a 16-byte
+        # float block read and written far above the head. The import is the plain DOL symbol
+        # `fn_80218C30` (`stw r3, gLoader_Shrieker@sda21(r0); blr`, immediately after
+        # `LoadShrieker__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x80218C04, which
+        # is 0x2C bytes and so ends exactly at 0x80218C30), so no `symbols.txt` rename and no
+        # DOL change. **No dead-strip hazard**: the module's `ldscript.lcf` puts all fourteen of
+        # `fn_69_0`..`fn_69_B4` in its `FORCEACTIVE` block, and `.data:0x314` (CShrieker's
+        # vtable, which holds every one of them) stores them, so nothing needs a `force_active:`
+        # entry. `fn_69_154` (0x154, 0x7D8) is the module's own entity loader and the functions
+        # from there up are its methods; all stay retail - behavioural class code needing the
+        # CActor/CPatterned hierarchy. Not in `files.cmake`, for the reason the other heads
+        # measure: it calls `fn_69_154` and `fn_80218C30`, which the port cannot link.
+        "Shrieker",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CShriekerRel.cpp"),
+        ],
+    ),
+    Rel(
         # Added 2026-09-30 (goal item `progress-rel-head-flyingpirate`). 16 functions, .text
         # 0x000470..0x0005D4: the module's thirteen accessors, `fn_22_534`'s vtable call on slot
         # 0x38, and RELExit, RELMain and the loader registration `fn_22_5A4`. Module 22, which
