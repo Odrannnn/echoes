@@ -138,3 +138,128 @@ The four unpaired ones are worth a look first - they read as "absent", not "wron
 `__dt__11CGMFrontEndFv` is 180 bytes sitting right next to a constructor that is now perfect.
 
 NEW: progress | MetroidPrime/Player/CGameState | __ct__10CGameStateFR16CBitStreamReader is 84.14% and `CGameStateStreamCtor.cpp` names two blocks as not expressible in C++ (a memset-shaped fill whose length comes from an uninitialised stack word, and a `gpSimplePool` vtable slot-3 dispatch whose target cannot be identified) - the other 15.9% is not accounted for by those two and may be reachable.
+
+---
+
+# Run 2 (lane 7, 2026-10-02)
+
+## Why this item came back: the eighth sync deleted the previous run's fix
+
+`git log -- include/rstl/reserved_vector.hpp` on this tree: `fc61ccbc` (the previous run) added
+`preserved_t`, and **`9f2d849f` "sync: merge upstream PrimeDecomp/echoes 8bb7bd0f (eighth sync)"
+removed it** - the merge took upstream's `reserved_vector.hpp` wholesale. So `include/rstl/
+reserved_vector.hpp:37` is `reserved_vector() : mCount(0) {}` again and `preserved_t` appears
+nowhere in the tree. The header is upstream's now (smaller: `typedef T* iterator`, a template
+`operator=`), so re-applying the previous diff is not a rebase.
+
+The item's actual target also stopped existing under its name: **`CGMFrontEnd` is `CFrontEndGameMode`
+upstream**, so `__ct__11CGMFrontEndFRC11CGMFrontEnd` is now
+`__ct__17CFrontEndGameModeFRC17CFrontEndGameMode` (`src/MetroidPrime/Player/CGameState.cpp:961`),
+and it already measures **100.00%** - the plain `mPlayers(other.mPlayers)` spelling works now
+because upstream's `reserved_vector` copy ctor is out of line at 0x80143CD4 and stores the count in
+the *callee*. The mem-init store the previous run deleted is no longer emitted at all. So no
+`STALE:` for the unit (the count is not maxed), but **do not re-land `preserved_t`; the problem it
+solved is gone.**
+
+## What this run did: the eighth sync renamed addresses that pre-sync carves still own
+
+That sync filled in `config/G2ME01/symbols.txt` for addresses that used to be unnamed, and this
+tree had claimed several of them under `extern "C"` carve names. objdiff pairs **by symbol name**,
+so a byte-exact carve under the old name now pairs with nothing and scores 0. Measured on this
+unit (`nm --defined-only` on both objects, `LC_ALL=C comm`):
+
+```
+OUR fn_ carves with NO retail symbol of that name:
+fn_801422D4  fn_801426E0  fn_80142800  fn_80142914  fn_80142944  fn_801466F4
+retail fn_ symbols absent from our object:  (none)
+```
+
+Of those six, `objdump -r` says only **`fn_80142914`** is still referenced; the other five are dead
+weight that pairs with nothing and would each block a future flip (`unit_fit.sh`). Not touched
+here - out of scope for this item, but it is what is left between this unit and `unit_fit.sh`.
+
+**The one that was byte-exact: `fn_80142288`.** Retail's 0x80142288 is 76 bytes and is now
+`erase__Q24rstl63vector<Q24rstl19pair<Ui,9TEditorId>,...>FQ24rstl146pointer_iterator<...>` - the
+one-argument `rstl::vector::erase(iterator)`. The carve was a faithful copy of
+`rstl/vector.hpp`'s one-argument `erase`, and the file already said so. Fix, one file:
+
+- `CGameState.cpp:1543` - the call in `CPersistentOptions::SetCinematicState` is now
+  `mCinematicStates.erase(it)` instead of `fn_80142288(&mCinematicStates, it)`, so the template
+  instantiation is emitted **under retail's own mangled name** and objdiff pairs it;
+- `CGameState.cpp:1572` - the `fn_80142288` definition is deleted.
+
+Result: `erase(iterator)` 0.00% -> **100.00%**, and `SetCinematicState` stays at 100.00%. Our
+symbol at `.text+0x65fc` is byte-identical to retail's `.text+0x100` (76 B, 19 instructions,
+compared as raw `.text` bytes, not through objdiff).
+
+**Measured, and worth knowing: objdiff does not compare a `bl`'s relocation by symbol name.** In
+`objdiff-cli diff`, our `bl fn_80142288` and retail's `bl erase__...(1 arg)` carry no `arg_diff`
+and `SetCinematicState` is 100.00% either way; the same is true of the `bl` in retail's
+`push_back`. So renaming a *callee* a function calls costs nothing - only the callee itself needed
+the right name. (Relocations do get compared on some instructions, so this is not a licence to
+assume it everywhere.)
+
+## WALL: push_back__rstl::vector<CWorldState>::push_back 0.00%
+
+Retail's 0x801426E0 (56 B) is the **unsafe** append - no capacity test, no temporary:
+`mCount` up by one, then an in-place construct at `mItems + count*36`. The same pattern applies as
+for `erase`, but the name is the problem:
+
+- `extern "C" fn_801426E0` carries **byte-identical** 56 bytes (verified) and pairs with nothing.
+- The name does exist in our object: `rstl::vector<CWorldState>::push_back` is instantiated by
+  `StateForWorld` and `InitializeMemoryWorlds`, but `include/rstl/vector.hpp`'s inline `push_back`
+  is the growth-checking one, so it emits **144 bytes against retail's 56 and objdiff scores it
+  37.25%** (`objdiff-cli diff`, `match_percent: 37.25`).
+- The right name under the right body needs an explicit specialization, and **mwcceppc cannot
+  express one**. Both spellings measured, both rejected at compile time with
+  `object 'rstl::vector<CWorldState, rstl::rmemory_allocator>::push_back(const CWorldState &)'
+  redefined`:
+  1. `template<> void rstl::vector<CWorldState, rstl::rmemory_allocator>::push_back(const
+     CWorldState& in) { ... }` with `push_back` defined in the class body (as it is now);
+  2. the same, after moving `push_back` out of the class body in `include/rstl/vector.hpp` to an
+     `inline` out-of-line template definition (the only conforming way to make a member
+     specializable). `include/rstl/vector.hpp` was reverted.
+
+  A conforming compiler accepts (2); mwcceppc does not. Do not retry the specialization.
+
+## For the next run on this unit
+
+**107/116**, all measured from `build/report.json` after this run:
+
+| function | % | B | note |
+|---|---|---|---|
+| `LoadGameFileState__10CGameStateFPCv` | 0.00 | 488 | absent from our object; no source at all |
+| `push_back__...vector<CWorldState>...` | 0.00 | 56 | the WALL above |
+| `StartGameFromFrontEnd__Fv` | 60.11 | 784 | still the guessed-name stub-ish switch |
+| `reserve__...vector<CWorldState>...::reserve(int)` | 71.37 | 172 | pairs with the real template; `fn_801466F4` is a dead duplicate |
+| `__ct__10CGameStateFR16CBitStreamReader` | 84.14 | 1668 | the two unexpressible blocks stand |
+| `PutTo__18CPersistentOptionsCFR16CBitStreamWriter` | 94.35 | 600 | |
+| `__ct__18CPersistentOptionsFR16CBitStreamReader` | 95.52 | 776 | |
+| `PutTo__10CGameStateFR16CBitStreamWriter` | 96.47 | 876 | |
+| `__ct__11CWorldStateFR16CBitStreamReaderUiRC18CWorldSaveGameInfo` | 97.17 | 568 | closest; see below |
+
+`__ct__CWorldState(Reader, uint, const CWorldSaveGameInfo&)` is the closest to 100% and its diff is
+small and readable (`objdiff-cli diff`, `match_percent 98.05`): `li r7,0x0` where retail has
+`li r7,-0x1` with the two following `stw`s swapped (`+0x04` wants `kInvalidAreaId`, we store 0), plus
+three `bl`s whose *names* differ (retail `fn_800B8CF4` / `fn_80009008` / `fn_80009224`, we call
+`__ct__13CRelayTrackerFR16CBitStreamReaderRC18CWorldSaveGameInfo` and
+`ReleaseData__Q24rstl23rc_ptr<13CRelayTracker>Fv` etc.). Fixing the constant alone will not reach
+100% - the three call names would have to match too - so budget for both.
+
+## Verification
+
+```
+$ ./tools/goal_check.sh build/goal/item.json
+goal_check: item progress-cgamestate-reserved-vector-default-ctor (progress) target=MetroidPrime/Player/CGameState
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 13045 -> 13046   linked 6148 -> 6148
+  ok    check_symbol_names.py
+  ok    All:  36.98% fuzzy, 30.42% matched, 13.41% linked (13046 / 28465 functions)
+  ok    target rose: main/MetroidPrime/Player/CGameState: 106 -> 107 / 116 functions
+  ok    no asm added
+goal_check: PASS progress-cgamestate-reserved-vector-default-ctor
+```
+
+One file changed, `src/MetroidPrime/Player/CGameState.cpp` (+27/-11, of which 20 lines are the two
+rewritten comment blocks). `include/rstl/vector.hpp` is untouched in the final state.

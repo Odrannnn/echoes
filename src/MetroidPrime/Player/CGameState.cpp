@@ -1439,6 +1439,20 @@ extern "C" void fn_80142718(void* elem, const void* src) { fn_80142738(elem, src
 // is `mwcceppc`'s strength reduction of `words + n * 9`. Spelled as `n * 36` on a `uchar*` the
 // multiply lands on the count's own register instead of a temporary and the function sits at
 // 97.50%.
+//
+// **This 56-byte body is byte-identical to retail's 0x801426E0, which the eighth upstream sync
+// named `push_back__Q24rstl48vector<11CWorldState,Q24rstl17rmemory_allocator>FRC11CWorldState` -
+// so it no longer pairs with anything.** objdiff matches by symbol name, and an `extern "C"`
+// carve called `fn_801426E0` scores 0 however exact its bytes are; the template instantiation
+// `rstl::vector< CWorldState >::push_back` does carry the right name, but
+// `include/rstl/vector.hpp`'s inline `push_back` is the growth-checking one (144 bytes, paired at
+// 37.25%) and retail's is the *unsafe* append, which `StateForWorld` gets by reserving first.
+//
+// The right name under the right body needs an explicit specialization, and **mwcceppc cannot
+// express one**: `template<> void rstl::vector<CWorldState, rstl::rmemory_allocator>::push_back(
+// const CWorldState&)` is rejected with "object ... redefined" whether the member is defined in
+// the class body or declared there and defined afterwards as an `inline` template (both measured,
+// the second with `include/rstl/vector.hpp` edited). Wall, not a spelling to retry.
 extern "C" void fn_801426E0(SGameStateBlock* self, const void* src) {
   u32* const words = static_cast< u32* >(self->x0c_data);
   const u32 n = self->x04_count;
@@ -1526,12 +1540,18 @@ bool CPersistentOptions::GetCinematicState(rstl::pair< CAssetId, TEditorId > cin
 }
 
 // `rstl::vector< rstl::pair< CAssetId, TEditorId > >::erase( iterator )` - retail 0x80142288,
-// 76 bytes, unnamed in the symbol table, and so claimable only under an `extern "C"` name.
-// **Written out here for the same reason as `fn_80144818`**: a template instantiation is emitted
-// mangled, so the instructions were already in the object and already correct (0 differing of 19)
-// while objdiff had nothing to pair `fn_80142288` with. The body is `rstl/vector.hpp`'s one-argument
-// `erase` - `erase(it, it + 1)`. The two-argument form still emits as a template for this call;
-// its operation is also reproduced directly under retail's `fn_801422D4` name in this block.
+// 76 bytes. **The call in `CPersistentOptions::SetCinematicState` is spelled `mCinematicStates.
+// erase(it)`, so the template instantiation is emitted under retail's own mangled name** and
+// objdiff pairs it; it used to be an `extern "C" fn_80142288` carve carrying the same 76 bytes,
+// which paired with nothing once the eighth upstream sync named 0x80142288 in `symbols.txt`.
+// The body is `rstl/vector.hpp`'s one-argument `erase` - `erase(it, it + 1)` - and the
+// two-argument form still emits as a template for this call; its operation is also reproduced
+// directly under retail's `fn_801422D4` name in this block.
+//
+// Note that the `bl` is unaffected by any of this: objdiff compares a `bl`'s relocation as a
+// relocation, not as a symbol name, so `bl fn_80142288` and `bl erase(...)` both matched retail's
+// `bl` at 0x801422BC and `SetCinematicState` measured 100.00% either way. Only the 76-byte
+// function itself needed the right name.
 extern "C" {
 typedef rstl::vector< rstl::pair< CAssetId, TEditorId > > SCinematicStates;
 
@@ -1549,10 +1569,6 @@ SCinematicStates::iterator fn_801422D4(
   self->mCount = newCount;
   return *first;
 }
-
-SCinematicStates::iterator fn_80142288(SCinematicStates* self, SCinematicStates::iterator it) {
-  return self->erase(it, it + 1);
-}
 } // extern "C"
 
 void CPersistentOptions::SetCinematicState(rstl::pair< CAssetId, TEditorId > cinematicId,
@@ -1561,7 +1577,7 @@ void CPersistentOptions::SetCinematicState(rstl::pair< CAssetId, TEditorId > cin
        ++it) {
     if (*it == cinematicId) {
       if (!state) {
-        fn_80142288(&mCinematicStates, it);
+        mCinematicStates.erase(it);
       }
       return;
     }
