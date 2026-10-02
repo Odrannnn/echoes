@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_MetroidAlpha;
 
-CEntity* LoadMetroidAlpha(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadMetroidAlpha(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_MetroidAlpha.value)(mgr, input, info);
 }

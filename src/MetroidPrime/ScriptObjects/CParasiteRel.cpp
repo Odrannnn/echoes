@@ -74,7 +74,7 @@
 //   - `fn_80200EFC` is the DOL's 0x80200EFC, two instructions,
 //     `stw r3, gLoader_Parasite@sda21(r0); blr` (dtk's listing for that address, the
 //     `auto_03_80200EFC_text.s` object under `build/G2ME01/`), immediately after
-//     `LoadParasite__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x80200ED0, which is
+//     `LoadParasite__FR13CStateManagerR12CInputStreamR11CEntityInfo` at 0x80200ED0, which is
 //     0x2C bytes and so ends exactly at 0x80200EFC. So it stores the *address* of a loader
 //     record, not a loader. **The import name is the plain `fn_80200EFC`** that
 //     `config/G2ME01/symbols.txt:8383` already gives it - not the long MWCC-mangled
@@ -147,9 +147,9 @@ public:
 };
 
 extern "C" {
-CEntity* fn_47_1568(CStateManager&, CInputStream&, const CEntityInfo&);
-CEntity* fn_47_CF8(CStateManager&, CInputStream&, const CEntityInfo&);
-CEntity* fn_47_148(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_47_1568(CStateManager&, CInputStream&, CEntityInfo&);
+CEntity* fn_47_CF8(CStateManager&, CInputStream&, CEntityInfo&);
+CEntity* fn_47_148(CStateManager&, CInputStream&, CEntityInfo&);
 
 #ifdef __MWERKS__
 extern SParasiteLoaders lbl_47_bss_50;

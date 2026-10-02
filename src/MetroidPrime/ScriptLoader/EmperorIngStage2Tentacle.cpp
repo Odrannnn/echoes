@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_EmperorIngStage2Tentacle;
 
-CEntity* LoadEmperorIngStage2Tentacle(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadEmperorIngStage2Tentacle(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_EmperorIngStage2Tentacle.value)(mgr, input, info);
 }

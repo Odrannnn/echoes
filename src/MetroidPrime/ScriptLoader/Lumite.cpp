@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_Lumite;
 
-CEntity* LoadLumite(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadLumite(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_Lumite.value)(mgr, input, info);
 }

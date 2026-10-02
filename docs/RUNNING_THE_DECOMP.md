@@ -145,7 +145,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 814 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 804 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -1959,7 +1959,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (814 files, 0 failures)
+- `./tools/probe_sources.sh` green (804 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -1994,6 +1994,7 @@ does not rediscover it.
 
 
 | module | what happened |
+| ninth upstream sync (`5f97267f`) | **Landed, 2026-10-02** - matched 12699 -> 13012, linked 6058 -> 6118, DOL and 86 RELs bit-identical. 36 of our `Matching` carves deleted for upstream whole-file units; 26 upstream units added to `files.cmake`, 17 excluded with measured reasons. **Two things the gate caught that a green build did not**: `CScriptRepulsor`'s constructor fell 80.25% -> 67.86% because upstream's `CActorParameters` has no user destructor (now 100%: `CActorParameters::None()` plus `CMaterialList((flags & 1) ? kMT_Pillar : kMT_Pillar)`; re-adding the destructor broke 87 checksums), and two `PortLinkStubs.cpp` stubs became reachable through `CAi.cpp` and had to go. Detail in `docs/HANDOFF.md`, "The ninth sync". |
 | `CCubeRenderer::EndScene` | **Landed, 2026-09-27** - `Matching` 100.00% 1/1, retail 0x8026FB80, 0x7C = 124 B, `flip_test` PASS, `linked` 2556 -> 2557, DOL bit-identical. **124 bytes and it abuts `BeginScene` exactly**: 0x8026FB80 + 0x7C = 0x8026FBFC. Two traps cleared, both measured: retail's `r13` is **`_SDA_BASE_` (0x8041FD80), not `_SDA2_BASE_`**, and `lbl_80418AE4` **must be declared non-`const`** - declared `const` it compiled, linked, and hoisted the `lbz` above the frame stores, leaving 2 differing instructions at the **same length**. `tools/sda.py` hardcodes the `.sdata` base and is silently wrong for `.sdata2`. **No pixels**: the draw methods are still logging stubs. |
 | `CCubeRenderer` (four units) | **Landed, 2026-09-27** - `matched` 3977 -> 3979, `linked` 2555 -> 2556, DOL bit-identical, 87/87. **`Carve80272958.c` is `Matching` 100.00%** (0x80272958, 0x30) and is the only one of the four that counts as linked. **`BeginScene` is also 100.00% and must stay `NonMatching`** - mwldeppc attributes 20 bytes of `.sdata2` to its object that retail does not have, which costs 32 bytes of `main.dol` and breaks 43 REL hashes. See "A percentage is not a link result" below. The vtable is now **real**: `Carve80270848.cpp` is the key function and the only thing that emits `vtable for CCubeRenderer`, and the port gap 309 -> 391 is the known cost of listing it (76 arriving symbols are `CCubeRenderer::` methods with no body yet). |
 | `CMain` (header) | **Landed, 2026-09-27** - `sizeof(CMain)` was 0x94 and is **0x98**, proved by retail's own `sMainSpace` (`.bss:0x803C5A20; size:0x98`, next object at 0x803C5AB8), not inferred. The `+0x18..+0x48` region stopped being `char x10_pad[0x38]` and became a `double`, two 20-byte `SFrameTimeHistory` and their two **sums**. **Adds 0 to `matched` and 0 to `linked`** - and is still worth landing, because it is the port's type model being right about a boot-path object. See "`sizeof(CMain)` is 0x98" below. |

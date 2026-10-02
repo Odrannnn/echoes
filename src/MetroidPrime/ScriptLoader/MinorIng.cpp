@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_MinorIng;
 
-CEntity* LoadMinorIng(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadMinorIng(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_MinorIng.value)(mgr, input, info);
 }

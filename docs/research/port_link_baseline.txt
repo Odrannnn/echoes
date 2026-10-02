@@ -1,15 +1,13 @@
 # Measured by tools/link_check.sh on the port's real executable.
 # The linker is the ground truth; tools/link_gap.py's count differs by a
 # few because a vtable is invisible to nm until its key function exists.
-undefined 291
+undefined 287
 duplicates 0
 # sym <name> - one per undefined symbol, for the --strict regression diff.
 sym CActor* TCastToPtr<CActor>(CEntity*)
-sym CActorParameters::CActorParameters()
 sym CAiKnockBackMgr::CAiKnockBackMgr(unsigned int)
 sym CAiKnockBackMgr::KnockBack(CStateManager&, CActor&, CKnockBackInfo const&)
 sym CAiKnockBackMgr::~CAiKnockBackMgr()
-sym CAnimData::GetLocatorSegId(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
 sym CAnimRes::kDefaultCharIdx
 sym CAnimationManager::~CAnimationManager()
 sym CAnimationState::CAnimationState()
@@ -36,6 +34,7 @@ sym CAudioSys::TrkQueueTrack(rstl::basic_string<char, rstl::char_traits<char>, r
 sym CAuxWeapon::fn_801D5DD0(int, CStateManager&)
 sym CAuxWeapon::fn_801D6894(CStateManager&, bool)
 sym CAuxWeapon::~CAuxWeapon()
+sym CBallCamera::SetState(CBallCamera::EBallCameraState, CStateManager&)
 sym CBasics::CopyMemory(void*, void const*, unsigned int)
 sym CBasics::Stringize(char const*, ...)
 sym CBodyStateInfo::GetCurrentState() const
@@ -57,6 +56,8 @@ sym CDamageInfo::CDamageInfo(SLdrTDamageInfo const&, bool, bool, bool, bool)
 sym CDamageVulnerability::CDamageVulnerability(SLdrDamageVulnerability const&)
 sym CEchoEmitter::CEchoEmitter(CAABox const&, SEchoParameters const&)
 sym CEntityInfo::~CEntityInfo()
+sym CFluidPlaneManager::CreateSplash(TUniqueId, CStateManager&, CScriptWater const&, CVector3f const&, float, bool)
+sym CFluidPlaneManager::GetLastSplashDeltaTime(TUniqueId) const
 sym CFrustumPlanes::CFrustumPlanes()
 sym CGMCoin::CGMCoin(int, int, float, bool)
 sym CGMDeathMatch::CGMDeathMatch(int, int, float, bool, bool)
@@ -70,20 +71,22 @@ sym CGameCamera::UpdatePerspective(float, CStateManager&)
 sym CGameCollision::Move(CStateManager&, CPhysicsActor&, float, rstl::reserved_vector<TUniqueId, 1024> const*)
 sym CGameCollision::RayDynamicIntersection(CStateManager const&, TUniqueId&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&)
 sym CGameCollision::RayStaticIntersection(CStateManager const&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&)
+sym CGameCollision::RayStaticLineOfSightTest(CStateManager const&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&)
+sym CGameHint* TCastToPtr<CGameHint>(CEntity*)
+sym CGameLight::CGameLight(TUniqueId, TAreaId, bool, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CTransform4f const&, TUniqueId, CLight const&, unsigned int, unsigned int, float, CEntityInfo const*)
 sym CGameOptions::~CGameOptions()
 sym CGameProjectile::GetBeamAttribType(EWeaponType)
 sym CGameSplineDesc::CGameSplineDesc(CMayaSpline const&, CMotionSpline::ESplineType, float, bool)
 sym CGameState::~CGameState()
-sym CGameStateEnvVarManager::LoadFields()
 sym CGraphics::SetAlphaCompare(ERglAlphaFunc, unsigned char, ERglAlphaOp, ERglAlphaFunc, unsigned char)
 sym CGraphics::SetFog(ERglFogMode, float, float, CColor const&)
 sym CGraphics::SetOrtho(float, float, float, float, float, float)
-sym CGraphics::SetTevOp(ERglTevStage, CTevCombiners::CTevPass const&)
 sym CGraphics::StreamBegin(ERglPrimitive)
 sym CGraphics::StreamEnd()
 sym CGraphics::StreamVertex(CVector3f const&)
 sym CGraphics::kEnvModulate
 sym CGraphics::kEnvPassthru
+sym CGraphics::mModelMatrix
 sym CGrappleArm::CGrappleArm(CVector3f const&, TUniqueId, bool)
 sym CGunMotion::fn_801D6D8C()
 sym CGunMotion::fn_801D6ED0(int, CStateManager&, float, bool)
@@ -98,8 +101,6 @@ sym CJointData_LinearStorage::ResetScales()
 sym CJointData_LinearStorage::SetReferenceOffsets(CCharLayoutInfo const&)
 sym CJointData_LinearStorage::SetZeroRotation()
 sym CJointData_LinearStorage::~CJointData_LinearStorage()
-sym CLightParameters::CLightParameters()
-sym CLightParameters::MakeActorLights() const
 sym CMain::EnsureWorldPakReady(unsigned int)
 sym CMain::ResetGameState()
 sym CMain::StreamNewGameState(bool)
@@ -115,7 +116,6 @@ sym CMetroidModelInstance::CMetroidModelInstance(void const*, void const*, void 
 sym CModel::GetAABB() const
 sym CModel::IsLoaded(int) const
 sym CModel::SShader::~SShader()
-sym CPASAnimParmData::CPASAnimParmData(pas::EAnimationState, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&)
 sym CPASDatabase::FindBestAnimation(CPASAnimParmData const&, CRandom16&, int) const
 sym CPASDatabase::FindBestAnimation(CPASAnimParmData const&, int) const
 sym CPASDatabase::GetAnimState(int) const
@@ -133,6 +133,7 @@ sym CPlayer* TCastToPtr<CPlayer>(CEntity*)
 sym CPlayer::PlaySfxForPlayer(unsigned int, short, TAreaId, bool, int)
 sym CPlayerCameraBob::ReadTweaks(SLdrTweakCameraBob const&)
 sym CPlayerKnockBackMgr::CPlayerKnockBackMgr()
+sym CPlayerKnockBackMgr::fn_801C0124()
 sym CPlayerKnockBackMgr::~CPlayerKnockBackMgr()
 sym CPlayerTargeting::GetScanTargetIndex(CStateManager const&, TUniqueId) const
 sym CPortalArea::CPortalArea(TLockedToken<CPortalAreaData> const&)
@@ -183,7 +184,6 @@ sym CTextExecuteBuffer::BuildRenderBuffer() const
 sym CTextExecuteBuffer::CTextExecuteBuffer()
 sym CTextExecuteBuffer::EndBlock()
 sym CTextRenderBuffer::Render(CColor const&, float) const
-sym CTextRenderBuffer::~CTextRenderBuffer()
 sym CTexture::IsARAMTransferInProgress() const
 sym CTexture::Load(GXTexMapID, CTexture::EClampMode) const
 sym CTexture::LoadToARAM() const
@@ -199,7 +199,6 @@ sym CTweakPlayerControls::GetMapping(CControlMapper::ECommands) const
 sym CTweakPlayerRes::ResolveResources()
 sym CWaypointNavigation::CWaypointNavigation()
 sym CWaypointNavigation::Patrol(CStateManager&, EStateMsg, float, CPatterned&)
-sym CWeaponMgr::GetNumActive(TUniqueId, EWeaponType) const
 sym CWeaponMgr::fn_800B321C(TUniqueId, EWeaponType)
 sym CWeaponMgr::fn_800B32E0(TUniqueId, EWeaponType)
 sym CWorldLight::CWorldLight(CInputStream&)
@@ -214,29 +213,28 @@ sym GXNtsc480Prog
 sym GetLockedCacheAllocationBase()
 sym IElement::CElementAllocator::Alloc(unsigned long, char const*, char const*)
 sym IElement::CElementAllocator::Free(void*, unsigned long)
+sym LdrToActorParameters(SLdrActorParameters const&)
 sym LdrToDamageInfo(SLdrDamageInfo const&)
-sym LoadActorParameters(SLdrActorParameters const&)
-sym LoadAreaAttributes(CStateManager&, CInputStream&, CEntityInfo const&)
+sym LdrToEchoParameters(SLdrEchoParameters const&)
+sym LdrToModelData(CVector3f const&, unsigned int, SLdrAnimationSet const&, bool)
+sym LdrToTransform4f(SLdrEditorProperties const&)
 sym LoadCAABox(CStateManager&, TAreaId const&, CVector3f const&, CVector3f const&)
-sym LoadEchoParameters(SLdrEchoParameters const&)
-sym LoadEditorTransform(SLdrEditorProperties const&)
-sym LoadModelData(CVector3f const&, unsigned int, SLdrAnimationParameters const&, bool)
-sym LoadTypedefSLdrActorParameters(SLdrActorParameters&, CInputStream&)
-sym LoadTypedefSLdrAnimationParameters(SLdrAnimationParameters&, CInputStream&)
-sym LoadTypedefSLdrCameraShakerData(SLdrCameraShakerData&, CInputStream&)
-sym LoadTypedefSLdrDamageInfo(SLdrDamageInfo&, CInputStream&)
-sym LoadTypedefSLdrEchoParameters(SLdrEchoParameters&, CInputStream&)
+sym LoadTypedefActorParameters(SLdrActorParameters&, CInputStream&)
+sym LoadTypedefAnimationSet(SLdrAnimationSet&, CInputStream&)
+sym LoadTypedefCameraShakerData(SLdrCameraShakerData&, CInputStream&)
+sym LoadTypedefDamageInfo(SLdrDamageInfo&, CInputStream&)
+sym LoadTypedefEchoParameters(SLdrEchoParameters&, CInputStream&)
+sym LoadTypedefPlayerItem(SLdrPlayerItem&, CInputStream&)
 sym NWeaponTypes::are_tokens_ready(rstl::vector<CToken, rstl::rmemory_allocator> const&)
 sym REL_LoadFlyerSwarm
 sym REL_LoadMetaree
 sym REL_LoadPuffer
-sym REL_LoadRiftPortal(CStateManager&, CInputStream&, CEntityInfo const&)
-sym ReadPlayerItem(int&, CInputStream&)
+sym REL_LoadRiftPortal(CStateManager&, CInputStream&, CEntityInfo&)
 sym SAreaSurface::SAreaSurface(CInputStream&)
-sym SPersistentOptionsValue::SPersistentOptionsValue(int, int, int)
 sym TStateMachineState2<CPatterned>::Setup(CStateMachine2 const&)
 sym TStateMachineState2<CPatterned>::TStateMachineState2()
 sym __ct__12CGameOptionsFR16CBitStreamReader
+sym __dt__20SLdrEditorPropertiesFv
 sym fn_58_A0
 sym fn_60_6FF0
 sym fn_60_7D20
@@ -249,7 +247,6 @@ sym fn_65_FC
 sym fn_66_70
 sym fn_80003D00
 sym fn_80004458
-sym fn_80004BEC
 sym fn_80004D84
 sym fn_800068F4
 sym fn_80020478
@@ -261,7 +258,6 @@ sym fn_80041CCC
 sym fn_800B89FC
 sym fn_801423A8
 sym fn_80145628
-sym fn_80145ACC
 sym fn_80180598
 sym fn_8018A7E8
 sym fn_8018A8D0
@@ -277,11 +273,11 @@ sym fn_80271104
 sym fn_802711A4
 sym fn_80272624
 sym fn_802BBDB8
-sym fn_802BE51C
 sym fn_802BEC6C
 sym fn_802C1FE4
 sym fn_802C420C
 sym fn_802CB608
+sym fn_802CB918
 sym fn_802CC064
 sym fn_80310F38
 sym fn_803115F8

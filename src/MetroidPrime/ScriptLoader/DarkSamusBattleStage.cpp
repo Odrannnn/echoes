@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_DarkSamusBattleStage;
 
-CEntity* LoadDarkSamusBattleStage(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadDarkSamusBattleStage(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_DarkSamusBattleStage.value)(mgr, input, info);
 }

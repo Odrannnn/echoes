@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_OctopedeSegment;
 
-CEntity* LoadOctopedeSegment(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadOctopedeSegment(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_OctopedeSegment.value)(mgr, input, info);
 }

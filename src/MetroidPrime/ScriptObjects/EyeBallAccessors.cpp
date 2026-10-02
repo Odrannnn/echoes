@@ -2,7 +2,7 @@
 // GetBoundingBox wrapper, and the fourteen short accessors above it.
 //
 // The class is unnamed in retail (the only name the module's loader has is
-// `LoadEyeBall__FR13CStateManagerR12CInputStreamRC11CEntityInfo` in the DOL, which is named after
+// `LoadEyeBall__FR13CStateManagerR12CInputStreamR11CEntityInfo` in the DOL, which is named after
 // the module, not the type), so - as with `CScriptWallCrawler.cpp`, `CScriptPuffer.cpp` and
 // `CScriptCoinTouchBounds.cpp` - the object is reached as a `void*` and the offsets are stated
 // literally. That keeps this unit layout-immune: it reads members through offsets, so nothing

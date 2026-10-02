@@ -14,6 +14,8 @@ public:
   void Shutdown(CBodyController& bc) override;
 
 private:
+  pas::EAnimationState GetBodyStateTransition(float dt, CBodyController& bc);
+
   pas::EFallState mFallState;
 };
 CHECK_SIZEOF(CBSGetup, 0x8)

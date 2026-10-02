@@ -93,7 +93,7 @@ extern "C" {
 // .text 0x2490, 0xB4 bytes. The module's own entity loader: `__nw__FUl(0x1E0, "GeomBlobV2")`
 // then `fn_25_4290`. Unclaimed, and behavioural class code - it needs the CActor/CPatterned
 // hierarchy this tree does not model.
-CEntity* fn_25_2490(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_25_2490(CStateManager&, CInputStream&, CEntityInfo&);
 
 // .text 0x48CC and 0x48A8. The second loader's registration and teardown, filling
 // `lbl_25_bss_8` through the other unnamed DOL setter `fn_802274FC`. Both unclaimed; both called

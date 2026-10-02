@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_PlantScarabSwarm;
 
-CEntity* LoadPlantScarabSwarm(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadPlantScarabSwarm(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_PlantScarabSwarm.value)(mgr, input, info);
 }

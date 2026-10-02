@@ -1,7 +1,7 @@
 // KraleeAccessors.cpp - a carve of Kralee's .text 0x000000..0x00009C, 14 short accessors.
 //
 // The class is unnamed in retail - the only name the module's loader has is
-// `LoadKralee__FR13CStateManagerR12CInputStreamRC11CEntityInfo` in the DOL, which is named after
+// `LoadKralee__FR13CStateManagerR12CInputStreamR11CEntityInfo` in the DOL, which is named after
 // the module and not the type - so, as in `CScriptWallCrawler.cpp`, `CScriptMetaree.cpp`,
 // `CScriptPuffer.cpp` and `CScriptCoinTouchBounds.cpp`, the object is reached as a `void*` and
 // the offsets are stated literally.  That keeps the unit layout-immune: it reads members

@@ -16,6 +16,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_Coin;
 
-CEntity* LoadCoin(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadCoin(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_Coin.value)(mgr, input, info);
 }

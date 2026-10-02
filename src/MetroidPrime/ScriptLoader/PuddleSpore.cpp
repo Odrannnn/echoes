@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_PuddleSpore;
 
-CEntity* LoadPuddleSpore(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadPuddleSpore(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_PuddleSpore.value)(mgr, input, info);
 }

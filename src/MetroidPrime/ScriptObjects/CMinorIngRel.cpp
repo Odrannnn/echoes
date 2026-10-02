@@ -79,7 +79,7 @@
 // The three callees are named by what they are, not invented:
 //   - `fn_80218AA0` is the DOL's 0x80218AA0, two instructions,
 //     `stw r3, gLoader_MinorIng@sda21(r0); blr` (`build/G2ME01/asm/auto_03_80218AA0_text.s`),
-//     immediately after `LoadMinorIng__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at
+//     immediately after `LoadMinorIng__FR13CStateManagerR12CInputStreamR11CEntityInfo` at
 //     0x80218A74, which is 44 bytes and so ends exactly at 0x80218AA0. So it stores the *address*
 //     of a loader slot, not a loader. `src/MetroidPrime/ScriptLoader/MinorIng.cpp` - a `Matching`
 //     unit, and the file that already records why this setter is deliberately not claimed in the
@@ -101,7 +101,7 @@
 //     and a host definition.
 //   - `fn_44_110` is the module's entity loader, referenced only by address in the registration.
 //     Its 0x844 bytes and its `mr r23, r3 / mr r24, r4 / mr r25, r5` prologue are the loader
-//     signature `(CStateManager&, CInputStream&, const CEntityInfo&)` that `LoadMinorIng` calls
+//     signature `(CStateManager&, CInputStream&, CEntityInfo&)` that `LoadMinorIng` calls
 //     through the slot; it is left unclaimed, and the range above it too.
 //
 // Everything from `fn_44_110` (0x110, 0x844) up is left unclaimed: that is the module's own
@@ -142,7 +142,7 @@ public:
 
 extern "C" {
 // .text 0x110, unclaimed: the module's own entity loader.
-CEntity* fn_44_110(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_44_110(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80218AA0(FScriptLoader* loader);
 
 #ifdef __MWERKS__

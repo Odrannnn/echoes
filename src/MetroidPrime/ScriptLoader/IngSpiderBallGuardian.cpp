@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_IngSpiderBallGuardian;
 
-CEntity* LoadIngSpiderBallGuardian(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadIngSpiderBallGuardian(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_IngSpiderBallGuardian.value)(mgr, input, info);
 }

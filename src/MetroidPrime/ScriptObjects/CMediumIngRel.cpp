@@ -66,7 +66,7 @@
 // The two callees are named by what they are, not invented:
 //   - `fn_80218A6C` is the DOL's 0x80218A6C, two instructions,
 //     `stw r3, gLoader_MediumIng@sda21(r0); blr` (`build/G2ME01/asm/auto_03_80218A6C_text.s`),
-//     immediately after `LoadMediumIng__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at
+//     immediately after `LoadMediumIng__FR13CStateManagerR12CInputStreamR11CEntityInfo` at
 //     0x80218A40, which is 0x2C bytes and so ends exactly at 0x80218A6C. So it stores the
 //     *address* of a loader slot, not a loader. `src/MetroidPrime/ScriptLoader/MediumIng.cpp` -
 //     a `Matching` unit, and the file that already records why this setter is deliberately not
@@ -130,7 +130,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_41_150(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_41_150(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80218A6C(FScriptLoader* loader);
 // .text 0xA708, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line.
 void fn_41_A708(void* out, const CAABox& box);

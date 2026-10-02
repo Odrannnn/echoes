@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_StreamedMovie;
 
-CEntity* LoadStreamedMovie(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadStreamedMovie(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_StreamedMovie.value)(mgr, input, info);
 }

@@ -15,7 +15,7 @@ struct SLdrTransform {
   CVector3f scale;
 };
 
-void LoadTypedefSLdrTransform(SLdrTransform& data, CInputStream& input);
+void LoadTypedefTransform(SLdrTransform& data, CInputStream& input);
 
 struct SLdrEditorProperties {
   SLdrEditorProperties();

@@ -23,10 +23,10 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_DigitalGuardian;
 
-CEntity* LoadDigitalGuardian(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadDigitalGuardian(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return gLoader_DigitalGuardian.value->slot0(mgr, input, info);
 }
 
-CEntity* LoadDigitalGuardianHead(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadDigitalGuardianHead(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return gLoader_DigitalGuardian.value->slot1(mgr, input, info);
 }

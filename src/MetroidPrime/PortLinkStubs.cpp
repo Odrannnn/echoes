@@ -5,11 +5,11 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 169 of them: the ones referenced **only by
+ * file supplies 193 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   165 functions, 4 data objects (counted 2026-10-02, after `fn_801FD67C` was added by hand
+ *   187 functions, 6 data objects (counted 2026-10-02, after the ninth upstream sync; before it, after `fn_801FD67C` was added by hand
  *   below for `Carve801FD638.c`, and after `fn_801FD8E0`'s stub was retired for
  *   `Carve801FD8E0.c` with `fn_801FD924`'s added in its place - an exchange, so the total did not
  *   move; before that 164, after `fn_80008C28` was added by hand
@@ -175,14 +175,6 @@ extern "C" void stub_19() {}
 extern "C" void stub_20() asm("_ZN13CEnvFxManager13Stop_801620B4Ev");
 extern "C" void stub_20() {}
 
-// CFluidPlaneManager::CreateSplash(TUniqueId, CStateManager&, CScriptWater const&, CVector3f const&, float, bool)
-extern "C" void stub_21() asm("_ZN18CFluidPlaneManager12CreateSplashE9TUniqueIdR13CStateManagerRK12CScriptWaterRK9CVector3ffb");
-extern "C" void stub_21() {}
-
-// CFluidPlaneManager::GetLastSplashDeltaTime(TUniqueId) const
-extern "C" void stub_22() asm("_ZNK18CFluidPlaneManager22GetLastSplashDeltaTimeE9TUniqueId");
-extern "C" void stub_22() {}
-
 // CFontImageDef::GetHeight() const
 extern "C" void stub_23() asm("_ZNK13CFontImageDef9GetHeightEv");
 extern "C" void stub_23() {}
@@ -297,52 +289,52 @@ extern "C" void stub_61() {}
 extern "C" void stub_62() asm("GetBoundingBox__13CPhysicsActorCFv");
 extern "C" void stub_62() {}
 
-// LoadAIHint(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_63() asm("_Z10LoadAIHintR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadAIHint(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_63() asm("_Z10LoadAIHintR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_63() {}
 
-// LoadAIJumpPoint(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_64() asm("_Z15LoadAIJumpPointR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadAIJumpPoint(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_64() asm("_Z15LoadAIJumpPointR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_64() {}
 
-// LoadAIKeyframe(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_65() asm("_Z14LoadAIKeyframeR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadAIKeyframe(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_65() asm("_Z14LoadAIKeyframeR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_65() {}
 
-// LoadAIWaypoint(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_66() asm("_Z14LoadAIWaypointR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadAIWaypoint(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_66() asm("_Z14LoadAIWaypointR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_66() {}
 
-// LoadActor(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_67() asm("_Z9LoadActorR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadActor(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_67() asm("_Z9LoadActorR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_67() {}
 
-// LoadActorKeyframe(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_68() asm("_Z17LoadActorKeyframeR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadActorKeyframe(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_68() asm("_Z17LoadActorKeyframeR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_68() {}
 
-// LoadActorRotate(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_69() asm("_Z15LoadActorRotateR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadActorRotate(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_69() asm("_Z15LoadActorRotateR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_69() {}
 
-// LoadAdvancedCounter(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_70() asm("_Z19LoadAdvancedCounterR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadAdvancedCounter(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_70() asm("_Z19LoadAdvancedCounterR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_70() {}
 
-// LoadAmbientAI(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_71() asm("_Z13LoadAmbientAIR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadAmbientAI(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_71() asm("_Z13LoadAmbientAIR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_71() {}
 
-// LoadAreaDamage(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_72() asm("_Z14LoadAreaDamageR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadAreaDamage(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_72() asm("_Z14LoadAreaDamageR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_72() {}
 
-// LoadBallTrigger(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_73() asm("_Z15LoadBallTriggerR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadBallTrigger(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_73() asm("_Z15LoadBallTriggerR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_73() {}
 
-// LoadCamera(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_74() asm("_Z10LoadCameraR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadCamera(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_74() asm("_Z10LoadCameraR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_74() {}
 
 // LoadCameraBlurKeyframe(CStateManager&, CInputStream&, CEntityInfo const&)
@@ -353,32 +345,32 @@ extern "C" void stub_75() {}
 extern "C" void stub_76() asm("_Z24LoadCameraFilterKeyframeR13CStateManagerR12CInputStreamRK11CEntityInfo");
 extern "C" void stub_76() {}
 
-// LoadCameraHint(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_77() asm("_Z14LoadCameraHintR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadCameraHint(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_77() asm("_Z14LoadCameraHintR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_77() {}
 
-// LoadCameraPitch(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_78() asm("_Z15LoadCameraPitchR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadCameraPitch(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_78() asm("_Z15LoadCameraPitchR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_78() {}
 
-// LoadCameraShaker(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_79() asm("_Z16LoadCameraShakerR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadCameraShaker(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_79() asm("_Z16LoadCameraShakerR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_79() {}
 
-// LoadCameraWaypoint(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_80() asm("_Z18LoadCameraWaypointR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadCameraWaypoint(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_80() asm("_Z18LoadCameraWaypointR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_80() {}
 
-// LoadColorModulate(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_81() asm("_Z17LoadColorModulateR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadColorModulate(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_81() asm("_Z17LoadColorModulateR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_81() {}
 
-// LoadConditionalRelay(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_82() asm("_Z20LoadConditionalRelayR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadConditionalRelay(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_82() asm("_Z20LoadConditionalRelayR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_82() {}
 
-// LoadControlHint(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_83() asm("_Z15LoadControlHintR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadControlHint(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_83() asm("_Z15LoadControlHintR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_83() {}
 
 // LoadControllerAction(CStateManager&, CInputStream&, CEntityInfo const&)
@@ -389,221 +381,221 @@ extern "C" void stub_84() {}
 extern "C" void stub_85() asm("_Z11LoadCounterR13CStateManagerR12CInputStreamRK11CEntityInfo");
 extern "C" void stub_85() {}
 
-// LoadCoverPoint(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_86() asm("_Z14LoadCoverPointR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadCoverPoint(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_86() asm("_Z14LoadCoverPointR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_86() {}
 
-// LoadDamageActor(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_87() asm("_Z15LoadDamageActorR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadDamageActor(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_87() asm("_Z15LoadDamageActorR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_87() {}
 
-// LoadDamageableTrigger(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_88() asm("_Z21LoadDamageableTriggerR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadDamageableTrigger(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_88() asm("_Z21LoadDamageableTriggerR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_88() {}
 
-// LoadDamageableTriggerOriented(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_89() asm("_Z29LoadDamageableTriggerOrientedR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadDamageableTriggerOriented(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_89() asm("_Z29LoadDamageableTriggerOrientedR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_89() {}
 
-// LoadDebris(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_90() asm("_Z10LoadDebrisR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadDebris(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_90() asm("_Z10LoadDebrisR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_90() {}
 
-// LoadDebrisExtended(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_91() asm("_Z18LoadDebrisExtendedR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadDebrisExtended(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_91() asm("_Z18LoadDebrisExtendedR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_91() {}
 
-// LoadDistanceFog(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_92() asm("_Z15LoadDistanceFogR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadDistanceFog(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_92() asm("_Z15LoadDistanceFogR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_92() {}
 
-// LoadDock(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_93() asm("_Z8LoadDockR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadDock(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_93() asm("_Z8LoadDockR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_93() {}
 
-// LoadDoor(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_94() asm("_Z8LoadDoorR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadDoor(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_94() asm("_Z8LoadDoorR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_94() {}
 
-// LoadDynamicLight(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_95() asm("_Z16LoadDynamicLightR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadDynamicLight(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_95() asm("_Z16LoadDynamicLightR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_95() {}
 
-// LoadEMPulse(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_96() asm("_Z11LoadEMPulseR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadEMPulse(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_96() asm("_Z11LoadEMPulseR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_96() {}
 
-// LoadEffect(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_97() asm("_Z10LoadEffectR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadEffect(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_97() asm("_Z10LoadEffectR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_97() {}
 
-// LoadEnvFxDensityController(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_98() asm("_Z26LoadEnvFxDensityControllerR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadEnvFxDensityController(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_98() asm("_Z26LoadEnvFxDensityControllerR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_98() {}
 
-// LoadFogVolume(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_99() asm("_Z13LoadFogVolumeR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadFogVolume(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_99() asm("_Z13LoadFogVolumeR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_99() {}
 
 
-// LoadGenerator(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_101() asm("_Z13LoadGeneratorR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadGenerator(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_101() asm("_Z13LoadGeneratorR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_101() {}
 
-// LoadGrapplePoint(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_102() asm("_Z16LoadGrapplePointR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadGrapplePoint(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_102() asm("_Z16LoadGrapplePointR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_102() {}
 
-// LoadHUDHint(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_103() asm("_Z11LoadHUDHintR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadHUDHint(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_103() asm("_Z11LoadHUDHintR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_103() {}
 
-// LoadMemoryRelay(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_104() asm("_Z15LoadMemoryRelayR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadMemoryRelay(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_104() asm("_Z15LoadMemoryRelayR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_104() {}
 
-// LoadMidi(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_105() asm("_Z8LoadMidiR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadMidi(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_105() asm("_Z8LoadMidiR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_105() {}
 
-// LoadPathCamera(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_106() asm("_Z14LoadPathCameraR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadPathCamera(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_106() asm("_Z14LoadPathCameraR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_106() {}
 
-// LoadPathMeshCtrl(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_107() asm("_Z16LoadPathMeshCtrlR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadPathMeshCtrl(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_107() asm("_Z16LoadPathMeshCtrlR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_107() {}
 
-// LoadPickupGenerator(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_108() asm("_Z19LoadPickupGeneratorR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadPickupGenerator(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_108() asm("_Z19LoadPickupGeneratorR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_108() {}
 
-// LoadPlatform(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_109() asm("_Z12LoadPlatformR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadPlatform(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_109() asm("_Z12LoadPlatformR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_109() {}
 
-// LoadPlayerHint(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_110() asm("_Z14LoadPlayerHintR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadPlayerHint(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_110() asm("_Z14LoadPlayerHintR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_110() {}
 
-// LoadPlayerStateChange(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_111() asm("_Z21LoadPlayerStateChangeR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadPlayerStateChange(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_111() asm("_Z21LoadPlayerStateChangeR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_111() {}
 
-// LoadPointOfInterest(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_112() asm("_Z19LoadPointOfInterestR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadPointOfInterest(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_112() asm("_Z19LoadPointOfInterestR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_112() {}
 
-// LoadPortalTransition(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_113() asm("_Z20LoadPortalTransitionR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadPortalTransition(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_113() asm("_Z20LoadPortalTransitionR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_113() {}
 
-// LoadRadialDamage(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_114() asm("_Z16LoadRadialDamageR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadRadialDamage(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_114() asm("_Z16LoadRadialDamageR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_114() {}
 
-// LoadRandomRelay(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_115() asm("_Z15LoadRandomRelayR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadRandomRelay(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_115() asm("_Z15LoadRandomRelayR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_115() {}
 
-// LoadRepulsor(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_116() asm("_Z12LoadRepulsorR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadRepulsor(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_116() asm("_Z12LoadRepulsorR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_116() {}
 
-// LoadRipple(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_117() asm("_Z10LoadRippleR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadRipple(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_117() asm("_Z10LoadRippleR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_117() {}
 
-// LoadRoomAcoustics(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_118() asm("_Z17LoadRoomAcousticsR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadRoomAcoustics(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_118() asm("_Z17LoadRoomAcousticsR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_118() {}
 
-// LoadRumbleEffect(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_119() asm("_Z16LoadRumbleEffectR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadRumbleEffect(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_119() asm("_Z16LoadRumbleEffectR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_119() {}
 
-// LoadScriptLayerController(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_120() asm("_Z25LoadScriptLayerControllerR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadScriptLayerController(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_120() asm("_Z25LoadScriptLayerControllerR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_120() {}
 
-// LoadShadowProjector(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_121() asm("_Z19LoadShadowProjectorR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadShadowProjector(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_121() asm("_Z19LoadShadowProjectorR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_121() {}
 
-// LoadSilhouette(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_122() asm("_Z14LoadSilhouetteR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadSilhouette(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_122() asm("_Z14LoadSilhouetteR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_122() {}
 
-// LoadSound(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_123() asm("_Z9LoadSoundR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadSound(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_123() asm("_Z9LoadSoundR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_123() {}
 
-// LoadSoundModifier(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_124() asm("_Z17LoadSoundModifierR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadSoundModifier(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_124() asm("_Z17LoadSoundModifierR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_124() {}
 
-// LoadSpecialFunction(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_125() asm("_Z19LoadSpecialFunctionR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadSpecialFunction(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_125() asm("_Z19LoadSpecialFunctionR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_125() {}
 
-// LoadSpiderBallAttractionSurface(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_126() asm("_Z31LoadSpiderBallAttractionSurfaceR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadSpiderBallAttractionSurface(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_126() asm("_Z31LoadSpiderBallAttractionSurfaceR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_126() {}
 
 // LoadSpiderBallWaypoint(CStateManager&, CInputStream&, CEntityInfo const&)
 extern "C" void stub_127() asm("_Z22LoadSpiderBallWaypointR13CStateManagerR12CInputStreamRK11CEntityInfo");
 extern "C" void stub_127() {}
 
-// LoadSpindleCamera(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_128() asm("_Z17LoadSpindleCameraR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadSpindleCamera(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_128() asm("_Z17LoadSpindleCameraR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_128() {}
 
-// LoadSpinner(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_129() asm("_Z11LoadSpinnerR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadSpinner(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_129() asm("_Z11LoadSpinnerR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_129() {}
 
-// LoadSteam(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_130() asm("_Z9LoadSteamR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadSteam(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_130() asm("_Z9LoadSteamR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_130() {}
 
-// LoadSubtitle(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_131() asm("_Z12LoadSubtitleR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadSubtitle(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_131() asm("_Z12LoadSubtitleR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_131() {}
 
-// LoadSurfaceCamera(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_132() asm("_Z17LoadSurfaceCameraR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadSurfaceCamera(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_132() asm("_Z17LoadSurfaceCameraR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_132() {}
 
 // LoadSwitch(CStateManager&, CInputStream&, CEntityInfo const&)
 extern "C" void stub_133() asm("_Z10LoadSwitchR13CStateManagerR12CInputStreamRK11CEntityInfo");
 extern "C" void stub_133() {}
 
-// LoadTargetingPoint(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_134() asm("_Z18LoadTargetingPointR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadTargetingPoint(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_134() asm("_Z18LoadTargetingPointR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_134() {}
 
-// LoadTeamAI(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_135() asm("_Z10LoadTeamAIR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadTeamAI(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_135() asm("_Z10LoadTeamAIR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_135() {}
 
-// LoadTextPane(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_136() asm("_Z12LoadTextPaneR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadTextPane(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_136() asm("_Z12LoadTextPaneR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_136() {}
 
 // LoadTimer(CStateManager&, CInputStream&, CEntityInfo const&)
 extern "C" void stub_137() asm("_Z9LoadTimerR13CStateManagerR12CInputStreamRK11CEntityInfo");
 extern "C" void stub_137() {}
 
-// LoadTrigger(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_138() asm("_Z11LoadTriggerR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadTrigger(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_138() asm("_Z11LoadTriggerR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_138() {}
 
 // LoadTriggerEllipsoid(CStateManager&, CInputStream&, CEntityInfo const&)
 extern "C" void stub_139() asm("_Z20LoadTriggerEllipsoidR13CStateManagerR12CInputStreamRK11CEntityInfo");
 extern "C" void stub_139() {}
 
-// LoadTriggerOrientated(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_140() asm("_Z21LoadTriggerOrientatedR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadTriggerOrientated(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_140() asm("_Z21LoadTriggerOrientatedR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_140() {}
 
 // LoadTypedefSLdrConnection(SLdrConnection&, CInputStream&)
@@ -622,20 +614,20 @@ extern "C" void stub_143() {}
 extern "C" void stub_144() asm("_Z12LoadVisorGooR13CStateManagerR12CInputStreamRK11CEntityInfo");
 extern "C" void stub_144() {}
 
-// LoadWallWalker(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_145() asm("_Z14LoadWallWalkerR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadWallWalker(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_145() asm("_Z14LoadWallWalkerR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_145() {}
 
-// LoadWater(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_146() asm("_Z9LoadWaterR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadWater(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_146() asm("_Z9LoadWaterR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_146() {}
 
 // LoadWaypoint(CStateManager&, CInputStream&, CEntityInfo const&)
 extern "C" void stub_147() asm("_Z12LoadWaypointR13CStateManagerR12CInputStreamRK11CEntityInfo");
 extern "C" void stub_147() {}
 
-// LoadWorldLightFader(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_148() asm("_Z19LoadWorldLightFaderR13CStateManagerR12CInputStreamRK11CEntityInfo");
+// LoadWorldLightFader(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_148() asm("_Z19LoadWorldLightFaderR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_148() {}
 
 // LoadWorldTeleporter(CStateManager&, CInputStream&, CEntityInfo const&)
@@ -1137,6 +1129,104 @@ extern "C" void stub_199() {}
 // discarded as unused and the symbol never reaches the object file, which
 // looks exactly like the stub not working. Measured, not assumed.
 
+// --- Ninth upstream sync (2026-10-02): names tools/link_reach.py lists in
+// docs/research/boot_path_stubbable.tsv after the sync, added by hand. ---
+// CBodyController::FaceDirection(CVector3f const&, float)
+extern "C" void stub_200() asm("_ZN15CBodyController13FaceDirectionERK9CVector3ff");
+extern "C" void stub_200() {}
+
+// CBodyController::GetAnimTimeRemaining() const
+extern "C" void stub_201() asm("_ZNK15CBodyController20GetAnimTimeRemainingEv");
+extern "C" void stub_201() {}
+
+// CBodyController::GetFallState() const
+extern "C" void stub_202() asm("_ZNK15CBodyController12GetFallStateEv");
+extern "C" void stub_202() {}
+
+// CBodyController::GetPASDatabase() const
+extern "C" void stub_203() asm("_ZNK15CBodyController14GetPASDatabaseEv");
+extern "C" void stub_203() {}
+
+// CBodyController::LoopBestAnimation(CPASAnimParmData const&, CRandom16&)
+extern "C" void stub_204() asm("_ZN15CBodyController17LoopBestAnimationERK16CPASAnimParmDataR9CRandom16");
+extern "C" void stub_204() {}
+
+// CBodyController::PlayBestAnimation(CPASAnimParmData const&, CRandom16&)
+extern "C" void stub_205() asm("_ZN15CBodyController17PlayBestAnimationERK16CPASAnimParmDataR9CRandom16");
+extern "C" void stub_205() {}
+
+// CBodyController::SetCurrentAnimation(CAnimPlaybackParms const&, bool, bool)
+extern "C" void stub_206() asm("_ZN15CBodyController19SetCurrentAnimationERK18CAnimPlaybackParmsbb");
+extern "C" void stub_206() {}
+
+// CBodyController::SetDeltaRotation(CQuaternion const&)
+extern "C" void stub_207() asm("_ZN15CBodyController16SetDeltaRotationERK11CQuaternion");
+extern "C" void stub_207() {}
+
+// CBodyController::SetFallState(pas::EFallState)
+extern "C" void stub_208() asm("_ZN15CBodyController12SetFallStateEN3pas10EFallStateE");
+extern "C" void stub_208() {}
+
+// CElementGen::IsIndirectTextured() const
+extern "C" void stub_209() asm("_ZNK11CElementGen18IsIndirectTexturedEv");
+extern "C" void stub_209() {}
+
+// CHUDBillboardEffect::TypesMatch(int) const
+extern "C" void stub_210() asm("_ZNK19CHUDBillboardEffect10TypesMatchEi");
+extern "C" void stub_210() {}
+
+// CScriptCounter::TypesMatch(int) const
+extern "C" void stub_211() asm("_ZNK14CScriptCounter10TypesMatchEi");
+extern "C" void stub_211() {}
+
+// CScriptSpiderBallWaypoint::TypesMatch(int) const
+extern "C" void stub_212() asm("_ZNK25CScriptSpiderBallWaypoint10TypesMatchEi");
+extern "C" void stub_212() {}
+
+// CScriptSwitch::TypesMatch(int) const
+extern "C" void stub_213() asm("_ZNK13CScriptSwitch10TypesMatchEi");
+extern "C" void stub_213() {}
+
+// CScriptTimer::TypesMatch(int) const
+extern "C" void stub_214() asm("_ZNK12CScriptTimer10TypesMatchEi");
+extern "C" void stub_214() {}
+
+// CScriptWaypoint::TypesMatch(int) const
+extern "C" void stub_215() asm("_ZNK15CScriptWaypoint10TypesMatchEi");
+extern "C" void stub_215() {}
+
+// LoadAreaAttributes(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_216() asm("_Z18LoadAreaAttributesR13CStateManagerR12CInputStreamR11CEntityInfo");
+extern "C" void stub_216() {}
+
+// LoadCameraBlurKeyframe(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_217() asm("_Z22LoadCameraBlurKeyframeR13CStateManagerR12CInputStreamR11CEntityInfo");
+extern "C" void stub_217() {}
+
+// LoadCameraFilterKeyframe(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_218() asm("_Z24LoadCameraFilterKeyframeR13CStateManagerR12CInputStreamR11CEntityInfo");
+extern "C" void stub_218() {}
+
+// LoadControllerAction(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_219() asm("_Z20LoadControllerActionR13CStateManagerR12CInputStreamR11CEntityInfo");
+extern "C" void stub_219() {}
+
+// LoadTriggerEllipsoid(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_220() asm("_Z20LoadTriggerEllipsoidR13CStateManagerR12CInputStreamR11CEntityInfo");
+extern "C" void stub_220() {}
+
+// LoadTypedefScannableParameters(SLdrScannableParameters&, CInputStream&)
+extern "C" void stub_221() asm("_Z30LoadTypedefScannableParametersR23SLdrScannableParametersR12CInputStream");
+extern "C" void stub_221() {}
+
+// LoadVisorFlare(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_222() asm("_Z14LoadVisorFlareR13CStateManagerR12CInputStreamR11CEntityInfo");
+extern "C" void stub_222() {}
+
+// LoadWorldTeleporter(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_223() asm("_Z19LoadWorldTeleporterR13CStateManagerR12CInputStreamR11CEntityInfo");
+extern "C" void stub_223() {}
+
 // typeinfo for CGunWeapon
 extern "C" char stub_data_0[64] asm("_ZTI10CGunWeapon") = {};
 
@@ -1148,3 +1238,9 @@ extern "C" char stub_data_2[64] asm("_ZTV10CPatterned") = {};
 
 // vtable for CPlayer
 extern "C" char stub_data_3[64] asm("_ZTV7CPlayer") = {};
+
+// typeinfo for CEffect
+extern "C" char stub_data_4[64] asm("_ZTI7CEffect") = {};
+
+// vtable for CEffect
+extern "C" char stub_data_5[64] asm("_ZTV7CEffect") = {};

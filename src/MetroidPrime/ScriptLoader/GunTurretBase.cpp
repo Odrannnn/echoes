@@ -23,10 +23,10 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_GunTurretBase;
 
-CEntity* LoadGunTurretBase(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadGunTurretBase(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return gLoader_GunTurretBase.value->slot0(mgr, input, info);
 }
 
-CEntity* LoadGunTurretTop(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadGunTurretTop(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return gLoader_GunTurretBase.value->slot1(mgr, input, info);
 }

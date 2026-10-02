@@ -116,6 +116,14 @@ Inherited from the upstream sync of 2026-09-29 (upstream 03bd14b), the same way:
 
 - `main/MetroidPrime/CCollisionActor` - 13/21, upstream's order.
 - `main/MetroidPrime/ScriptObjects/CScriptActorRotate` - 4/16, upstream's order.
+- `main/MetroidPrime/CHintManager` - 43/48, upstream's order.
+- `main/MetroidPrime/HUD/CHudVisorBeamMenu` - 9/11, upstream's order.
+- `main/MetroidPrime/ScriptObjects/CHUDBillboardEffect` - 9/9, upstream's order.
+- `main/MetroidPrime/ScriptObjects/CScriptTimer` - 5/7, upstream's order.
+- `main/MetroidPrime/ScriptObjects/CScriptTriggerEllipsoid` - 9/12, upstream's order.
+- `main/MetroidPrime/ScriptObjects/CScriptVisorFlare` - 12/16, upstream's order.
+- `main/MetroidPrime/ScriptObjects/CScriptVisorGoo` - 13/15, upstream's order.
+- `main/MetroidPrime/ScriptObjects/CScriptWorldTeleporter` - 5/7, upstream's order.
 
 ## What was checked, and what was not
 

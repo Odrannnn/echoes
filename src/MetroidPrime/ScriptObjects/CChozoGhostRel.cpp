@@ -78,7 +78,7 @@
 //   - `fn_80218D24` is the DOL's 0x80218D24, two instructions,
 //     `stw r3, gLoader_ChozoGhost@sda21(r0); blr` (see
 //     `build/G2ME01/asm/auto_03_80218D24_text.s`), immediately after
-//     `LoadChozoGhost__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x80218CF8, which is
+//     `LoadChozoGhost__FR13CStateManagerR12CInputStreamR11CEntityInfo` at 0x80218CF8, which is
 //     44 bytes and so ends exactly there. So it stores the *address* of a loader slot, not a
 //     loader. `LoadChozoGhost` in `src/MetroidPrime/ScriptLoader/ChozoGhost.cpp` (a `Matching`
 //     unit) reads it as `lwz r6, gLoader_ChozoGhost; lwz r12, 0(r6); mtctr r12; bctrl`, which is
@@ -139,7 +139,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_8_488(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_8_488(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80218D24(FScriptLoader* loader);
 // .text 0x55E4, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line.
 void fn_8_55E4(void* out, const CAABox& box);

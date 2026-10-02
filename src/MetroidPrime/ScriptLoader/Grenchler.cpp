@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_Grenchler;
 
-CEntity* LoadGrenchler(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadGrenchler(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_Grenchler.value)(mgr, input, info);
 }

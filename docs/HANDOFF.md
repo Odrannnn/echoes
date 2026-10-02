@@ -7,10 +7,13 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    12693 / 28465 functions        (35.55% fuzzy, 29.39% of code, 13.06% fully linked)
-linked     6052 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  11093 / 16726 functions        (main/*, including the SDK's)
-port link  291 undefined, 0 duplicates   (291 since the eighth upstream sync, 2026-10-01: upstream's
+matched    13012 / 28465 functions        (36.95% fuzzy, 30.39% of code, 13.39% fully linked)
+linked     6118 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  11411 / 16726 functions        (main/*, including the SDK's)
+port link  287 undefined, 0 duplicates   (287 since the ninth upstream sync, 2026-10-02: 26 upstream
+                                   units joined files.cmake, five listed names were renamed and three
+                                   opened - docs/research/port_link_gap.md, "The ninth upstream sync".
+                                   Before that: 291 since the eighth upstream sync, 2026-10-01: upstream's
                                    CFrontEndGameMode, CRelFile and CDamageVulnerability units define what
                                    38 listed names asked for, and six new names opened -
                                    docs/research/port_link_gap.md, "The eighth upstream sync". Before that:
@@ -19,11 +22,40 @@ port link  291 undefined, 0 duplicates   (291 since the eighth upstream sync, 20
                                    closed 23 names and opened 97 that nothing implements yet -
                                    docs/research/port_link_gap.md, "The four whole units". Before that:
                                    250 again since 2026-09-30: lane commits 33b784fb
-REL units   1600 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   1601 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 How these numbers got here - the first seven upstream syncs and the unit flips, each with what it
 traded - is in `docs/history/handoff-to-2026-10-01.md`.
+
+**The ninth sync (`PrimeDecomp/echoes` 5f97267f, 2026-10-02, merge base 8bb7bd0f)** took matched
+12699 -> 13012 and linked 6058 -> 6118 against the judge's baseline, with no function worse. The code
+is upstream's; ours is the fitting. The rule was the eighth sync's: **upstream's whole-file units win
+over our overlapping carves.**
+
+- **36 `Matching` carves were deleted** because an upstream unit now owns their bytes
+  (`git show --stat` on the merge lists them; all are `Carve8*.c`). Goal-queue items that name one of
+  them are stale and still need retiring - queue edits need the user's approval.
+- **26 upstream units joined the port build** (`files.cmake`, "Upstream units new in the ninth
+  sync"): `CActorParameters`, `CHintState`, `CHintManager`, `CEffect`, `CWeaponMgr`, thirteen
+  `BodyState/CBS*`, and eight `ScriptObjects`. **17 more are excluded with a measured reason** in
+  `tools/check_files_cmake.py`: `TGameTypes.cpp` duplicates four definitions, the other 16 each open
+  more undefined names than they close.
+- **Upstream's loaders take a non-const `CEntityInfo&`** and its loader structs were renamed
+  (`SLdrAnimationParameters` -> `SLdrAnimationSet`, `LoadModelData` -> `LdrToModelData`,
+  `ReadPlayerItem` -> `LoadTypedefPlayerItem`). 72 stubs in `PortLinkStubs.cpp` were re-spelled, 26
+  added from `boot_path_stubbable.tsv` (193 stubs now), and the `TARGET_PC` loader forwarders in
+  `CScriptHUDMemo/Pickup/SequenceTimer.cpp` were deleted because upstream's own loaders replace them.
+  `TARGET_PC` lines 248 -> 245, those three and nothing else.
+- **Three of our files were kept over upstream's** where upstream's was measurably worse:
+  `Player/CGMDeathMatch.{hpp,cpp}` (`EndGame`) and `CGameState::StateForWorld`.
+  `CScriptRepulsor`'s constructor fell 80.25% -> 67.86% under upstream's `CActorParameters.hpp`
+  (no user destructor, which the rest of the tree needs: restoring it broke 87 checksums) and is now
+  **100%** with `CActorParameters::None()` and a material chosen by `flags & 1`.
+- `PortGlobals.cpp`'s stand-ins for `CHintManager::Update` and `RemoveHint` are gone; upstream's
+  `CHintManager.cpp` is linked. `mgr.mQuitGame` is upstream's name for `mUnkFlagA2`.
+- Open on the host link: `TCastToPtr<CGameHint>` and the two `CFluidPlaneManager` splash methods,
+  which `CAi.cpp` now reaches, so their stubs were removed rather than kept.
 
 **The eighth sync (`PrimeDecomp/echoes` 8bb7bd0f, 2026-10-01, merge base a6538995)** took matched
 11959 -> 12087 and linked 5728 -> 5795, measured against the judge's baseline of the pre-merge head.
@@ -75,7 +107,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 814 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 804 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## What is not in git (check these before blaming the tree)
@@ -150,7 +182,7 @@ with `boot_path.md` for port work and `port_link_gap.md` for what the port's lin
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (814 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (804 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -169,7 +201,7 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 
 **1. The DOL** - the `DOL units` line above. Work is per unit: write it, measure with objdiff, flip
 to `Matching` when `tools/flip_test.sh` passes. The two units the whole port was
-waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 29/103 is `NonMatching` since the upstream
+waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 28/102 is `NonMatching` since the upstream
 merge widened it. Others: `TypesMatch` 511/511, `CStateManager` 110/239, `CPlayerGun` 68/136,
 merge widened it. Others: `TypesMatch` 511/511, `CStateManager` 103/239, `CPlayerGun` 68/136,
 merge widened it. Others: `TypesMatch` 510/511, `CStateManager` 101/239, `CPlayerGun` 68/136,

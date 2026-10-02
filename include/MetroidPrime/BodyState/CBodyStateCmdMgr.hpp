@@ -2,6 +2,7 @@
 #define _CBODYSTATECMDMGR
 
 #include "Kyoto/Animation/CharacterCommon.hpp"
+#include "Kyoto/Math/CUnitVector3f.hpp"
 #include "Kyoto/Math/CVector3f.hpp"
 #include "MetroidPrime/TGameTypes.hpp"
 #include "rstl/reserved_vector.hpp"
@@ -26,6 +27,8 @@ class CBCGetupCmd : public CBodyStateCmd {
 public:
   explicit CBCGetupCmd(pas::EGetupType type) : CBodyStateCmd(kBSC_Getup), mType(type) {}
 
+  pas::EGetupType GetGetupType() const { return mType; }
+
 private:
   pas::EGetupType mType;
 };
@@ -40,6 +43,14 @@ public:
   , mTargetPos(CVector3f::Zero())
   , mHasTargetPos(false) {}
 
+  pas::EStepDirection GetStepDirection() const { return mDir; }
+
+  pas::EStepType GetStepType() const { return mType; }
+
+  const CVector3f& GetTargetPos() const { return mTargetPos; }
+
+  bool HasTargetPos() const { return mHasTargetPos; }
+
 private:
   pas::EStepDirection mDir;
   pas::EStepType mType;
@@ -51,25 +62,34 @@ CHECK_SIZEOF(CBCStepCmd, 0x20)
 class CBCKnockDownCmd : public CBodyStateCmd {
 public:
   CBCKnockDownCmd(const CVector3f& dir, pas::ESeverity severity)
-  : CBodyStateCmd(kBSC_KnockDown), mDir(dir), mSeverity(severity), x18_(false) {}
+  : CBodyStateCmd(kBSC_KnockDown), mDir(dir), mSeverity(severity), mSkipRotation(false) {}
+
+  const CVector3f& GetHitDirection() const { return mDir; }
+  pas::ESeverity GetHitSeverity() const { return mSeverity; }
+  bool GetSkipRotation() const { return mSkipRotation; }
 
 private:
   CVector3f mDir;
   pas::ESeverity mSeverity;
-  bool x18_;
+  bool mSkipRotation; // Guessed name
 };
 CHECK_SIZEOF(CBCKnockDownCmd, 0x1c)
 
 class CBCKnockBackCmd : public CBodyStateCmd {
 public:
   CBCKnockBackCmd(const CVector3f& dir, pas::ESeverity severity)
-  : CBodyStateCmd(kBSC_KnockBack), mDir(dir), mSeverity(severity), x18_(-1), x1c_(false) {}
+  : CBodyStateCmd(kBSC_KnockBack), mDir(dir), mSeverity(severity), mAnimId(-1), mForceRestart(false) {}
+
+  const CVector3f& GetHitDirection() const { return mDir; }
+  pas::ESeverity GetHitSeverity() const { return mSeverity; }
+  int GetAnimationId() const { return mAnimId; }
+  bool GetForceRestart() const { return mForceRestart; }
 
 private:
   CVector3f mDir;
   pas::ESeverity mSeverity;
-  int x18_;
-  bool x1c_;
+  int mAnimId;
+  bool mForceRestart; // Guessed name
 };
 CHECK_SIZEOF(CBCKnockBackCmd, 0x20)
 
@@ -80,6 +100,10 @@ public:
   , mSeverity(severity)
   , mTargetPos(CVector3f::Zero())
   , mHasTargetPos(false) {}
+
+  pas::ESeverity GetAttackSeverity() const { return mSeverity; }
+  bool HasAttackTargetPos() const { return mHasTargetPos; }
+  const CVector3f& GetAttackTargetPos() const { return mTargetPos; }
 
 private:
   pas::ESeverity mSeverity;
@@ -96,6 +120,10 @@ public:
   , mTarget(target)
   , mBlendAnims(blendAnims) {}
 
+  pas::ESeverity GetAttackSeverity() const { return mSeverity; }
+  const CVector3f& GetTargetPosition() const { return mTarget; }
+  bool BlendTwoClosest() const { return mBlendAnims; }
+
 private:
   pas::ESeverity mSeverity;
   CVector3f mTarget;
@@ -111,6 +139,10 @@ public:
   , mWaitForAnimOver(waitForAnimOver)
   , mSkipInto(false) {}
 
+  pas::ELoopAttackType GetAttackType() const { return mType; }
+  int WaitForAnimOver() const { return mWaitForAnimOver; }
+  bool SkipInto() const { return mSkipInto; }
+
 private:
   pas::ELoopAttackType mType;
   int mWaitForAnimOver;
@@ -123,6 +155,8 @@ public:
   explicit CBCLoopReactionCmd(pas::EReactionType type)
   : CBodyStateCmd(kBSC_LoopReaction), mType(type) {}
 
+  pas::EReactionType GetReactionType() const { return mType; }
+
 private:
   pas::EReactionType mType;
 };
@@ -132,6 +166,8 @@ class CBCLoopHitReactionCmd : public CBodyStateCmd {
 public:
   explicit CBCLoopHitReactionCmd(pas::EReactionType type)
   : CBodyStateCmd(kBSC_LoopHitReaction), mType(type) {}
+
+  pas::EReactionType GetReactionType() const { return mType; }
 
 private:
   pas::EReactionType mType;
@@ -147,7 +183,14 @@ public:
   , mAnimId(animId)
   , mTargetTransform(false)
   , mOverrideAnim(animId != -1)
-  , x1c_2_(false) {}
+  , mInterruptKnockBack(false) {}
+
+  pas::EGenerateType GetGenerateType() const { return mType; }
+  bool UseSpecialAnimId() const { return mOverrideAnim; }
+  int GetSpecialAnimId() const { return mAnimId; }
+  bool HasExitTargetPos() const { return mTargetTransform; }
+  const CVector3f& GetExitTargetPos() const { return mTargetPos; }
+  bool CanInterruptKnockBack() const { return mInterruptKnockBack; }
 
 private:
   pas::EGenerateType mType;
@@ -155,7 +198,7 @@ private:
   int mAnimId;
   uint mTargetTransform : 1;
   uint mOverrideAnim : 1;
-  uint x1c_2_ : 1;
+  uint mInterruptKnockBack : 1; // Guessed name
 };
 CHECK_SIZEOF(CBCGenerateCmd, 0x20)
 
@@ -250,6 +293,10 @@ public:
   // CBodyStateCmd
   ~CBCSlideCmd() override {}
 
+  pas::ESlideType GetSlideType() const { return mType; }
+
+  const CVector3f& GetSlideDirection() const { return mDir; }
+
 private:
   pas::ESlideType mType;
   CVector3f mDir;
@@ -259,6 +306,8 @@ CHECK_SIZEOF(CBCSlideCmd, 0x18)
 class CBCTauntCmd : public CBodyStateCmd {
 public:
   explicit CBCTauntCmd(pas::ETauntType type) : CBodyStateCmd(kBSC_Taunt), mType(type) {}
+
+  pas::ETauntType GetTauntType() const { return mType; }
 
 private:
   pas::ETauntType mType;
@@ -274,6 +323,11 @@ public:
   , mUseLoopDuration(useLoopDuration)
   , mLoopDuration(loopDuration) {}
 
+  int GetAnimId() const { return mAnimId; }
+  bool IsLooped() const { return mIsLooped; }
+  bool GetUseLoopDuration() const { return mUseLoopDuration; }
+  float GetLoopDuration() const { return mLoopDuration; }
+
 private:
   int mAnimId;
   bool mIsLooped : 1;
@@ -286,6 +340,12 @@ class CBCCoverCmd : public CBodyStateCmd {
 public:
   CBCCoverCmd(pas::ECoverDirection dir, const CVector3f& target, const CVector3f& alignDir)
   : CBodyStateCmd(kBSC_Cover), mDir(dir), mTargetPos(target), mAlignDir(alignDir) {}
+
+  pas::ECoverDirection GetDirection() const { return mDir; }
+  const CVector3f& GetTarget() const { return mTargetPos; }
+  const CUnitVector3f GetAlignDirection() const {
+    return CUnitVector3f(mAlignDir, CUnitVector3f::kN_No);
+  }
 
 private:
   pas::ECoverDirection mDir;
@@ -399,6 +459,10 @@ public:
   void DeliverCmd(const CBodyStateCmd& cmd);
   void DeliverCmd(const CBCLocomotionCmd& cmd);
   void DeliverCmd(EBodyStateCmd cmd);
+  void DeliverCmd(const CBCSlideCmd& cmd) {
+    DeliverCmd(cmd.GetCommandId());
+    mSlide = cmd;
+  }
   void DeliverCmd(const CBCAdditiveReactionCmd& cmd) {
     DeliverCmd(cmd.GetCommandId());
     mAdditiveReaction = cmd;

@@ -1361,7 +1361,7 @@ void CStateManager::AreaLoaded(TAreaId area) {
 
 bool CStateManager::fn_800421B4() const { return mWorld != nullptr; }
 
-int CStateManager::fn_80036B6C() const {
+int CStateManager::GetViewportLayoutIndex() const {
   if (mNumPlayers == 1u) {
     return 0;
   }
@@ -1446,7 +1446,7 @@ void CStateManager::fn_800362E0() {
   }
 }
 
-bool CStateManager::fn_80037904(TUniqueId id) {
+bool CStateManager::RenderLastOverlay(const TUniqueId& id) {
   CStateManagerContainer::TIdList& list = mStateManagerContainer->IdList13ED8();
   if (list.size() == 20) {
     return false;
@@ -1464,7 +1464,7 @@ bool CStateManager::fn_80037944(TUniqueId id) {
   return true;
 }
 
-bool CStateManager::fn_80037984(TUniqueId id) {
+bool CStateManager::RenderLast(TUniqueId id) {
   CStateManagerContainer::TIdList& list = mStateManagerContainer->IdList13F5C();
   if (list.size() == 20) {
     return false;
@@ -1473,7 +1473,7 @@ bool CStateManager::fn_80037984(TUniqueId id) {
   return true;
 }
 
-bool CStateManager::fn_800379C4(TUniqueId id) {
+bool CStateManager::RenderLastHUD(const TUniqueId& id) {
   CStateManagerContainer::TIdList& list = mStateManagerContainer->IdList13F30();
   if (list.size() == 20) {
     return false;

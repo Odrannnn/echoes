@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_Kralee;
 
-CEntity* LoadKralee(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadKralee(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_Kralee.value)(mgr, input, info);
 }

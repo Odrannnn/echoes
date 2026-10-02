@@ -91,7 +91,7 @@
 //   - `fn_80218B68` is the DOL's 0x80218B68, two instructions,
 //     `stw r3, gLoader_MetroidAlpha@sda21(r0); blr`
 //     (`build/G2ME01/asm/auto_03_80218B68_text.s`), immediately after
-//     `LoadMetroidAlpha__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x80218B3C, which is
+//     `LoadMetroidAlpha__FR13CStateManagerR12CInputStreamR11CEntityInfo` at 0x80218B3C, which is
 //     0x2C bytes and so ends exactly at 0x80218B68. So it stores the *address* of a loader record,
 //     not a loader. `src/MetroidPrime/ScriptLoader/MetroidAlpha.cpp` - a `Matching` unit, and the
 //     file that already records why the setter is deliberately not claimed in the DOL - reads the
@@ -180,7 +180,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_40_17C(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_40_17C(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80218B68(SMetroidAlpha_FuncPtrs* record);
 // .text 0x85F4, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line.
 void fn_40_85F4(void* out, const CAABox& box);

@@ -28,7 +28,7 @@
 //   - `fn_8022EBFC` is the DOL's 0x8022EBFC, two instructions,
 //     `stw r3, gLoader_DestructableBarrier; blr`
 //     (`build/G2ME01/asm/auto_03_8022EBFC_text.s`), immediately after
-//     `LoadDestructableBarrier__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x8022EBD0
+//     `LoadDestructableBarrier__FR13CStateManagerR12CInputStreamR11CEntityInfo` at 0x8022EBD0
 //     (0x2C bytes, so it ends exactly at 0x8022EBFC). So it stores the *address* of a loader
 //     slot, not a loader, and `src/MetroidPrime/ScriptLoader/DestructableBarrier.cpp` - a
 //     `Matching` unit - reads that slot as `(*gLoader_DestructableBarrier.value)(...)`, which is
@@ -84,7 +84,7 @@ public:
 extern "C" {
 // fn_13_A0, the module's own entity loader, 0xA0, 0x8A0: left retail, named here only so the
 // registration below can store its address.
-CEntity* fn_13_A0(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_13_A0(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_8022EBFC(FScriptLoader* loader);
 
 #ifdef __MWERKS__

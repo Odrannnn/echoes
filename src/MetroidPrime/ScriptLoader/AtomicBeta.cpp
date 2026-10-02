@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_AtomicBeta;
 
-CEntity* LoadAtomicBeta(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadAtomicBeta(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_AtomicBeta.value)(mgr, input, info);
 }

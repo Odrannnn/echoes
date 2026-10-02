@@ -1,7 +1,7 @@
 // EmperorIngStage1Accessors.cpp - a carve of EmperorIngStage1's .text 0x00B994..0x00BA30, 14 short accessors.
 //
 // The class is unnamed in retail - the only name the module's loader has is
-// `LoadEmperorIngStage1__FR13CStateManagerR12CInputStreamRC11CEntityInfo` in the DOL, which is named after
+// `LoadEmperorIngStage1__FR13CStateManagerR12CInputStreamR11CEntityInfo` in the DOL, which is named after
 // the module and not the type - so, as in `CScriptWallCrawler.cpp`, `CScriptMetaree.cpp`,
 // `CScriptPuffer.cpp` and `CScriptCoinTouchBounds.cpp`, the object is reached as a `void*` and
 // the offsets are stated literally.  That keeps the unit layout-immune: it reads members

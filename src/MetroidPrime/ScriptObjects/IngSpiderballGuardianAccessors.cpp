@@ -3,7 +3,7 @@
 // bottom, and the 13 short accessors above them.
 //
 // The class is unnamed in retail - the only name the module's loader has is
-// `LoadIngSpiderballGuardian__FR13CStateManagerR12CInputStreamRC11CEntityInfo` in the DOL, which is named after
+// `LoadIngSpiderballGuardian__FR13CStateManagerR12CInputStreamR11CEntityInfo` in the DOL, which is named after
 // the module and not the type - so, as in `CScriptWallCrawler.cpp`, `CScriptMetaree.cpp`,
 // `CScriptPuffer.cpp` and `CScriptCoinTouchBounds.cpp`, the object is reached as a `void*` and
 // the offsets are stated literally.  That keeps the unit layout-immune: it reads members

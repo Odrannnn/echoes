@@ -69,7 +69,7 @@
 // The two callees are named by what they are, not invented:
 //   - `fn_80218A38` is the DOL's 0x80218A38, two instructions,
 //     `stw r3, gLoader_Grenchler@sda21(r0); blr` (`build/G2ME01/asm/auto_03_80218A38_text.s`),
-//     immediately after `LoadGrenchler__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at
+//     immediately after `LoadGrenchler__FR13CStateManagerR12CInputStreamR11CEntityInfo` at
 //     0x80218A0C, which is 0x2C bytes and so ends exactly at 0x80218A38. So it stores the
 //     *address* of a loader slot, not a loader. `src/MetroidPrime/ScriptLoader/Grenchler.cpp`
 //     reads it as a loader pointer to call, which is why the store below hands it
@@ -130,7 +130,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_27_168(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_27_168(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80218A38(FScriptLoader* loader);
 // .text 0x13C6C, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line.
 void fn_27_13C6C(void* out, const CAABox& box);

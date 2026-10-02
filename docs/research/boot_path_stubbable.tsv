@@ -1,5 +1,32 @@
 # mangled	demangled	referencing objects
-fn_802BEC6C	fn_802BEC6C	Carve8026E7F0.cpp.o
-fn_802C15E8	fn_802C15E8	Carve8026E7F0.cpp.o
-fn_802C162C	fn_802C162C	Carve8026E7F0.cpp.o
-fn_802C1FE4	fn_802C1FE4	Carve8026EC54.cpp.o
+_ZN15CBodyController13FaceDirectionERK9CVector3ff	CBodyController::FaceDirection(CVector3f const&, float)	CBSCover.cpp.o,CBSGenerate.cpp.o,CBSLoopAttack.cpp.o,CBSLoopReaction.cpp.o,CBSProjectileAttack.cpp.o,CBSScripted.cpp.o,CBSStep.cpp.o,CBSTaunt.cpp.o
+_ZNK15CBodyController20GetAnimTimeRemainingEv	CBodyController::GetAnimTimeRemaining() const	CBSFall.cpp.o,CBSGroundHit.cpp.o,CBSKnockBack.cpp.o,CBSSlide.cpp.o
+_ZNK15CBodyController12GetFallStateEv	CBodyController::GetFallState() const	CBSGetup.cpp.o,CBSGroundHit.cpp.o
+_ZNK15CBodyController14GetPASDatabaseEv	CBodyController::GetPASDatabase() const	CBSCover.cpp.o,CBSFall.cpp.o,CBSGenerate.cpp.o,CBSGetup.cpp.o,CBSGroundHit.cpp.o,CBSKnockBack.cpp.o,CBSLoopAttack.cpp.o,CBSLoopReaction.cpp.o,CBSProjectileAttack.cpp.o,CBSSlide.cpp.o,CBSStep.cpp.o
+_ZN15CBodyController17LoopBestAnimationERK16CPASAnimParmDataR9CRandom16	CBodyController::LoopBestAnimation(CPASAnimParmData const&, CRandom16&)	CBSCover.cpp.o,CBSLoopAttack.cpp.o,CBSLoopReaction.cpp.o
+_ZN15CBodyController17PlayBestAnimationERK16CPASAnimParmDataR9CRandom16	CBodyController::PlayBestAnimation(CPASAnimParmData const&, CRandom16&)	CBSCover.cpp.o,CBSLoopAttack.cpp.o,CBSStep.cpp.o,CBSTaunt.cpp.o
+_ZN15CBodyController19SetCurrentAnimationERK18CAnimPlaybackParmsbb	CBodyController::SetCurrentAnimation(CAnimPlaybackParms const&, bool, bool)	CBSCover.cpp.o,CBSFall.cpp.o,CBSGenerate.cpp.o,CBSGetup.cpp.o,CBSGroundHit.cpp.o,CBSKnockBack.cpp.o,CBSLoopAttack.cpp.o,CBSLoopReaction.cpp.o,CBSProjectileAttack.cpp.o,CBSScripted.cpp.o,CBSSlide.cpp.o,CBSStep.cpp.o
+_ZN15CBodyController16SetDeltaRotationERK11CQuaternion	CBodyController::SetDeltaRotation(CQuaternion const&)	CBSFall.cpp.o,CBSGroundHit.cpp.o,CBSKnockBack.cpp.o,CBSSlide.cpp.o
+_ZN15CBodyController12SetFallStateEN3pas10EFallStateE	CBodyController::SetFallState(pas::EFallState)	CBSFall.cpp.o,CBSGetup.cpp.o,CBSGroundHit.cpp.o
+_ZN22CCompoundTargetReticleD1Ev	CCompoundTargetReticle::~CCompoundTargetReticle()	CTargetReticles.cpp.o
+_ZNK11CElementGen18IsIndirectTexturedEv	CElementGen::IsIndirectTextured() const	CHUDBillboardEffect.cpp.o
+_ZNK11CGameCamera6GetFovEv	CGameCamera::GetFov() const	CGameCameraGetPerspectiveMatrix.cpp.o,CTargetReticles.cpp.o
+_ZNK19CHUDBillboardEffect10TypesMatchEi	CHUDBillboardEffect::TypesMatch(int) const	CHUDBillboardEffect.cpp.o
+_ZNK14CScriptCounter10TypesMatchEi	CScriptCounter::TypesMatch(int) const	CScriptCounter.cpp.o
+_ZNK25CScriptSpiderBallWaypoint10TypesMatchEi	CScriptSpiderBallWaypoint::TypesMatch(int) const	CScriptSpiderBallWaypoint.cpp.o
+_ZNK13CScriptSwitch10TypesMatchEi	CScriptSwitch::TypesMatch(int) const	CScriptSwitch.cpp.o
+_ZNK12CScriptTimer10TypesMatchEi	CScriptTimer::TypesMatch(int) const	CScriptTimer.cpp.o
+_ZNK15CScriptWaypoint10TypesMatchEi	CScriptWaypoint::TypesMatch(int) const	CScriptWaypoint.cpp.o
+_Z25FindMinMaxConnectionTimesRKN4rstl6vectorI14SLdrConnectionNS_17rmemory_allocatorEEE	FindMinMaxConnectionTimes(rstl::vector<SLdrConnection, rstl::rmemory_allocator> const&)	CScriptSequenceTimer.cpp.o
+_Z18LoadAreaAttributesR13CStateManagerR12CInputStreamR11CEntityInfo	LoadAreaAttributes(CStateManager&, CInputStream&, CEntityInfo&)	ScriptLoader.cpp.o
+_Z22LoadCameraBlurKeyframeR13CStateManagerR12CInputStreamR11CEntityInfo	LoadCameraBlurKeyframe(CStateManager&, CInputStream&, CEntityInfo&)	ScriptLoader.cpp.o
+_Z24LoadCameraFilterKeyframeR13CStateManagerR12CInputStreamR11CEntityInfo	LoadCameraFilterKeyframe(CStateManager&, CInputStream&, CEntityInfo&)	ScriptLoader.cpp.o
+_Z20LoadControllerActionR13CStateManagerR12CInputStreamR11CEntityInfo	LoadControllerAction(CStateManager&, CInputStream&, CEntityInfo&)	ScriptLoader.cpp.o
+_Z20LoadTriggerEllipsoidR13CStateManagerR12CInputStreamR11CEntityInfo	LoadTriggerEllipsoid(CStateManager&, CInputStream&, CEntityInfo&)	ScriptLoader.cpp.o
+_Z30LoadTypedefScannableParametersR23SLdrScannableParametersR12CInputStream	LoadTypedefScannableParameters(SLdrScannableParameters&, CInputStream&)	CScanTreeInventory.cpp.o
+_Z14LoadVisorFlareR13CStateManagerR12CInputStreamR11CEntityInfo	LoadVisorFlare(CStateManager&, CInputStream&, CEntityInfo&)	ScriptLoader.cpp.o
+_Z19LoadWorldTeleporterR13CStateManagerR12CInputStreamR11CEntityInfo	LoadWorldTeleporter(CStateManager&, CInputStream&, CEntityInfo&)	ScriptLoader.cpp.o
+__dt__20SLdrEditorPropertiesFv	__dt__20SLdrEditorPropertiesFv	Carve802201F8.cpp.o
+fn_80145628	fn_80145628	CGameStateCardOptsCtor.cpp.o
+_ZTI7CEffect	typeinfo for CEffect	CHUDBillboardEffect.cpp.o
+_ZTV7CEffect	vtable for CEffect	CEffect.cpp.o,CHUDBillboardEffect.cpp.o

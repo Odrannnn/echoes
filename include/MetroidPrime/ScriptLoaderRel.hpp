@@ -68,7 +68,7 @@ void SetSScriptForgottenObject_FuncPtrs(SScriptForgottenObject_FuncPtrs*);
 // a unit of its own. `gLoader_CannonBall` is not declared here: it is an 8-byte slot (retail
 // .sbss 0x80419538..0x80419540), a file-local struct in both units, not a plain pointer.
 void SetLoader_CannonBall(FScriptLoader* loader);
-CEntity* LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEntityInfo& info);
+CEntity* LoadCannonBall(CStateManager& mgr, CInputStream& input, CEntityInfo& info);
 
 struct STweaks_FuncPtrs {
   void (*Loader)(CInputStream&);

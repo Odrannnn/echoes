@@ -24,6 +24,7 @@
 #include "MetroidPrime/Tweaks/CTweakGame.hpp"
 
 #include "dolphin/os.h"
+#include "rstl/algorithm.hpp"
 #include "rstl/math.hpp"
 
 #include <stdio.h>
@@ -921,11 +922,18 @@ CFrontEndGameMode::CFrontEndGameMode(const CFrontEndGameMode& other)
 // Guessed name
 void StartGameFromFrontEnd() {
   const CFrontEndGameMode config = static_cast< const CFrontEndGameMode& >(gpGameState->GetGameMode());
+
+  for (int i = 0; i < config.GetPlayerCount(); ++i) {
+    config.GetPlayer(i);
+  }
+
   CGameMode* mode = nullptr;
+
   switch (config.GetSelectedGameMode()) {
   case CFrontEndGameMode::kSGM_SinglePlayer:
     mode = rs_new CGMSinglePlayer;
     break;
+    
   case CFrontEndGameMode::kSGM_DeathMatch: {
     CGMDeathMatch* deathMatch = rs_new CGMDeathMatch(config.GetPlayerCount(), config.GetFragLimit(),
                                                      config.GetTimeLimit(), true, false);
@@ -999,27 +1007,22 @@ void CGameState::PutTo(CBitStreamWriter& out) {
   out.WriteBits(mIsDarkWorld ? 1 : 0, 1);
   out.WriteBits(mDesiredWorldId, 32);
 
-  union {
-    double value;
-    u64 bits;
-  } playTime;
-  playTime.value = mTotalPlayTime;
-  out.WriteBits(playTime.bits >> 32, 32);
-  out.WriteBits(playTime.bits, 32);
+  u64 time = *reinterpret_cast< const u64* >(&mTotalPlayTime);
+  out.WriteBits(time >> 32, 32);
+  out.WriteBits(time & 0xffffffff, 32);
 
   for (int i = 0; i < mPlayerStates.size(); ++i) {
     mPlayerStates[i]->PutTo(out);
   }
   mHintOptions.PutTo(out);
   mPreviousGameResults.PutTo(out);
+  const rstl::vector< CMemoryCard::MemoryWorld >& worlds = gpMemoryCard->GetMemoryWorlds();
   out.GetOutputStream().WriteReal32(mEscapeTime);
   mPersistentOptions.PutTo(out);
 
-  const rstl::vector< CMemoryCard::MemoryWorld >& worlds = gpMemoryCard->GetMemoryWorlds();
   out.GetOutputStream().WriteUint8(worlds.size());
   rstl::auto_ptr< uchar > buffer(rs_new uchar[0x400]);
-  for (rstl::vector< CMemoryCard::MemoryWorld >::const_iterator it = worlds.begin();
-       it != worlds.end(); ++it) {
+  for (AUTO(it, worlds.begin()); it != worlds.end(); ++it) {
     TLockedToken< CWorldSaveGameInfo > saveWorld =
         gpSimplePool->GetObj(SObjectTag('SAVW', it->second.GetSaveWorldAssetId()));
     CWorldState& state = StateForWorld(it->first);
@@ -1445,9 +1448,7 @@ CGameMode& CGameState::GetGameMode() { return *mGameMode; }
 void CGameState::SetGameMode(CGameMode* mode) { mGameMode = rstl::auto_ptr< CGameMode >(mode); }
 
 bool CPersistentOptions::GetCinematicState(rstl::pair< CAssetId, TEditorId > cinematicId) const {
-  for (rstl::vector< rstl::pair< CAssetId, TEditorId > >::const_iterator it =
-           mCinematicStates.begin();
-       it != mCinematicStates.end(); ++it) {
+  for (AUTO(it, mCinematicStates.begin()); it != mCinematicStates.end(); ++it) {
     if (*it == cinematicId) {
       return true;
     }

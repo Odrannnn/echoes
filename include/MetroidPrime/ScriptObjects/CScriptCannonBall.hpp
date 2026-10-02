@@ -32,6 +32,6 @@ private:
   rstl::reserved_vector< TrackedShot, 4 > m_fields;
 };
 
-CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEntityInfo& info);
+CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, CEntityInfo& info);
 
 #endif // _CSCRIPTCANNONBALL

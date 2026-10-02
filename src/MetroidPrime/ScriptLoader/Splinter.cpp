@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_Splinter;
 
-CEntity* LoadSplinter(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadSplinter(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_Splinter.value)(mgr, input, info);
 }

@@ -125,7 +125,7 @@ extern "C" const unsigned short kInvalidUniqueId;
 
 // fn_15_178, the module's own entity loader, 0x178, 0xACC: left retail, named here only so the
 // registration below can store its address.
-CEntity* fn_15_178(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_15_178(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80218AD4(FScriptLoader* loader);
 // .text 0xC094, 0x3C bytes, unclaimed: `optional_object<CAABox>`'s converting constructor, out
 // of line - the same function MysteryFlyer's `fn_45_10` calls at its 0x2BBC.

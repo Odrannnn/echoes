@@ -116,8 +116,8 @@ public:
 };
 
 extern "C" {
-CEntity* fn_20_340(CStateManager&, CInputStream&, const CEntityInfo&);
-CEntity* fn_20_AC(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_20_340(CStateManager&, CInputStream&, CEntityInfo&);
+CEntity* fn_20_AC(CStateManager&, CInputStream&, CEntityInfo&);
 
 #ifdef __MWERKS__
 extern SFishCloud_FuncPtrs lbl_20_bss_0;

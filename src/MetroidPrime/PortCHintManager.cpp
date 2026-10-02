@@ -55,7 +55,7 @@ extern "C" bool fn_8022A5B4(const CHintManager* self, int mask, CStateManager& m
     // `fn_801B9480` uses - so the lookup goes through the const accessor and the cast takes the
     // `const_cast` that accessor implies. Nothing here is written through it.
     CUnknown46* hint =
-        TCastToPtr< CUnknown46 >(const_cast< CEntity* >(mgr.GetObjectById(self->GetHint(i).mId)));
+        TCastToPtr< CUnknown46 >(const_cast< CEntity* >(mgr.GetObjectById(self->GetHint(i).mState.GetHintId())));
     if (hint != nullptr && (hint->GetControlFlags() & mask) != 0) {
       return true;
     }

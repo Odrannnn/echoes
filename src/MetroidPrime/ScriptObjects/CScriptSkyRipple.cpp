@@ -29,8 +29,8 @@ extern "C" void fn_80232334(void* loader);
 #ifndef __MWERKS__
 extern "C" void fn_800E6AD0(CModelData* modelData);
 #endif
-extern "C" CEntity* REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamRC11CEntityInfo(
-    CStateManager& mgr, CInputStream& input, const CEntityInfo& info);
+extern "C" CEntity* REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamR11CEntityInfo(
+    CStateManager& mgr, CInputStream& input, CEntityInfo& info);
 extern "C" void* __nw__FUlPCcPCc(uint size, const char* file, const char* function);
 extern "C" const char lbl_70_rodata_C[];
 // The two connection states fn_70_658 passes to fn_70_6F0: retail holds them in .data as
@@ -150,8 +150,8 @@ extern "C" void RELExit() { fn_80232334(nullptr); }
 extern "C" void mp_relexit_skyripple() { fn_80232334(nullptr); }
 #endif
 
-extern "C" CEntity* REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamRC11CEntityInfo(
-    CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+extern "C" CEntity* REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamR11CEntityInfo(
+    CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   SLdrEditorProperties props;
   u16 propertyCount = input.ReadUint16();
   for (int i = 0; i < propertyCount; ++i) {
@@ -178,7 +178,7 @@ extern "C" CEntity* REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamRC11CEnti
 }
 
 extern "C" void SetRelLoaderFunctionToLoader__Fv() {
-  REL_loader_SkyRipple = &REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamRC11CEntityInfo;
+  REL_loader_SkyRipple = &REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamR11CEntityInfo;
   fn_80232334(&REL_loader_SkyRipple);
 }
 
@@ -193,7 +193,7 @@ extern "C" void mp_relmain_skyripple() { SetRelLoaderFunctionToLoader__Fv(); }
 // 0x0000008C  RELExit  size 0x24
 // 0x000000B0  RELMain  size 0x20
 // 0x000000D0  SetRelLoaderFunctionToLoader__Fv  size 0x30
-// 0x00000100  REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamRC11CEntityInfo  size 0x110
+// 0x00000100  REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamR11CEntityInfo  size 0x110
 // 0x00000210  fn_70_210  size 0x54
 // 0x00000264  fn_70_264  size 0xCC
 // 0x00000330  fn_70_330  size 0x1A0

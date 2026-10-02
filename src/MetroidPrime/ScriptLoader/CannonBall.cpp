@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_CannonBall;
 
-CEntity* LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadCannonBall(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_CannonBall.value)(mgr, input, info);
 }

@@ -67,7 +67,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_32_A8(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_32_A8(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80229EE0(FScriptLoader* loader);
 
 #ifdef __MWERKS__

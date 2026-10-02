@@ -535,7 +535,7 @@ float CCompoundTargetReticle::CalculateClampedScale(CVector3f position, float sc
                                                     float clampMax, const CStateManager& mgr,
                                                     int playerIndex) {
   static const float kViewportScales[3] = {1.f, 0.8f, 0.6f};
-  const float viewportScale = kViewportScales[mgr.fn_80036B6C()];
+  const float viewportScale = kViewportScales[mgr.GetViewportLayoutIndex()];
   const float scaledMin = viewportScale * clampMin;
   const float scaledMax = viewportScale * clampMax;
   const CCameraManager* camMgr = mgr.GetCameraManager(playerIndex);

@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_SandBoss;
 
-CEntity* LoadSandBoss(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadSandBoss(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_SandBoss.value)(mgr, input, info);
 }

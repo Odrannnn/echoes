@@ -1,270 +1,235 @@
 # mangled	demangled	referencing objects
-_Z16AllocateRendererR12IObjectStoreR10COsContextR10CMemorySysR8IFactory	AllocateRenderer(IObjectStore&, COsContext&, CMemorySys&, IFactory&)	main.cpp.o
-_ZN12CARAMManager5AllocEjPv	CARAMManager::Alloc(unsigned int, void*)	CARAMToken.cpp.o,CPakFile.cpp.o,DolphinCDvdFile.cpp.o
-_ZN12CARAMManager9CancelDMAEj	CARAMManager::CancelDMA(unsigned int)	CARAMToken.cpp.o
-_ZN12CARAMManager9DMAToARAMEPvS0_jNS_12EDMAPriorityE	CARAMManager::DMAToARAM(void*, void*, unsigned int, CARAMManager::EDMAPriority)	CARAMToken.cpp.o,CPakFile.cpp.o
-_ZN12CARAMManager9DMAToMRAMEPvS0_jNS_12EDMAPriorityE	CARAMManager::DMAToMRAM(void*, void*, unsigned int, CARAMManager::EDMAPriority)	CARAMToken.cpp.o,CPakFile.cpp.o,DolphinCDvdFile.cpp.o
-_ZN12CARAMManager4FreeEPKvPv	CARAMManager::Free(void const*, void*)	CARAMToken.cpp.o,CPakFile.cpp.o,DolphinCDvdFile.cpp.o
-_ZN12CARAMManager14IsDMACompletedEj	CARAMManager::IsDMACompleted(unsigned int)	CARAMToken.cpp.o,CDvdRequest.cpp.o
-_ZN12CARAMManager20WaitForDMACompletionEj	CARAMManager::WaitForDMACompletion(unsigned int)	CARAMToken.cpp.o,CDvdRequest.cpp.o,CPakFile.cpp.o,DolphinCDvdFile.cpp.o
-_Z10TCastToPtrI6CActorEPT_P7CEntity	CActor* TCastToPtr<CActor>(CEntity*)	CActor.cpp.o,CStateManager.cpp.o
-_ZNK6CActor13AddToRendererERK14CFrustumPlanesRK13CStateManager	CActor::AddToRenderer(CFrustumPlanes const&, CStateManager const&) const	CActor.cpp.o,CScriptCannonBall.cpp.o,CScriptPickup.cpp.o,CScriptSkyRipple.cpp.o
-_ZN6CActor13SetDirtyFlagsEv	CActor::SetDirtyFlags()	CActor.cpp.o
-_ZN6CActor15SetTransformAltERK12CTransform4f	CActor::SetTransformAlt(CTransform4f const&)	CScriptCannonBall.cpp.o
-_ZN6CActor5ThinkEfR13CStateManager	CActor::Think(float, CStateManager&)	CActor.cpp.o,CScriptSkyRipple.cpp.o
-_ZN6CActor17UpdateSfxEmittersEv	CActor::UpdateSfxEmitters()	CActor.cpp.o
-_ZN12CActorLights18BuildAreaLightListERK13CStateManagerRK9CGameAreaRK6CAABox	CActorLights::BuildAreaLightList(CStateManager const&, CGameArea const&, CAABox const&)	CActor.cpp.o
-_ZN12CActorLights21BuildDynamicLightListERK13CStateManagerRK6CAABox	CActorLights::BuildDynamicLightList(CStateManager const&, CAABox const&)	CActor.cpp.o
-_ZN12CActorLightsC1Ej9CVector3fiifbbbb	CActorLights::CActorLights(unsigned int, CVector3f, int, int, float, bool, bool, bool, bool)	CActor.cpp.o
-_ZN12CActorLightsD1Ev	CActorLights::~CActorLights()	CActor.cpp.o
-_ZNK20CActorModelParticles6RenderERK13CStateManagerRK6CActor	CActorModelParticles::Render(CStateManager const&, CActor const&) const	CActor.cpp.o
-_ZN20CActorModelParticles9SetupHookE9TUniqueId	CActorModelParticles::SetupHook(TUniqueId)	CStateManager.cpp.o
-_ZN16CActorParametersC1Ev	CActorParameters::CActorParameters()	CScriptCannonBall.cpp.o,CScriptSkyRipple.cpp.o
-_ZNK9CAnimData20GetAnimTimeRemainingERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE	CAnimData::GetAnimTimeRemaining(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const	CPlayerGun.cpp.o
-_ZNK9CAnimData18GetAverageVelocityEi	CAnimData::GetAverageVelocity(int) const	CActor.cpp.o
-_ZN9CAnimData17InitializeEffectsER13CStateManager7TAreaIdRK9CVector3f	CAnimData::InitializeEffects(CStateManager&, TAreaId, CVector3f const&)	CActor.cpp.o
-_ZNK9CAnimData19IsAnimTimeRemainingEfRKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE	CAnimData::IsAnimTimeRemaining(float, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const	CPlayerGun.cpp.o
-_ZN9CAnimData9PreRenderEv	CAnimData::PreRender()	CActor.cpp.o
-_ZN14CAudioStateWinC1Ev	CAudioStateWin::CAudioStateWin()	main.cpp.o
-_ZN7CBasics9StringizeEPKcz	CBasics::Stringize(char const*, ...)	main.cpp.o
-_ZN10CCallStackC1EjPKcS1_	CCallStack::CCallStack(unsigned int, char const*, char const*)	CARAMToken.cpp.o,CCubeMoviePlayer.cpp.o,CFilePreload.cpp.o,CGameAllocator.cpp.o,CMemory.cpp.o,CPakFile.cpp.o,CStaticAudioPlayer.cpp.o,DolphinCDvdFile.cpp.o
-_ZNK10CCallStack18GetFileAndLineTextEv	CCallStack::GetFileAndLineText() const	CGameAllocator.cpp.o
-_ZNK10CCallStack11GetTypeTextEv	CCallStack::GetTypeText() const	CGameAllocator.cpp.o
+_Z10TCastToPtrI6CActorEPT_P7CEntity	CActor* TCastToPtr<CActor>(CEntity*)	CActor.cpp.o,CGameArea.cpp.o,CPlayer.cpp.o,CPlayerOrbit.cpp.o,CScriptForgottenObject.cpp.o,CScriptSkyRipple.cpp.o,CStateManager.cpp.o
+_ZN15CAiKnockBackMgrC1Ej	CAiKnockBackMgr::CAiKnockBackMgr(unsigned int)	CPatterned.cpp.o
+_ZN15CAiKnockBackMgr9KnockBackER13CStateManagerR6CActorRK14CKnockBackInfo	CAiKnockBackMgr::KnockBack(CStateManager&, CActor&, CKnockBackInfo const&)	CPatterned.cpp.o
+_ZN15CAiKnockBackMgrD1Ev	CAiKnockBackMgr::~CAiKnockBackMgr()	CPatterned.cpp.o
+_ZN8CAnimRes15kDefaultCharIdxE	CAnimRes::kDefaultCharIdx	CMorphBall.cpp.o
+_ZN17CAnimationManagerD1Ev	CAnimationManager::~CAnimationManager()	CAnimData.cpp.o
+_ZN15CAnimationStateC1Ev	CAnimationState::CAnimationState()	CPatterned.cpp.o
+_ZN12CAreaBspTreeC1ER12CInputStreamRK12CTransform4f	CAreaBspTree::CAreaBspTree(CInputStream&, CTransform4f const&)	CGameArea.cpp.o
+_ZN12CAreaOctTree14MakeFromMemoryEPvjPPS_Pb	CAreaOctTree::MakeFromMemory(void*, unsigned int, CAreaOctTree**, bool*)	CGameArea.cpp.o
+_ZN18CAreaRenderOctTreeC1ERKN4rstl8auto_ptrIKhEE	CAreaRenderOctTree::CAreaRenderOctTree(rstl::auto_ptr<unsigned char const> const&)	CGameArea.cpp.o
+_ZN9CAudioSys18C3DEmitterParmDataC1Effjhh	CAudioSys::C3DEmitterParmData::C3DEmitterParmData(float, float, unsigned int, unsigned char, unsigned char)	CActor.cpp.o,CSfxManager.cpp.o
+_ZN9CAudioSys19S3dAddEmitterParaExERKNS_18C3DEmitterParmDataEtP18SND_PARAMETER_INFO	CAudioSys::S3dAddEmitterParaEx(CAudioSys::C3DEmitterParmData const&, unsigned short, SND_PARAMETER_INFO*)	CSfxManager.cpp.o
+_ZN9CAudioSys14S3dAddListenerERK9CVector3fS2_S2_S2_fffjh	CAudioSys::S3dAddListener(CVector3f const&, CVector3f const&, CVector3f const&, CVector3f const&, float, float, float, unsigned int, unsigned char)	CSfxManager.cpp.o
+_ZN9CAudioSys15S3dCheckEmitterEj	CAudioSys::S3dCheckEmitter(unsigned int)	CSfxManager.cpp.o
+_ZN9CAudioSys17S3dEmitterVoiceIDEj	CAudioSys::S3dEmitterVoiceID(unsigned int)	CSfxManager.cpp.o
+_ZN9CAudioSys16S3dRemoveEmitterEj	CAudioSys::S3dRemoveEmitter(unsigned int)	CSfxManager.cpp.o
+_ZN9CAudioSys16S3dUpdateEmitterEjRK9CVector3fS2_h	CAudioSys::S3dUpdateEmitter(unsigned int, CVector3f const&, CVector3f const&, unsigned char)	CSfxManager.cpp.o
+_ZN9CAudioSys8SfxCheckEj	CAudioSys::SfxCheck(unsigned int)	CSfxManager.cpp.o
+_ZN9CAudioSys7SfxCtrlEjhh	CAudioSys::SfxCtrl(unsigned int, unsigned char, unsigned char)	CSfxManager.cpp.o
+_ZN9CAudioSys6SfxPanEjh	CAudioSys::SfxPan(unsigned int, unsigned char)	CSfxManager.cpp.o
+_ZN9CAudioSys12SfxSetFilterEjjj	CAudioSys::SfxSetFilter(unsigned int, unsigned int, unsigned int)	CSfxManager.cpp.o
+_ZN9CAudioSys7SfxSpanEjh	CAudioSys::SfxSpan(unsigned int, unsigned char)	CSfxManager.cpp.o
+_ZN9CAudioSys8SfxStartEthhh	CAudioSys::SfxStart(unsigned short, unsigned char, unsigned char, unsigned char)	CSfxManager.cpp.o
+_ZN9CAudioSys7SfxStopEj	CAudioSys::SfxStop(unsigned int)	CSfxManager.cpp.o
+_ZN9CAudioSys9SfxVolumeEjh	CAudioSys::SfxVolume(unsigned int, unsigned char)	CSfxManager.cpp.o
+_ZN9CAudioSys14TrkFlushTracksEv	CAudioSys::TrkFlushTracks()	CStreamAudioManager.cpp.o
+_ZN9CAudioSys13TrkQueueTrackERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEEPFvjEj	CAudioSys::TrkQueueTrack(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, void (*)(unsigned int), unsigned int)	CStreamAudioManager.cpp.o
+_ZN10CAuxWeapon11fn_801D5DD0EiR13CStateManager	CAuxWeapon::fn_801D5DD0(int, CStateManager&)	CPlayerGun.cpp.o
+_ZN10CAuxWeapon11fn_801D6894ER13CStateManagerb	CAuxWeapon::fn_801D6894(CStateManager&, bool)	CPlayerGun.cpp.o
+_ZN10CAuxWeaponD1Ev	CAuxWeapon::~CAuxWeapon()	CPlayerGun.cpp.o
+_ZN11CBallCamera8SetStateENS_16EBallCameraStateER13CStateManager	CBallCamera::SetState(CBallCamera::EBallCameraState, CStateManager&)	CPlayerDynamics.cpp.o
+_ZN7CBasics10CopyMemoryEPvPKvj	CBasics::CopyMemory(void*, void const*, unsigned int)	CDamageVulnerability.cpp.o,CRelFile.cpp.o
+_ZN7CBasics9StringizeEPKcz	CBasics::Stringize(char const*, ...)	CGameState.cpp.o,CPlayer.cpp.o,mainHead.cpp.o
+_ZNK14CBodyStateInfo15GetCurrentStateEv	CBodyStateInfo::GetCurrentState() const	CPatternedAiFunctions.cpp.o
+_ZN14CBodyStateInfoD1Ev	CBodyStateInfo::~CBodyStateInfo()	CPatterned.cpp.o
 _ZN14CCameraManager33CastGameCameratoFirstPersonCameraEPK11CGameCamera	CCameraManager::CastGameCameratoFirstPersonCamera(CGameCamera const*)	CPlayerState.cpp.o
-_ZNK14CCameraManager16GetCurrentCameraERK13CStateManageri	CCameraManager::GetCurrentCamera(CStateManager const&, int) const	CPlayerState.cpp.o
-_ZNK14CCameraManager19IsInCinematicCameraEv	CCameraManager::IsInCinematicCamera() const	CPlayerGun.cpp.o,CStateManager.cpp.o
 _ZN17CCharacterFactoryC1ER11CSimplePoolRK12TLockedTokenI17CAnimCharacterSetEj	CCharacterFactory::CCharacterFactory(CSimplePool&, TLockedToken<CAnimCharacterSet> const&, unsigned int)	CCharacterFactoryBuilder.cpp.o
 _ZN17CCharacterFactoryD0Ev	CCharacterFactory::~CCharacterFactory()	CCharacterFactoryBuilder.cpp.o
-_ZN20CConsoleOutputWindowC1Eiff	CConsoleOutputWindow::CConsoleOutputWindow(int, float, float)	main.cpp.o
-_ZN20CDamageVulnerability18NormalVulnerabiltyEv	CDamageVulnerability::NormalVulnerabilty()	CActor.cpp.o
-_ZN11CEntityInfoD1Ev	CEntityInfo::~CEntityInfo()	CEntity.cpp.o,CScriptCannonBall.cpp.o
-_ZN13CEnvFxManager10InitializeEv	CEnvFxManager::Initialize()	main.cpp.o
-_ZN18CErrorOutputWindowC1Eb	CErrorOutputWindow::CErrorOutputWindow(bool)	main.cpp.o
+_ZN16CCollidableAABoxD1Ev	CCollidableAABox::~CCollidableAABox()	CPhysicsActor.cpp.o
+_ZN17CCollidableSphereD1Ev	CCollidableSphere::~CCollidableSphere()	CMorphBall.cpp.o
+_ZN23CCollisionPrimitiveDataD2Ev	CCollisionPrimitiveData::~CCollisionPrimitiveData()	CGameArea.cpp.o
+_ZN17CDSPStreamManager7CanStopEi	CDSPStreamManager::CanStop(int)	CStreamAudioManager.cpp.o
+_ZN17CDSPStreamManager14GetStreamStateEi	CDSPStreamManager::GetStreamState(int)	CStreamAudioManager.cpp.o
+_ZN17CDSPStreamManager17IsStreamAvailableEi	CDSPStreamManager::IsStreamAvailable(int)	CStreamAudioManager.cpp.o
+_ZN17CDSPStreamManager14StartStreamingERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEEii	CDSPStreamManager::StartStreaming(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, int, int)	CStreamAudioManager.cpp.o
+_ZN17CDSPStreamManager13StopStreamingEi	CDSPStreamManager::StopStreaming(int)	CStreamAudioManager.cpp.o
+_ZN17CDSPStreamManager12UpdateVolumeEii	CDSPStreamManager::UpdateVolume(int, int)	CStreamAudioManager.cpp.o
+_ZN11CDamageInfoC1ERK15SLdrTDamageInfobbbb	CDamageInfo::CDamageInfo(SLdrTDamageInfo const&, bool, bool, bool, bool)	CTweakPlayerGun.cpp.o
+_ZN20CDamageVulnerabilityC1ERK23SLdrDamageVulnerability	CDamageVulnerability::CDamageVulnerability(SLdrDamageVulnerability const&)	CPatterned.cpp.o
+_ZN12CEchoEmitterC1ERK6CAABoxRK15SEchoParameters	CEchoEmitter::CEchoEmitter(CAABox const&, SEchoParameters const&)	CActor.cpp.o
+_ZN11CEntityInfoD1Ev	CEntityInfo::~CEntityInfo()	CEntity.cpp.o,CPlayer.cpp.o,CScriptCannonBall.cpp.o
+_ZN18CFluidPlaneManager12CreateSplashE9TUniqueIdR13CStateManagerRK12CScriptWaterRK9CVector3ffb	CFluidPlaneManager::CreateSplash(TUniqueId, CStateManager&, CScriptWater const&, CVector3f const&, float, bool)	CAi.cpp.o
+_ZNK18CFluidPlaneManager22GetLastSplashDeltaTimeE9TUniqueId	CFluidPlaneManager::GetLastSplashDeltaTime(TUniqueId) const	CAi.cpp.o
 _ZN14CFrustumPlanesC1Ev	CFrustumPlanes::CFrustumPlanes()	CStateManager.cpp.o
-_ZN24CGameArchitectureSupport11UnloadAudioEv	CGameArchitectureSupport::UnloadAudio()	main.cpp.o
-_ZNK9CGameArea11fn_80057550Ev	CGameArea::fn_80057550() const	CStateManager.cpp.o
-_ZN9CGameArea11fn_800575BCER13CStateManager	CGameArea::fn_800575BC(CStateManager&)	CStateManager.cpp.o
-_ZN14CGameCollision21RayStaticIntersectionERK13CStateManagerRK9CVector3fS5_fRK15CMaterialFilter	CGameCollision::RayStaticIntersection(CStateManager const&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&)	CStateManager.cpp.o
-_ZN14CGameCollision20RayWorldIntersectionERK13CStateManagerR9TUniqueIdRK9CVector3fS7_fRK15CMaterialFilterRKN4rstl15reserved_vectorIS3_Li1024EEE	CGameCollision::RayWorldIntersection(CStateManager const&, TUniqueId&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&)	CStateManager.cpp.o
-_ZN12CGameOptionsD1Ev	CGameOptions::~CGameOptions()	CGameGlobalObjectsCtor.cpp.o,main.cpp.o
-_ZN10CGameStateC1ER12CInputStreami	CGameState::CGameState(CInputStream&, int)	main.cpp.o
-_ZNK10CGameState27GetHardModeDamageMultiplierEv	CGameState::GetHardModeDamageMultiplier() const	CStateManager.cpp.o
-_ZNK10CGameState18GetHardModeEnabledEv	CGameState::GetHardModeEnabled() const	CStateManager.cpp.o
-_ZN10CGameState8SetUnk50Ef	CGameState::SetUnk50(float)	CStateManager.cpp.o
-_ZN9CGraphics14SetModelMatrixERK12CTransform4f	CGraphics::SetModelMatrix(CTransform4f const&)	main.cpp.o
-_ZN9CGraphics17SetScreenPositionEiii	CGraphics::SetScreenPosition(int, int, int)	CGameOptions.cpp.o
-_ZN9CGraphics17SetUseVideoFilterEb	CGraphics::SetUseVideoFilter(bool)	CCubeMoviePlayer.cpp.o
-_ZN9CGraphics18SetViewPointMatrixERK12CTransform4f	CGraphics::SetViewPointMatrix(CTransform4f const&)	main.cpp.o
-_ZN11CGrappleArm11fn_801C37BCEi	CGrappleArm::fn_801C37BC(int)	CPlayerGun.cpp.o
-_ZN11CGrappleArm11fn_801C3824ER13CStateManagerfb	CGrappleArm::fn_801C3824(CStateManager&, float, bool)	CPlayerGun.cpp.o
-_ZN13CGunEffectUnk11fn_801DCFF0Ev	CGunEffectUnk::fn_801DCFF0()	CPlayerGun.cpp.o
-_ZN13CGunEffectUnk11fn_801DD010Ev	CGunEffectUnk::fn_801DD010()	CPlayerGun.cpp.o
-_ZNK16CGunStateMachine19GetCurrentStateNameEv	CGunStateMachine::GetCurrentStateName() const	CPlayerGun.cpp.o
-_ZN16CGunStateMachine8SetStateER13CStateManagerP10CPlayerGunRKN4rstl12basic_stringIcNS4_11char_traitsIcEENS4_17rmemory_allocatorEEE	CGunStateMachine::SetState(CStateManager&, CPlayerGun*, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&)	CPlayerGun.cpp.o
-_ZN16CGunStateMachine13SetStateFuncsEPK13SGunStateFunci	CGunStateMachine::SetStateFuncs(SGunStateFunc const*, int)	CPlayerGun.cpp.o
-_ZN16CGunStateMachine15SetStateMachineEPK13CStateMachine	CGunStateMachine::SetStateMachine(CStateMachine const*)	CPlayerGun.cpp.o
-_ZN16CGunStateMachine15SetTriggerFuncsEPK15SGunTriggerFunci	CGunStateMachine::SetTriggerFuncs(SGunTriggerFunc const*, int)	CPlayerGun.cpp.o
-_ZNK10CGunWeapon13GetWeaponInfoEv	CGunWeapon::GetWeaponInfo() const	CPlayerGun.cpp.o
-_ZNK10CGunWeapon16IsChargeAnimOverEv	CGunWeapon::IsChargeAnimOver() const	CPlayerGun.cpp.o
-_ZN10CGunWeapon11fn_801D8EC0Ev	CGunWeapon::fn_801D8EC0()	CPlayerGun.cpp.o
-_ZN10CGunWeapon11fn_801D8F2CEv	CGunWeapon::fn_801D8F2C()	CPlayerGun.cpp.o
-_ZN10CGunWeapon11fn_801D8F64Ev	CGunWeapon::fn_801D8F64()	CPlayerGun.cpp.o
-_ZN10CGunWeapon11fn_801DA364ER13CStateManagerb	CGunWeapon::fn_801DA364(CStateManager&, bool)	CPlayerGun.cpp.o
-_ZN13CIOWinManager11RemoveIOWinERKN4rstl6rc_ptrI6CIOWinEE	CIOWinManager::RemoveIOWin(rstl::rc_ptr<CIOWin> const&)	CIOWinManagerRemoveAllIOWins.cpp.o
+_ZN7CGMCoinC1Eiifb	CGMCoin::CGMCoin(int, int, float, bool)	CGameState.cpp.o
+_ZN13CGMDeathMatchC1Eiifbb	CGMDeathMatch::CGMDeathMatch(int, int, float, bool, bool)	CGameState.cpp.o
+_ZN14CGMMultiplayer13SetMusicIndexEi	CGMMultiplayer::SetMusicIndex(int)	CGameState.cpp.o
+_ZN24CGameArchitectureSupport11UnloadAudioEv	CGameArchitectureSupport::UnloadAudio()	mainMid.cpp.o
+_ZN9CGameArea16CPostConstructedC1ERKS_	CGameArea::CPostConstructed::CPostConstructed(CGameArea const&)	CGameArea.cpp.o
+_ZN9CGameArea16CPostConstructedD1Ev	CGameArea::CPostConstructed::~CPostConstructed()	CGameArea.cpp.o
+_ZNK11CGameCamera20ConvertToScreenSpaceERK9CVector3f	CGameCamera::ConvertToScreenSpace(CVector3f const&) const	CPatternedAiFunctions.cpp.o
+_ZN11CGameCamera17UpdatePerspectiveEfR13CStateManager	CGameCamera::UpdatePerspective(float, CStateManager&)	CCameraManager.cpp.o
+_ZN14CGameCollision4MoveER13CStateManagerR13CPhysicsActorfPKN4rstl15reserved_vectorI9TUniqueIdLi1024EEE	CGameCollision::Move(CStateManager&, CPhysicsActor&, float, rstl::reserved_vector<TUniqueId, 1024> const*)	CStateManager.cpp.o
+_ZN14CGameCollision22RayDynamicIntersectionERK13CStateManagerR9TUniqueIdRK9CVector3fS7_fRK15CMaterialFilterRKN4rstl15reserved_vectorIS3_Li1024EEE	CGameCollision::RayDynamicIntersection(CStateManager const&, TUniqueId&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&)	CGameCollisionRayWorldIntersection.cpp.o,CSimpleShadow.cpp.o
+_ZN14CGameCollision21RayStaticIntersectionERK13CStateManagerRK9CVector3fS5_fRK15CMaterialFilter	CGameCollision::RayStaticIntersection(CStateManager const&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&)	CGameCollisionRayWorldIntersection.cpp.o,CStateManager.cpp.o
+_ZN14CGameCollision24RayStaticLineOfSightTestERK13CStateManagerRK9CVector3fS5_fRK15CMaterialFilter	CGameCollision::RayStaticLineOfSightTest(CStateManager const&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&)	CPatternedAiFunctions.cpp.o
+_Z10TCastToPtrI9CGameHintEPT_P7CEntity	CGameHint* TCastToPtr<CGameHint>(CEntity*)	CHintManager.cpp.o
+_ZN10CGameLightC1E9TUniqueId7TAreaIdbRKN4rstl12basic_stringIcNS2_11char_traitsIcEENS2_17rmemory_allocatorEEERK12CTransform4fS0_RK6CLightjjfPK11CEntityInfo	CGameLight::CGameLight(TUniqueId, TAreaId, bool, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CTransform4f const&, TUniqueId, CLight const&, unsigned int, unsigned int, float, CEntityInfo const*)	CPlayerGunBase.cpp.o
+_ZN12CGameOptionsD1Ev	CGameOptions::~CGameOptions()	CGameState.cpp.o,PortStreamNewGameState.cpp.o
+_ZN15CGameProjectile17GetBeamAttribTypeE11EWeaponType	CGameProjectile::GetBeamAttribType(EWeaponType)	CAuxWeapon.cpp.o
+_ZN15CGameSplineDescC1ERK11CMayaSplineN13CMotionSpline11ESplineTypeEfb	CGameSplineDesc::CGameSplineDesc(CMayaSpline const&, CMotionSpline::ESplineType, float, bool)	CScriptCannonBall.cpp.o
+_ZN10CGameStateD1Ev	CGameState::~CGameState()	CGameGlobalObjectsCtor.cpp.o,CGameState.cpp.o,PortStreamNewGameState.cpp.o
+_ZN9CGraphics15SetAlphaCompareE13ERglAlphaFunch11ERglAlphaOpS0_h	CGraphics::SetAlphaCompare(ERglAlphaFunc, unsigned char, ERglAlphaOp, ERglAlphaFunc, unsigned char)	CErrorOutputWindow.cpp.o,CSimpleShadow.cpp.o
+_ZN9CGraphics6SetFogE11ERglFogModeffRK6CColor	CGraphics::SetFog(ERglFogMode, float, float, CColor const&)	CWorld.cpp.o
+_ZN9CGraphics8SetOrthoEffffff	CGraphics::SetOrtho(float, float, float, float, float, float)	CErrorOutputWindow.cpp.o
+_ZN9CGraphics11StreamBeginE13ERglPrimitive	CGraphics::StreamBegin(ERglPrimitive)	CSimpleShadow.cpp.o
+_ZN9CGraphics9StreamEndEv	CGraphics::StreamEnd()	CSimpleShadow.cpp.o
+_ZN9CGraphics12StreamVertexERK9CVector3f	CGraphics::StreamVertex(CVector3f const&)	CSimpleShadow.cpp.o
+_ZN9CGraphics12kEnvModulateE	CGraphics::kEnvModulate	CSimpleShadow.cpp.o
+_ZN9CGraphics12kEnvPassthruE	CGraphics::kEnvPassthru	CRainSplashGenerator.cpp.o,CSimpleShadow.cpp.o
+_ZN9CGraphics12mModelMatrixE	CGraphics::mModelMatrix	CActorModelParticles.cpp.o
+_ZN11CGrappleArmC1ERK9CVector3f9TUniqueIdb	CGrappleArm::CGrappleArm(CVector3f const&, TUniqueId, bool)	CPlayerGun.cpp.o
+_ZN10CGunMotion11fn_801D6D8CEv	CGunMotion::fn_801D6D8C()	CPlayerGun.cpp.o
+_ZN10CGunMotion11fn_801D6ED0EiR13CStateManagerfb	CGunMotion::fn_801D6ED0(int, CStateManager&, float, bool)	CPlayerGun.cpp.o
 _ZN19CInGameTweakManager26GetIdentifierForMusicEventEjRKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE	CInGameTweakManager::GetIdentifierForMusicEvent(unsigned int, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&)	CScriptStreamedMusic.cpp.o
-_ZNK19CInGameTweakManager13GetTweakValueERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE	CInGameTweakManager::GetTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const	CScriptStreamedMusic.cpp.o
-_ZNK19CInGameTweakManager13HasTweakValueERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE	CInGameTweakManager::HasTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const	CScriptStreamedMusic.cpp.o
-_ZN15CInputGenerator6UpdateEfR18CArchitectureQueue	CInputGenerator::Update(float, CArchitectureQueue&)	main.cpp.o
-_ZN16CLightParametersC1Ev	CLightParameters::CLightParameters()	CScriptCannonBall.cpp.o
-_ZNK16CLightParameters15MakeActorLightsEv	CLightParameters::MakeActorLights() const	CActor.cpp.o
-_ZN5CMain14ResetGameStateEv	CMain::ResetGameState()	CMainFlowDtor.cpp.o,main.cpp.o
-_ZN10CModelData16AdvanceAnimationEfR13CStateManager7TAreaIdb	CModelData::AdvanceAnimation(float, CStateManager&, TAreaId, bool)	CActor.cpp.o
-_ZN10CModelData16AdvanceParticlesERK12CTransform4ffR13CStateManager	CModelData::AdvanceParticles(CTransform4f const&, float, CStateManager&)	CActor.cpp.o
-_ZNK10CModelData9GetBoundsERK12CTransform4f	CModelData::GetBounds(CTransform4f const&) const	CActor.cpp.o,CScriptPickup.cpp.o
-_ZNK10CModelData19GetLocatorTransformERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE	CModelData::GetLocatorTransform(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const	CActor.cpp.o
-_ZN10CModelData17GetRenderingModelERK13CStateManager	CModelData::GetRenderingModel(CStateManager const&)	CActor.cpp.o
-_ZNK10CModelData25GetScaledLocatorTransformERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE	CModelData::GetScaledLocatorTransform(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const	CActor.cpp.o,CPlayerGun.cpp.o
-_ZNK10CModelData32GetScaledLocatorTransformDynamicERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEEPK13CCharAnimTime	CModelData::GetScaledLocatorTransformDynamic(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CCharAnimTime const*) const	CPlayerGun.cpp.o
-_ZNK10CModelData18IsDefinitelyOpaqueENS_11EWhichModelE	CModelData::IsDefinitelyOpaque(CModelData::EWhichModel) const	CActor.cpp.o
-_ZNK10CModelData6RenderENS_11EWhichModelERK12CTransform4fPK12CActorLightsRK11CModelFlags	CModelData::Render(CModelData::EWhichModel, CTransform4f const&, CActorLights const*, CModelFlags const&) const	CActor.cpp.o
-_ZNK10CModelData15RenderParticlesERK14CFrustumPlanes	CModelData::RenderParticles(CFrustumPlanes const&) const	CActor.cpp.o,CPlayerGun.cpp.o
-_ZNK10CModelData19RenderUnsortedPartsENS_11EWhichModelERK12CTransform4fPK12CActorLightsRK11CModelFlags	CModelData::RenderUnsortedParts(CModelData::EWhichModel, CTransform4f const&, CActorLights const*, CModelFlags const&) const	CActor.cpp.o
-_ZN10CModelData13SetInfraModelERKN4rstl4pairIjjEE	CModelData::SetInfraModel(rstl::pair<unsigned int, unsigned int> const&)	CActor.cpp.o
-_ZN10CModelData12SetXRayModelERKN4rstl4pairIjjEE	CModelData::SetXRayModel(rstl::pair<unsigned int, unsigned int> const&)	CActor.cpp.o
-_ZN10CModelDataD1Ev	CModelData::~CModelData()	CActor.cpp.o,CScriptCannonBall.cpp.o,CScriptPickup.cpp.o,CScriptSkyRipple.cpp.o
-_ZN10CMorphBall12SwitchToTireEv	CMorphBall::SwitchToTire()	CScriptCannonBall.cpp.o
-_ZNK11CObjectList11fn_8000B538E9TUniqueId	CObjectList::fn_8000B538(TUniqueId) const	CStateManager.cpp.o
-_ZN11CObjectList11fn_8000B588E9TUniqueId	CObjectList::fn_8000B588(TUniqueId)	CStateManager.cpp.o
-_ZN17CParticleDatabase15DeleteAllLightsER13CStateManager	CParticleDatabase::DeleteAllLights(CStateManager&)	CActor.cpp.o
-_ZNK17CParticleDatabase9GetBoundsEv	CParticleDatabase::GetBounds() const	CActor.cpp.o
-_ZNK17CParticleDatabase27RenderSystemsToBeDrawnFirstEv	CParticleDatabase::RenderSystemsToBeDrawnFirst() const	CActor.cpp.o
-_ZNK17CParticleDatabase26RenderSystemsToBeDrawnLastEv	CParticleDatabase::RenderSystemsToBeDrawnLast() const	CActor.cpp.o
-_Z10TCastToPtrI7CPlayerEPT_R7CEntity	CPlayer* TCastToPtr<CPlayer>(CEntity&)	CStateManager.cpp.o
-_Z10TCastToPtrI7CPlayerEPT_P7CEntity	CPlayer* TCastToPtr<CPlayer>(CEntity*)	CScriptCannonBall.cpp.o
-_ZN7CPlayer16PlaySfxForPlayerEjsibi	CPlayer::PlaySfxForPlayer(unsigned int, short, int, bool, int)	CPlayerGun.cpp.o
-_ZN7CPlayer11fn_8000BC44ER13CStateManager	CPlayer::fn_8000BC44(CStateManager&)	CPlayerGun.cpp.o
-_ZNK7CPlayer11fn_8000BE98Ev	CPlayer::fn_8000BE98() const	CScriptCannonBall.cpp.o
-_ZN7CPlayer11fn_8000d3acERK9CVector3fR13CStateManager	CPlayer::fn_8000d3ac(CVector3f const&, CStateManager&)	CStateManager.cpp.o
-_ZN7CPlayer11fn_8000d40cERK9CVector3fR13CStateManager	CPlayer::fn_8000d40c(CVector3f const&, CStateManager&)	CStateManager.cpp.o
-_ZN10CPlayerGun11ComboActiveER13CStateManager9EStateMsgf	CPlayerGun::ComboActive(CStateManager&, EStateMsg, float)	CPlayerGun.cpp.o
-_ZN10CPlayerGun14EnableChargeFxER13CStateManagerb	CPlayerGun::EnableChargeFx(CStateManager&, bool)	CPlayerGun.cpp.o
-_ZN10CPlayerGun10FidgetOverER13CStateManagerRK12CTriggerData	CPlayerGun::FidgetOver(CStateManager&, CTriggerData const&)	CPlayerGun.cpp.o
-_ZN10CPlayerGun9FidgetingER13CStateManager9EStateMsgf	CPlayerGun::Fidgeting(CStateManager&, EStateMsg, float)	CPlayerGun.cpp.o
-_ZNK10CPlayerGun23GetBeamAmmoTypeAndCostsEbR13CStateManagerRN12CPlayerState9EItemTypeES4_Ri	CPlayerGun::GetBeamAmmoTypeAndCosts(bool, CStateManager&, CPlayerState::EItemType&, CPlayerState::EItemType&, int&) const	CPlayerGun.cpp.o
-_ZNK10CPlayerGun9GetPlayerER13CStateManager	CPlayerGun::GetPlayer(CStateManager&) const	CPlayerGun.cpp.o
-_ZNK10CPlayerGun16GetPlayerFromAllER13CStateManager	CPlayerGun::GetPlayerFromAll(CStateManager&) const	CPlayerGun.cpp.o
-_ZN10CPlayerGun11GetTargetIdER13CStateManager	CPlayerGun::GetTargetId(CStateManager&)	CPlayerGun.cpp.o
-_ZN10CPlayerGun8InPhazonER13CStateManagerRK12CTriggerData	CPlayerGun::InPhazon(CStateManager&, CTriggerData const&)	CPlayerGun.cpp.o
-_ZN10CPlayerGun13InitiateComboER13CStateManagerRK12CTriggerData	CPlayerGun::InitiateCombo(CStateManager&, CTriggerData const&)	CPlayerGun.cpp.o
-_ZNK10CPlayerGun18IsOutOfAmmoToShootER13CStateManager	CPlayerGun::IsOutOfAmmoToShoot(CStateManager&) const	CPlayerGun.cpp.o
-_ZN10CPlayerGun4MainER13CStateManager9EStateMsgf	CPlayerGun::Main(CStateManager&, EStateMsg, float)	CPlayerGun.cpp.o
-_ZN10CPlayerGun8PlayAnimER13CStateManagerii	CPlayerGun::PlayAnim(CStateManager&, int, int)	CPlayerGun.cpp.o
-_ZN10CPlayerGun6RecoilER13CStateManager9EStateMsgf	CPlayerGun::Recoil(CStateManager&, EStateMsg, float)	CPlayerGun.cpp.o
-_ZN10CPlayerGun11ResetChargeER13CStateManagerb	CPlayerGun::ResetCharge(CStateManager&, bool)	CPlayerGun.cpp.o
-_ZN10CPlayerGun15StopChargeSoundER13CStateManagerb	CPlayerGun::StopChargeSound(CStateManager&, bool)	CPlayerGun.cpp.o
-_ZN10CPlayerGun11fn_801C72B4ER13CStateManagerf	CPlayerGun::fn_801C72B4(CStateManager&, float)	CPlayerGun.cpp.o
-_ZN10CPlayerGun11fn_801CA734ER13CStateManager	CPlayerGun::fn_801CA734(CStateManager&)	CPlayerGun.cpp.o
-_ZN10CPlayerGun11fn_801CD55CER13CStateManagerb	CPlayerGun::fn_801CD55C(CStateManager&, bool)	CPlayerGun.cpp.o
-_ZN10CPlayerGun11fn_801CE0DCER13CStateManager	CPlayerGun::fn_801CE0DC(CStateManager&)	CPlayerGun.cpp.o
-_ZN10CPlayerGun11fn_801CE5C0ERK11CFinalInputR13CStateManager	CPlayerGun::fn_801CE5C0(CFinalInput const&, CStateManager&)	CPlayerGun.cpp.o
-_ZN10CPlayerGun11fn_801DE430ER13CStateManager	CPlayerGun::fn_801DE430(CStateManager&)	CPlayerGun.cpp.o
-_ZN16CPlayerGunUnk57011fn_801D6D8CEv	CPlayerGunUnk570::fn_801D6D8C()	CPlayerGun.cpp.o
-_ZN16CPlayerGunUnk57011fn_801D6ED0EiR13CStateManagerfb	CPlayerGunUnk570::fn_801D6ED0(int, CStateManager&, float, bool)	CPlayerGun.cpp.o
-_ZN16CPlayerGunUnk57811fn_801D5DD0EiR13CStateManager	CPlayerGunUnk578::fn_801D5DD0(int, CStateManager&)	CPlayerGun.cpp.o
-_ZN16CPlayerGunUnk57811fn_801D6894ER13CStateManagerb	CPlayerGunUnk578::fn_801D6894(CStateManager&, bool)	CPlayerGun.cpp.o
-_ZNK16CPlayerGunUnk57811fn_801D6924Ev	CPlayerGunUnk578::fn_801D6924() const	CPlayerGun.cpp.o
-_ZN16CPlayerGunUnk57811fn_801D6930E9TUniqueId	CPlayerGunUnk578::fn_801D6930(TUniqueId)	CPlayerGun.cpp.o
-_ZN16CPlayerGunUnk62411fn_80320978Ev	CPlayerGunUnk624::fn_80320978()	CPlayerGun.cpp.o
-_ZN16CPlayerGunUnk62411fn_80320A04Ev	CPlayerGunUnk624::fn_80320A04()	CPlayerGun.cpp.o
-_ZN11CResFactory9AsyncIdleEjb	CResFactory::AsyncIdle(unsigned int, bool)	main.cpp.o
+_ZN19CInGameTweakManager33GetIdentifierForWorldDefaultMusicEj	CInGameTweakManager::GetIdentifierForWorldDefaultMusic(unsigned int)	CWorld.cpp.o
+_ZNK19CInGameTweakManager13GetTweakValueERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE	CInGameTweakManager::GetTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const	CScriptStreamedMusic.cpp.o,CWorld.cpp.o
+_ZNK19CInGameTweakManager13HasTweakValueERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE	CInGameTweakManager::HasTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const	CScriptStreamedMusic.cpp.o,CWorld.cpp.o
+_ZN19CInGameTweakManagerD1Ev	CInGameTweakManager::~CInGameTweakManager()	CGameGlobalObjectsCtor.cpp.o
+_ZN20CInterpolationCamera16SetInterpolationERK12CTransform4f9TUniqueIdS3_bNS_13EPositionModeENS_13ERotationModeER13CStateManagerbff	CInterpolationCamera::SetInterpolation(CTransform4f const&, TUniqueId, TUniqueId, bool, CInterpolationCamera::EPositionMode, CInterpolationCamera::ERotationMode, CStateManager&, bool, float, float)	CCameraManager.cpp.o
+_ZN24CJointData_LinearStorageC1EiNS_13EAllocateFromE	CJointData_LinearStorage::CJointData_LinearStorage(int, CJointData_LinearStorage::EAllocateFrom)	CAnimData.cpp.o
+_ZN24CJointData_LinearStorage11ResetScalesEv	CJointData_LinearStorage::ResetScales()	CAnimData.cpp.o
+_ZN24CJointData_LinearStorage19SetReferenceOffsetsERK15CCharLayoutInfo	CJointData_LinearStorage::SetReferenceOffsets(CCharLayoutInfo const&)	CAnimData.cpp.o
+_ZN24CJointData_LinearStorage15SetZeroRotationEv	CJointData_LinearStorage::SetZeroRotation()	CAnimData.cpp.o
+_ZN24CJointData_LinearStorageD1Ev	CJointData_LinearStorage::~CJointData_LinearStorage()	CAnimData.cpp.o
+_ZN5CMain19EnsureWorldPakReadyEj	CMain::EnsureWorldPakReady(unsigned int)	CGameState.cpp.o
+_ZN5CMain14ResetGameStateEv	CMain::ResetGameState()	CMainFlowDtor.cpp.o,mainMid.cpp.o
+_ZN5CMain18StreamNewGameStateEb	CMain::StreamNewGameState(bool)	CGameState.cpp.o
+_ZNK9CMapWorld19IsMapAreasStreamingEv	CMapWorld::IsMapAreasStreaming() const	CWorld.cpp.o
+_ZN9CMapWorld22SetWhichMapAreasLoadedERK6IWorldii	CMapWorld::SetWhichMapAreasLoaded(IWorld const&, int, int)	CWorld.cpp.o
+_ZN13CMapWorldInfoC1Ev	CMapWorldInfo::CMapWorldInfo()	CGameState.cpp.o
+_ZN13CMapWorldInfoC1ER16CBitStreamReaderRK18CWorldSaveGameInfoj	CMapWorldInfo::CMapWorldInfo(CBitStreamReader&, CWorldSaveGameInfo const&, unsigned int)	CGameState.cpp.o
+_ZNK13CMapWorldInfo5PutToER16CBitStreamWriterRK18CWorldSaveGameInfoj	CMapWorldInfo::PutTo(CBitStreamWriter&, CWorldSaveGameInfo const&, unsigned int) const	CGameState.cpp.o
+_ZN15CMappableObject20ReadAutomapperTweaksEv	CMappableObject::ReadAutomapperTweaks()	Tweaks.cpp.o
+_ZNK15CMaterialFilter6PassesERK13CMaterialList	CMaterialFilter::Passes(CMaterialList const&) const	CSortedLists.cpp.o
+_ZN14CMemoryCardSys11mIsCardBusyE	CMemoryCardSys::mIsCardBusy	CErrorOutputWindow.cpp.o
+_ZN21CMetroidModelInstanceC1EPKvS1_S1_S1_S1_S1_S1_RKN4rstl6vectorIPvNS2_17rmemory_allocatorEEERKS1_SA_	CMetroidModelInstance::CMetroidModelInstance(void const*, void const*, void const*, void const*, void const*, void const*, void const*, rstl::vector<void*, rstl::rmemory_allocator> const&, void const* const&, void const* const&)	CGameArea.cpp.o
+_ZNK6CModel7GetAABBEv	CModel::GetAABB() const	CAnimData.cpp.o,CModelData.cpp.o
+_ZNK6CModel8IsLoadedEi	CModel::IsLoaded(int) const	CModelData.cpp.o,CWorld.cpp.o
+_ZN6CModel7SShaderD1Ev	CModel::SShader::~SShader()	CModelPortStub.cpp.o
+_ZNK12CPASDatabase17FindBestAnimationERK16CPASAnimParmDataR9CRandom16i	CPASDatabase::FindBestAnimation(CPASAnimParmData const&, CRandom16&, int) const	CGSComboFire.cpp.o,CGSFidget.cpp.o,CGSFreeLook.cpp.o,CGunController.cpp.o,CGunMotion.cpp.o
+_ZNK12CPASDatabase17FindBestAnimationERK16CPASAnimParmDatai	CPASDatabase::FindBestAnimation(CPASAnimParmData const&, int) const	CAnimData.cpp.o,CGrappleArmSetAnimState.cpp.o,CGunWeapon.cpp.o
+_ZNK12CPASDatabase12GetAnimStateEi	CPASDatabase::GetAnimState(int) const	CGSFidget.cpp.o,CGSFreeLook.cpp.o,CGunMotion.cpp.o
+_ZN7CPFArea12SetTransformERK12CTransform4f	CPFArea::SetTransform(CTransform4f const&)	CGameArea.cpp.o
+_ZNK11CPVSAreaSet18GetEntityIdByIndexEj	CPVSAreaSet::GetEntityIdByIndex(unsigned int) const	CGameArea.cpp.o
+_ZN11CPVSAreaSet11MakeAreaSetEPKci	CPVSAreaSet::MakeAreaSet(char const*, int)	CGameArea.cpp.o
+_ZN17CParticleElectricC1E6TTokenI20CElectricDescriptionE	CParticleElectric::CParticleElectric(TToken<CElectricDescription>)	CActorModelParticles.cpp.o,CDeferredParticleEffect.cpp.o
+_ZN20CParticleSpawnRandomC1E6TTokenI23CSpawnRandomDescriptionEN11CElementGen20EOptionalSystemFlagsEb	CParticleSpawnRandom::CParticleSpawnRandom(TToken<CSpawnRandomDescription>, CElementGen::EOptionalSystemFlags, bool)	CDeferredParticleEffect.cpp.o
+_ZN20CParticleSpawnSystemC1E6TTokenI23CSpawnSystemDescriptionEN11CElementGen20EOptionalSystemFlagsEb	CParticleSpawnSystem::CParticleSpawnSystem(TToken<CSpawnSystemDescription>, CElementGen::EOptionalSystemFlags, bool)	CDeferredParticleEffect.cpp.o
+_ZN15CParticleSwooshC1E6TTokenI18CSwooshDescriptionEi	CParticleSwoosh::CParticleSwoosh(TToken<CSwooshDescription>, int)	CDeferredParticleEffect.cpp.o,CMorphBall.cpp.o
+_ZN19CPathFindNavigationC1Ev	CPathFindNavigation::CPathFindNavigation()	CPatterned.cpp.o
+_ZN15CPathFindSearch6SearchERK9CVector3fS2_	CPathFindSearch::Search(CVector3f const&, CVector3f const&)	CPatternedAiFunctions.cpp.o
+_Z10TCastToPtrI7CPlayerEPT_R7CEntity	CPlayer* TCastToPtr<CPlayer>(CEntity&)	CScriptPickup.cpp.o,CStateManager.cpp.o
+_Z10TCastToPtrI7CPlayerEPT_P7CEntity	CPlayer* TCastToPtr<CPlayer>(CEntity*)	CActor.cpp.o,CActorModelParticles.cpp.o,CAuxWeapon.cpp.o,CGunWeapon.cpp.o,CPlayerGunBase.cpp.o,CPlayerOrbit.cpp.o,CScriptCannonBall.cpp.o,CStateManager.cpp.o
+_ZN7CPlayer16PlaySfxForPlayerEjs7TAreaIdbi	CPlayer::PlaySfxForPlayer(unsigned int, short, TAreaId, bool, int)	CPlayerGun.cpp.o
+_ZN16CPlayerCameraBob10ReadTweaksERK18SLdrTweakCameraBob	CPlayerCameraBob::ReadTweaks(SLdrTweakCameraBob const&)	Tweaks.cpp.o
+_ZN19CPlayerKnockBackMgrC1Ev	CPlayerKnockBackMgr::CPlayerKnockBackMgr()	CPlayer.cpp.o
+_ZN19CPlayerKnockBackMgr11fn_801C0124Ev	CPlayerKnockBackMgr::fn_801C0124()	CPlayerDynamics.cpp.o
+_ZN19CPlayerKnockBackMgrD1Ev	CPlayerKnockBackMgr::~CPlayerKnockBackMgr()	CPlayer.cpp.o
+_ZNK16CPlayerTargeting18GetScanTargetIndexERK13CStateManager9TUniqueId	CPlayerTargeting::GetScanTargetIndex(CStateManager const&, TUniqueId) const	CActor.cpp.o
+_ZN11CPortalAreaC1ERK12TLockedTokenI15CPortalAreaDataE	CPortalArea::CPortalArea(TLockedToken<CPortalAreaData> const&)	CGameArea.cpp.o
+_ZN11CPortalArea11UpdateActorER13CStateManagerR6CActor	CPortalArea::UpdateActor(CStateManager&, CActor&)	CActor.cpp.o
+_ZN17CPortalTransitionD1Ev	CPortalTransition::~CPortalTransition()	CStateManager.cpp.o
+_ZN13CRelayTrackerC1Ev	CRelayTracker::CRelayTracker()	CGameState.cpp.o
+_ZN13CRelayTrackerC1ER16CBitStreamReaderRK18CWorldSaveGameInfo	CRelayTracker::CRelayTracker(CBitStreamReader&, CWorldSaveGameInfo const&)	CGameState.cpp.o
+_ZNK13CRelayTracker5PutToER16CBitStreamWriterRK18CWorldSaveGameInfo	CRelayTracker::PutTo(CBitStreamWriter&, CWorldSaveGameInfo const&) const	CGameState.cpp.o
+_ZN13CRelayTrackerD1Ev	CRelayTracker::~CRelayTracker()	CGameState.cpp.o
 _ZN14CRumbleManager6RumbleER13CStateManager11ERumbleFxIdf15ERumblePriority	CRumbleManager::Rumble(CStateManager&, ERumbleFxId, float, ERumblePriority)	CPlayerGun.cpp.o
-_ZN14CRumbleManager10StopRumbleEs	CRumbleManager::StopRumble(short)	CPlayerGun.cpp.o
-_ZN15CSaveGameScreenC1Eim	CSaveGameScreen::CSaveGameScreen(int, unsigned long)	CStateManager.cpp.o
+_ZN15CSaveGameScreenC1E12ESaveContextm	CSaveGameScreen::CSaveGameScreen(ESaveContext, unsigned long)	CStateManager.cpp.o
 _ZN15CSaveGameScreenD1Ev	CSaveGameScreen::~CSaveGameScreen()	CStateManager.cpp.o
-_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity	CScriptEffect* TCastToPtr<CScriptEffect>(CEntity*)	CScriptCannonBall.cpp.o
-_ZN13CScriptEffectC1E9TUniqueIdRKN4rstl12basic_stringIcNS1_11char_traitsIcEENS1_17rmemory_allocatorEEERK11CEntityInfoRK12CTransform4fRK9CVector3fjiiiiffffbfffbbbRK16CLightParametersbRKNS_11ParamStructEbbbi	CScriptEffect::CScriptEffect(TUniqueId, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CEntityInfo const&, CTransform4f const&, CVector3f const&, unsigned int, int, int, int, int, float, float, float, float, bool, float, float, float, bool, bool, bool, CLightParameters const&, bool, CScriptEffect::ParamStruct const&, bool, bool, bool, int)	CScriptCannonBall.cpp.o
-_ZN11CSfxManager10AddEmitterERN9CAudioSys18C3DEmitterParmDataEbsbi	CSfxManager::AddEmitter(CAudioSys::C3DEmitterParmData&, bool, short, bool, int)	CActor.cpp.o
-_ZN11CSfxManager9PitchBendE10CSfxHandlei	CSfxManager::PitchBend(CSfxHandle, int)	CActor.cpp.o,CPlayerGun.cpp.o
-_ZN11CSfxManager13RemoveEmitterE10CSfxHandle	CSfxManager::RemoveEmitter(CSfxHandle)	CActor.cpp.o
-_ZN11CSfxManager8SfxStartEtssbsbi	CSfxManager::SfxStart(unsigned short, short, short, bool, short, bool, int)	CActor.cpp.o
-_ZN11CSfxManager14TranslateSFXIDEt	CSfxManager::TranslateSFXID(unsigned short)	CActor.cpp.o
-_ZN11CSfxManager13UpdateEmitterE10CSfxHandleRK9CVector3fS3_h	CSfxManager::UpdateEmitter(CSfxHandle, CVector3f const&, CVector3f const&, unsigned char)	CActor.cpp.o
-_ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag	CSimplePool::fn_8029c7e8(SObjectTag const&)	main.cpp.o
-_ZNK18CSortedListManager17BuildColliderListERN4rstl15reserved_vectorI9TUniqueIdLi1024EEERK6CActorRK6CAABox	CSortedListManager::BuildColliderList(rstl::reserved_vector<TUniqueId, 1024>&, CActor const&, CAABox const&) const	CStateManager.cpp.o
-_ZNK18CSortedListManager13BuildNearListERN4rstl15reserved_vectorI9TUniqueIdLi1024EEERK6CAABoxRK15CMaterialFilterPK6CActor	CSortedListManager::BuildNearList(rstl::reserved_vector<TUniqueId, 1024>&, CAABox const&, CMaterialFilter const&, CActor const*) const	CStateManager.cpp.o
-_ZNK18CSortedListManager13BuildNearListERN4rstl15reserved_vectorI9TUniqueIdLi1024EEERK9CVector3fS7_fRK15CMaterialFilterPK6CActor	CSortedListManager::BuildNearList(rstl::reserved_vector<TUniqueId, 1024>&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, CActor const*) const	CStateManager.cpp.o
+_Z10TCastToPtrI11CScriptDockEPT_P7CEntity	CScriptDock* TCastToPtr<CScriptDock>(CEntity*)	CGameArea.cpp.o
+_ZN11CScriptDock23InitializeConnectedAreaER13CStateManager	CScriptDock::InitializeConnectedArea(CStateManager&)	CGameArea.cpp.o
+_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity	CScriptEffect* TCastToPtr<CScriptEffect>(CEntity*)	CScriptCannonBall.cpp.o,CStateManager.cpp.o
+_ZN13CScriptEffectC1E9TUniqueIdRKN4rstl12basic_stringIcNS1_11char_traitsIcEENS1_17rmemory_allocatorEEERK11CEntityInfoRK12CTransform4fRK9CVector3fjbbbbffffbfffbbbRK16CLightParametersbRK15CGameSplineDescbbbNS_12ERenderOrderE	CScriptEffect::CScriptEffect(TUniqueId, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CEntityInfo const&, CTransform4f const&, CVector3f const&, unsigned int, bool, bool, bool, bool, float, float, float, float, bool, float, float, float, bool, bool, bool, CLightParameters const&, bool, CGameSplineDesc const&, bool, bool, bool, CScriptEffect::ERenderOrder)	CScriptCannonBall.cpp.o
+_Z10TCastToPtrI19CScriptGrapplePointEPT_P7CEntity	CScriptGrapplePoint* TCastToPtr<CScriptGrapplePoint>(CEntity*)	CPlayerOrbit.cpp.o
+_ZN25CScriptObjectLoaderHelper14BeginLayerLoadERNS_12SLoadContextEN4rstl8auto_ptrI12CInputStreamEERNS2_6vectorI9TEditorIdNS2_17rmemory_allocatorEEE	CScriptObjectLoaderHelper::BeginLayerLoad(CScriptObjectLoaderHelper::SLoadContext&, rstl::auto_ptr<CInputStream>, rstl::vector<TEditorId, rstl::rmemory_allocator>&)	CGameArea.cpp.o
+_ZN25CScriptObjectLoaderHelper17ContinueLayerLoadERNS_12SLoadContextEjR13CStateManager	CScriptObjectLoaderHelper::ContinueLayerLoad(CScriptObjectLoaderHelper::SLoadContext&, unsigned int, CStateManager&)	CGameArea.cpp.o
+_ZN25CScriptObjectLoaderHelper17InitScriptObjectsERN4rstl6vectorI9TEditorIdNS0_17rmemory_allocatorEEER13CStateManager	CScriptObjectLoaderHelper::InitScriptObjects(rstl::vector<TEditorId, rstl::rmemory_allocator>&, CStateManager&)	CGameArea.cpp.o,CWorld.cpp.o
+_ZN25CScriptObjectLoaderHelper26LoadGeneratedScriptObjectsE7TAreaIdR12CInputStream	CScriptObjectLoaderHelper::LoadGeneratedScriptObjects(TAreaId, CInputStream&)	CGameArea.cpp.o
+_ZN25CScriptObjectLoaderHelper17LoadScriptObjectsE7TAreaIdR12CInputStreamRN4rstl6vectorI9TEditorIdNS3_17rmemory_allocatorEEER13CStateManager	CScriptObjectLoaderHelper::LoadScriptObjects(TAreaId, CInputStream&, rstl::vector<TEditorId, rstl::rmemory_allocator>&, CStateManager&)	CGameArea.cpp.o,CWorld.cpp.o
+_ZN25CScriptObjectLoaderHelper21RegisterScriptObjectsEN4rstl6vectorIP7CEntityNS0_17rmemory_allocatorEEER13CStateManager	CScriptObjectLoaderHelper::RegisterScriptObjects(rstl::vector<CEntity*, rstl::rmemory_allocator>, CStateManager&)	CGameArea.cpp.o
+_ZN25CScriptObjectLoaderHelper18RemoveLayerObjectsE7TAreaId8TLayerIdR13CStateManager	CScriptObjectLoaderHelper::RemoveLayerObjects(TAreaId, TLayerId, CStateManager&)	CGameArea.cpp.o
+_ZN25CScriptObjectLoaderHelper12SLoadContextC1E7TAreaId	CScriptObjectLoaderHelper::SLoadContext::SLoadContext(TAreaId)	CGameArea.cpp.o
+_ZN13CScriptPickup25ShowAllKeysCollectedAlertER13CStateManagerP12CPlayerStateNS2_9EItemTypeE	CScriptPickup::ShowAllKeysCollectedAlert(CStateManager&, CPlayerState*, CPlayerState::EItemType)	CScriptPickup.cpp.o
+_Z10TCastToPtrI15CScriptPlatformEPT_P7CEntity	CScriptPlatform* TCastToPtr<CScriptPlatform>(CEntity*)	CPlayerDynamics.cpp.o,CStateManager.cpp.o
+_ZNK12CScriptWater17GetWRSurfacePlaneEv	CScriptWater::GetWRSurfacePlane() const	CActor.cpp.o,CPlayerDynamics.cpp.o
+_ZN13CSkinnedModelC1ERK12TLockedTokenI6CModelERKS0_I10CSkinRulesERKS0_I15CCharLayoutInfoE	CSkinnedModel::CSkinnedModel(TLockedToken<CModel> const&, TLockedToken<CSkinRules> const&, TLockedToken<CCharLayoutInfo> const&)	CAnimData.cpp.o
+_ZN13CSkinnedModelD1Ev	CSkinnedModel::~CSkinnedModel()	CAnimData.cpp.o
 _ZN13CStateManager9AddObjectER7CEntity	CStateManager::AddObject(CEntity&)	CStateManager.cpp.o
 _ZNK13CStateManager26DisplayAlertAboutOutOfAmmoERK7CPlayerN12CPlayerState9EItemTypeE	CStateManager::DisplayAlertAboutOutOfAmmo(CPlayer const&, CPlayerState::EItemType) const	CPlayerState.cpp.o
-_ZN13CStateManager24GetObjectByIdFromListAllE9TUniqueId	CStateManager::GetObjectByIdFromListAll(TUniqueId)	CStateManager.cpp.o
+_ZN13CStateManager24GetObjectByIdFromListAllE9TUniqueId	CStateManager::GetObjectByIdFromListAll(TUniqueId)	CAuxWeapon.cpp.o,CCameraManager.cpp.o,CGunWeapon.cpp.o,CScriptCannonBall.cpp.o,CStateManager.cpp.o
+_ZN13CStateManager15InformListenersERK9CVector3f16EListenNoiseType	CStateManager::InformListeners(CVector3f const&, EListenNoiseType)	CPlayerGun.cpp.o
+_ZN13CStateManager17PrepareAreaUnloadE7TAreaId	CStateManager::PrepareAreaUnload(TAreaId)	CGameArea.cpp.o
 _ZNK13CStateManager23RayCollideWorldInternalERK9CVector3fS2_RK15CMaterialFilterRKN4rstl15reserved_vectorI9TUniqueIdLi1024EEEPK6CActor	CStateManager::RayCollideWorldInternal(CVector3f const&, CVector3f const&, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&, CActor const*) const	CStateManager.cpp.o
-_ZN13CStateManager24UpdateActorInSortedListsEP6CActor	CStateManager::UpdateActorInSortedLists(CActor*)	CStateManager.cpp.o
 _ZN13CStateManager19UpdateObjectInListsER7CEntity	CStateManager::UpdateObjectInLists(CEntity&)	CActor.cpp.o
 _ZN13CStateManager11fn_800366e4EP6CActor	CStateManager::fn_800366e4(CActor*)	CActor.cpp.o
-_ZN13CStateManager11fn_8003C4B8ERK9CVector3fi	CStateManager::fn_8003C4B8(CVector3f const&, int)	CPlayerGun.cpp.o
 _ZN13CStateManager11fn_8003dd88ER6CActor9TUniqueIdRK11CDamageInfobi	CStateManager::fn_8003dd88(CActor&, TUniqueId, CDamageInfo const&, bool, int)	CStateManager.cpp.o
 _ZN13CStateManager11fn_800412ECE9TUniqueId	CStateManager::fn_800412EC(TUniqueId)	CStateManager.cpp.o
-_ZNK13CStateManager11fn_801EDD8CE9TUniqueId	CStateManager::fn_801EDD8C(TUniqueId) const	CActor.cpp.o
 _ZN22CStateManagerContainerD1Ev	CStateManagerContainer::~CStateManagerContainer()	CStateManager.cpp.o
-_ZN20CStateManagerUnk2900D1Ev	CStateManagerUnk2900::~CStateManagerUnk2900()	CStateManager.cpp.o
-_ZN19CStaticInterferenceC1Ei	CStaticInterference::CStaticInterference(int)	CPlayerState.cpp.o
-_ZN19CStaticInterference6UpdateERK13CStateManagerf	CStaticInterference::Update(CStateManager const&, float)	CPlayerState.cpp.o
-_ZN19CStreamAudioManager10FadeBackInEif	CStreamAudioManager::FadeBackIn(int, float)	CScriptStreamedMusic.cpp.o
-_ZN19CStreamAudioManager15SetCurrentAudioERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEEffh	CStreamAudioManager::SetCurrentAudio(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, float, float, unsigned char)	CScriptStreamedMusic.cpp.o
-_ZN19CStreamAudioManager15SetDefaultAudioERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEEffh	CStreamAudioManager::SetDefaultAudio(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, float, float, unsigned char)	CScriptStreamedMusic.cpp.o
-_ZN19CStreamAudioManager5StartEiRKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEEhbff	CStreamAudioManager::Start(int, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, unsigned char, bool, float, float)	CScriptStreamedMusic.cpp.o
-_ZN19CStreamAudioManager4StopEiRKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE	CStreamAudioManager::Stop(int, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&)	CScriptStreamedMusic.cpp.o
-_ZN19CStreamAudioManager16TemporaryFadeOutEif	CStreamAudioManager::TemporaryFadeOut(int, float)	CScriptStreamedMusic.cpp.o
-_ZN19CStreamAudioManager12sub_803653f8Ef	CStreamAudioManager::sub_803653f8(float)	CScriptStreamedMusic.cpp.o
-_ZN19CStreamAudioManager12sub_80365424Ef	CStreamAudioManager::sub_80365424(float)	CScriptStreamedMusic.cpp.o
-_ZN19CStreamAudioManager12sub_8036590cEf	CStreamAudioManager::sub_8036590c(float)	CScriptStreamedMusic.cpp.o
-_ZN10CTweakGame10GetPakFileEv	CTweakGame::GetPakFile()	main.cpp.o
+_ZN18CStaticGeometryMapC1ERK12TLockedTokenI22CStaticGeometryMapDataE	CStaticGeometryMap::CStaticGeometryMap(TLockedToken<CStaticGeometryMapData> const&)	CGameArea.cpp.o
+_ZNK12CStringTable9GetStringEPKc	CStringTable::GetString(char const*) const	CPlayerVisor.cpp.o,CScriptPickup.cpp.o
+_ZN18CTextExecuteBuffer7AddFontERK6TTokenI11CRasterFontE	CTextExecuteBuffer::AddFont(TToken<CRasterFont> const&)	CErrorOutputWindow.cpp.o
+_ZN18CTextExecuteBuffer9AddStringEPKwi	CTextExecuteBuffer::AddString(wchar_t const*, int)	CErrorOutputWindow.cpp.o
+_ZN18CTextExecuteBuffer10BeginBlockEiiiib14ETextDirection14EJustification22EVerticalJustification	CTextExecuteBuffer::BeginBlock(int, int, int, int, bool, ETextDirection, EJustification, EVerticalJustification)	CErrorOutputWindow.cpp.o
+_ZNK18CTextExecuteBuffer17BuildRenderBufferEv	CTextExecuteBuffer::BuildRenderBuffer() const	CErrorOutputWindow.cpp.o
+_ZN18CTextExecuteBufferC1Ev	CTextExecuteBuffer::CTextExecuteBuffer()	CErrorOutputWindow.cpp.o
+_ZN18CTextExecuteBuffer8EndBlockEv	CTextExecuteBuffer::EndBlock()	CErrorOutputWindow.cpp.o
+_ZNK17CTextRenderBuffer6RenderERK6CColorf	CTextRenderBuffer::Render(CColor const&, float) const	CErrorOutputWindow.cpp.o
+_ZNK8CTexture24IsARAMTransferInProgressEv	CTexture::IsARAMTransferInProgress() const	CGameArea.cpp.o
+_ZNK8CTexture4LoadE10GXTexMapIDNS_10EClampModeE	CTexture::Load(GXTexMapID, CTexture::EClampMode) const	CSimpleShadow.cpp.o
+_ZNK8CTexture10LoadToARAMEv	CTexture::LoadToARAM() const	CGameArea.cpp.o
+_ZNK8CTexture10LoadToMRAMEv	CTexture::LoadToMRAM() const	CGameArea.cpp.o
+_ZNK8CTexture13MakeSwappableEv	CTexture::MakeSwappable() const	CGameArea.cpp.o
+_ZN8CTexture16ScheduleDeletionEv	CTexture::ScheduleDeletion()	CMorphBallShadow.cpp.o
+_ZN18CTransitionManagerD1Ev	CTransitionManager::~CTransitionManager()	CAnimData.cpp.o
+_ZNK10CTweakGame27GetHardModeDamageMultiplierEv	CTweakGame::GetHardModeDamageMultiplier() const	CGameState.cpp.o
+_ZNK10CTweakGame27GetHardModeWeaponMultiplierEv	CTweakGame::GetHardModeWeaponMultiplier() const	CGameState.cpp.o
+_ZN10CTweakGame10GetPakFileEv	CTweakGame::GetPakFile()	mainHead.cpp.o
 _ZN10CTweakGame18GetTotalPercentageEv	CTweakGame::GetTotalPercentage()	CPlayerState.cpp.o
-_ZN15CTweakPlayerGun25GetMaxAbsorbedPhazonShotsEv	CTweakPlayerGun::GetMaxAbsorbedPhazonShots()	CPlayerGun.cpp.o
-_ZNK10CWeaponMgr12GetNumActiveE9TUniqueId11EWeaponType	CWeaponMgr::GetNumActive(TUniqueId, EWeaponType) const	CPlayerGun.cpp.o,CStateManager.cpp.o
+_ZNK20CTweakPlayerControls10GetMappingEN14CControlMapper9ECommandsE	CTweakPlayerControls::GetMapping(CControlMapper::ECommands) const	CControlMapper.cpp.o
+_ZN15CTweakPlayerRes16ResolveResourcesEv	CTweakPlayerRes::ResolveResources()	Tweaks.cpp.o
+_ZN19CWaypointNavigationC1Ev	CWaypointNavigation::CWaypointNavigation()	CPatterned.cpp.o
+_ZN19CWaypointNavigation6PatrolER13CStateManager9EStateMsgfR10CPatterned	CWaypointNavigation::Patrol(CStateManager&, EStateMsg, float, CPatterned&)	CPatternedAiFunctions.cpp.o
 _ZN10CWeaponMgr11fn_800B321CE9TUniqueId11EWeaponType	CWeaponMgr::fn_800B321C(TUniqueId, EWeaponType)	CStateManager.cpp.o
 _ZN10CWeaponMgr11fn_800B32E0E9TUniqueId11EWeaponType	CWeaponMgr::fn_800B32E0(TUniqueId, EWeaponType)	CStateManager.cpp.o
-_ZN6CWorld17SetLoadPauseStateEb	CWorld::SetLoadPauseState(bool)	CStateManager.cpp.o
+_ZN11CWorldLightC1ER12CInputStream	CWorldLight::CWorldLight(CInputStream&)	CGameArea.cpp.o
+_ZNK11CWorldLight19GetAsCGraphicsLightEv	CWorldLight::GetAsCGraphicsLight() const	CGameArea.cpp.o
+_ZN12CWorldShadowC1Ejjb	CWorldShadow::CWorldShadow(unsigned int, unsigned int, bool)	CMorphBall.cpp.o,CPlayerGunBase.cpp.o
+_ZN12CWorldShadowD1Ev	CWorldShadow::~CWorldShadow()	CMorphBall.cpp.o,CPlayerGunBase.cpp.o
+_ZN11CWorldStateD1Ev	CWorldState::~CWorldState()	CGameState.cpp.o
+_ZN18CWorldTransManagerC1Ev	CWorldTransManager::CWorldTransManager()	CGameState.cpp.o
+_ZN18CWorldTransManagerD1Ev	CWorldTransManager::~CWorldTransManager()	CGameState.cpp.o
+GXNtsc480Prog	GXNtsc480Prog	CGraphicsHostStartup.cpp.o
+_Z28GetLockedCacheAllocationBasev	GetLockedCacheAllocationBase()	CCubeMoviePlayer.cpp.o
 _ZN8IElement17CElementAllocator5AllocEmPKcS2_	IElement::CElementAllocator::Alloc(unsigned long, char const*, char const*)	CFrameDelayedKiller.cpp.o
 _ZN8IElement17CElementAllocator4FreeEPvm	IElement::CElementAllocator::Free(void*, unsigned long)	CFrameDelayedKiller.cpp.o
-_Z15LdrToEntityInfoRK11CEntityInfoRK20SLdrEditorProperties	LdrToEntityInfo(CEntityInfo const&, SLdrEditorProperties const&)	CScriptPickup.cpp.o,CScriptStreamedMusic.cpp.o
-_Z15LdrToEntityInfoR11CEntityInfoRK20SLdrEditorProperties	LdrToEntityInfo(CEntityInfo&, SLdrEditorProperties const&)	CScriptCannonBall.cpp.o,CScriptSkyRipple.cpp.o
-_Z19LoadActorParametersRK19SLdrActorParameters	LoadActorParameters(SLdrActorParameters const&)	CScriptPickup.cpp.o
+_Z20LdrToActorParametersRK19SLdrActorParameters	LdrToActorParameters(SLdrActorParameters const&)	CScriptPickup.cpp.o
+_Z15LdrToDamageInfoRK14SLdrDamageInfo	LdrToDamageInfo(SLdrDamageInfo const&)	CTweakPlayer.cpp.o
+_Z19LdrToEchoParametersRK18SLdrEchoParameters	LdrToEchoParameters(SLdrEchoParameters const&)	CScriptPickup.cpp.o
+_Z14LdrToModelDataRK9CVector3fjRK16SLdrAnimationSetb	LdrToModelData(CVector3f const&, unsigned int, SLdrAnimationSet const&, bool)	CScriptPickup.cpp.o
+_Z16LdrToTransform4fRK20SLdrEditorProperties	LdrToTransform4f(SLdrEditorProperties const&)	CScriptCannonBall.cpp.o,CScriptPickup.cpp.o
 _Z10LoadCAABoxR13CStateManagerRK7TAreaIdRK9CVector3fS6_	LoadCAABox(CStateManager&, TAreaId const&, CVector3f const&, CVector3f const&)	CScriptPickup.cpp.o
-_Z18LoadEchoParametersRK18SLdrEchoParameters	LoadEchoParameters(SLdrEchoParameters const&)	CScriptPickup.cpp.o
-_Z19LoadEditorTransformRK20SLdrEditorProperties	LoadEditorTransform(SLdrEditorProperties const&)	CScriptCannonBall.cpp.o,CScriptPickup.cpp.o
-_Z13LoadModelDataRK9CVector3fjRK23SLdrAnimationParametersb	LoadModelData(CVector3f const&, unsigned int, SLdrAnimationParameters const&, bool)	CScriptPickup.cpp.o
-_Z27LoadTypedefEditorPropertiesR20SLdrEditorPropertiesR12CInputStream	LoadTypedefEditorProperties(SLdrEditorProperties&, CInputStream&)	CScriptCannonBall.cpp.o,CScriptPickup.cpp.o,CScriptSkyRipple.cpp.o,CScriptStreamedMusic.cpp.o
-_Z30LoadTypedefSLdrActorParametersR19SLdrActorParametersR12CInputStream	LoadTypedefSLdrActorParameters(SLdrActorParameters&, CInputStream&)	CScriptPickup.cpp.o
-_Z34LoadTypedefSLdrAnimationParametersR23SLdrAnimationParametersR12CInputStream	LoadTypedefSLdrAnimationParameters(SLdrAnimationParameters&, CInputStream&)	CScriptPickup.cpp.o
-_Z31LoadTypedefSLdrCameraShakerDataR20SLdrCameraShakerDataR12CInputStream	LoadTypedefSLdrCameraShakerData(SLdrCameraShakerData&, CInputStream&)	SLdrTweakPlayerGun.cpp.o
-_Z29LoadTypedefSLdrEchoParametersR18SLdrEchoParametersR12CInputStream	LoadTypedefSLdrEchoParameters(SLdrEchoParameters&, CInputStream&)	CScriptPickup.cpp.o
-_Z25LoadTypedefSLdrPlayerItemR14SLdrPlayerItemR12CInputStream	LoadTypedefSLdrPlayerItem(SLdrPlayerItem&, CInputStream&)	CScriptPickup.cpp.o
-_Z39LoadTypedefSLdrTBallTransitionResourcesR28SLdrTBallTransitionResourcesR12CInputStream	LoadTypedefSLdrTBallTransitionResources(SLdrTBallTransitionResources&, CInputStream&)	SLdrTweakPlayerRes.cpp.o
-_Z24LoadTypedefSLdrTBeamInfoR13SLdrTBeamInfoR12CInputStream	LoadTypedefSLdrTBeamInfo(SLdrTBeamInfo&, CInputStream&)	SLdrTweakPlayerGun_Weapons.cpp.o
-_Z26LoadTypedefSLdrTDamageInfoR15SLdrTDamageInfoR12CInputStream	LoadTypedefSLdrTDamageInfo(SLdrTDamageInfo&, CInputStream&)	SLdrTweakPlayerGun_Weapons.cpp.o
-_Z28LoadTypedefSLdrTGunResourcesR17SLdrTGunResourcesR12CInputStream	LoadTypedefSLdrTGunResources(SLdrTGunResources&, CInputStream&)	SLdrTweakPlayerRes.cpp.o
-_Z35LoadTypedefSLdrTIcon_ConfigurationsR24SLdrTIcon_ConfigurationsR12CInputStream	LoadTypedefSLdrTIcon_Configurations(SLdrTIcon_Configurations&, CInputStream&)	SLdrTweakTargeting_Load.cpp.o
-_Z35LoadTypedefSLdrTweakAutoMapper_BaseR24SLdrTweakAutoMapper_BaseR12CInputStream	LoadTypedefSLdrTweakAutoMapper_Base(SLdrTweakAutoMapper_Base&, CInputStream&)	SLdrTweakAutoMapper.cpp.o
-_Z41LoadTypedefSLdrTweakAutoMapper_DoorColorsR30SLdrTweakAutoMapper_DoorColorsR12CInputStream	LoadTypedefSLdrTweakAutoMapper_DoorColors(SLdrTweakAutoMapper_DoorColors&, CInputStream&)	SLdrTweakAutoMapper.cpp.o
-_Z34LoadTypedefSLdrTweakBall_BoostBallR23SLdrTweakBall_BoostBallR12CInputStream	LoadTypedefSLdrTweakBall_BoostBall(SLdrTweakBall_BoostBall&, CInputStream&)	SLdrTweakBall.cpp.o
-_Z31LoadTypedefSLdrTweakBall_CameraR20SLdrTweakBall_CameraR12CInputStream	LoadTypedefSLdrTweakBall_Camera(SLdrTweakBall_Camera&, CInputStream&)	SLdrTweakBall.cpp.o
-_Z35LoadTypedefSLdrTweakBall_CannonBallR24SLdrTweakBall_CannonBallR12CInputStream	LoadTypedefSLdrTweakBall_CannonBall(SLdrTweakBall_CannonBall&, CInputStream&)	SLdrTweakBall.cpp.o
-_Z34LoadTypedefSLdrTweakBall_DeathBallR23SLdrTweakBall_DeathBallR12CInputStream	LoadTypedefSLdrTweakBall_DeathBall(SLdrTweakBall_DeathBall&, CInputStream&)	SLdrTweakBall.cpp.o
-_Z29LoadTypedefSLdrTweakBall_MiscR18SLdrTweakBall_MiscR12CInputStream	LoadTypedefSLdrTweakBall_Misc(SLdrTweakBall_Misc&, CInputStream&)	SLdrTweakBall.cpp.o
-_Z33LoadTypedefSLdrTweakBall_MovementR22SLdrTweakBall_MovementR12CInputStream	LoadTypedefSLdrTweakBall_Movement(SLdrTweakBall_Movement&, CInputStream&)	SLdrTweakBall.cpp.o
-_Z36LoadTypedefSLdrTweakBall_ScrewAttackR25SLdrTweakBall_ScrewAttackR12CInputStream	LoadTypedefSLdrTweakBall_ScrewAttack(SLdrTweakBall_ScrewAttack&, CInputStream&)	SLdrTweakBall.cpp.o
-_Z41LoadTypedefSLdrTweakGame_CoinLimitChoicesR30SLdrTweakGame_CoinLimitChoicesR12CInputStream	LoadTypedefSLdrTweakGame_CoinLimitChoices(SLdrTweakGame_CoinLimitChoices&, CInputStream&)	SLdrTweakGame.cpp.o
-_Z41LoadTypedefSLdrTweakGame_FragLimitChoicesR30SLdrTweakGame_FragLimitChoicesR12CInputStream	LoadTypedefSLdrTweakGame_FragLimitChoices(SLdrTweakGame_FragLimitChoices&, CInputStream&)	SLdrTweakGame.cpp.o
-_Z41LoadTypedefSLdrTweakGame_TimeLimitChoicesR30SLdrTweakGame_TimeLimitChoicesR12CInputStream	LoadTypedefSLdrTweakGame_TimeLimitChoices(SLdrTweakGame_TimeLimitChoices&, CInputStream&)	SLdrTweakGame.cpp.o
-_Z46LoadTypedefSLdrTweakGuiColors_HUDColorsTypedefR35SLdrTweakGuiColors_HUDColorsTypedefR12CInputStream	LoadTypedefSLdrTweakGuiColors_HUDColorsTypedef(SLdrTweakGuiColors_HUDColorsTypedef&, CInputStream&)	SLdrTweakGuiColors.cpp.o
-_Z34LoadTypedefSLdrTweakGuiColors_MiscR23SLdrTweakGuiColors_MiscR12CInputStream	LoadTypedefSLdrTweakGuiColors_Misc(SLdrTweakGuiColors_Misc&, CInputStream&)	SLdrTweakGuiColors.cpp.o
-_Z41LoadTypedefSLdrTweakGuiColors_MultiplayerR30SLdrTweakGuiColors_MultiplayerR12CInputStream	LoadTypedefSLdrTweakGuiColors_Multiplayer(SLdrTweakGuiColors_Multiplayer&, CInputStream&)	SLdrTweakGuiColors.cpp.o
-_Z46LoadTypedefSLdrTweakGuiColors_TurretHudTypedefR35SLdrTweakGuiColors_TurretHudTypedefR12CInputStream	LoadTypedefSLdrTweakGuiColors_TurretHudTypedef(SLdrTweakGuiColors_TurretHudTypedef&, CInputStream&)	SLdrTweakGuiColors.cpp.o
-_Z34LoadTypedefSLdrTweakGui_CompletionR23SLdrTweakGui_CompletionR12CInputStream	LoadTypedefSLdrTweakGui_Completion(SLdrTweakGui_Completion&, CInputStream&)	SLdrTweakGui.cpp.o
-_Z31LoadTypedefSLdrTweakGui_CreditsR20SLdrTweakGui_CreditsR12CInputStream	LoadTypedefSLdrTweakGui_Credits(SLdrTweakGui_Credits&, CInputStream&)	SLdrTweakGui.cpp.o
-_Z33LoadTypedefSLdrTweakGui_DarkWorldR22SLdrTweakGui_DarkWorldR12CInputStream	LoadTypedefSLdrTweakGui_DarkWorld(SLdrTweakGui_DarkWorld&, CInputStream&)	SLdrTweakGui.cpp.o
-_Z33LoadTypedefSLdrTweakGui_EchoVisorR22SLdrTweakGui_EchoVisorR12CInputStream	LoadTypedefSLdrTweakGui_EchoVisor(SLdrTweakGui_EchoVisor&, CInputStream&)	SLdrTweakGui.cpp.o
-_Z39LoadTypedefSLdrTweakGui_HudColorTypedefR28SLdrTweakGui_HudColorTypedefR12CInputStream	LoadTypedefSLdrTweakGui_HudColorTypedef(SLdrTweakGui_HudColorTypedef&, CInputStream&)	SLdrTweakGuiColors.cpp.o
-_Z31LoadTypedefSLdrTweakGui_LogBookR20SLdrTweakGui_LogBookR12CInputStream	LoadTypedefSLdrTweakGui_LogBook(SLdrTweakGui_LogBook&, CInputStream&)	SLdrTweakGui.cpp.o
-_Z28LoadTypedefSLdrTweakGui_MiscR17SLdrTweakGui_MiscR12CInputStream	LoadTypedefSLdrTweakGui_Misc(SLdrTweakGui_Misc&, CInputStream&)	SLdrTweakGui.cpp.o
-_Z36LoadTypedefSLdrTweakGui_MovieVolumesR25SLdrTweakGui_MovieVolumesR12CInputStream	LoadTypedefSLdrTweakGui_MovieVolumes(SLdrTweakGui_MovieVolumes&, CInputStream&)	SLdrTweakGui.cpp.o
-_Z33LoadTypedefSLdrTweakGui_ScanVisorR22SLdrTweakGui_ScanVisorR12CInputStream	LoadTypedefSLdrTweakGui_ScanVisor(SLdrTweakGui_ScanVisor&, CInputStream&)	SLdrTweakGui.cpp.o
-_Z52LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimesR41SLdrTweakGui_ScannableObjectDownloadTimesR12CInputStream	LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimes(SLdrTweakGui_ScannableObjectDownloadTimes&, CInputStream&)	SLdrTweakGui.cpp.o
-_Z47LoadTypedefSLdrTweakGui_VisorColorSchemeTypedefR36SLdrTweakGui_VisorColorSchemeTypedefR12CInputStream	LoadTypedefSLdrTweakGui_VisorColorSchemeTypedef(SLdrTweakGui_VisorColorSchemeTypedef&, CInputStream&)	SLdrTweakGuiColors.cpp.o
-_Z43LoadTypedefSLdrTweakPlayerControls_BooleansR32SLdrTweakPlayerControls_BooleansR12CInputStream	LoadTypedefSLdrTweakPlayerControls_Booleans(SLdrTweakPlayerControls_Booleans&, CInputStream&)	SLdrTweakPlayerControls.cpp.o
-_Z43LoadTypedefSLdrTweakPlayerControls_ControlsR32SLdrTweakPlayerControls_ControlsR12CInputStream	LoadTypedefSLdrTweakPlayerControls_Controls(SLdrTweakPlayerControls_Controls&, CInputStream&)	SLdrTweakPlayerControls.cpp.o
-_Z42LoadTypedefSLdrTweakPlayerGun_Arm_PositionR31SLdrTweakPlayerGun_Arm_PositionR12CInputStream	LoadTypedefSLdrTweakPlayerGun_Arm_Position(SLdrTweakPlayerGun_Arm_Position&, CInputStream&)	SLdrTweakPlayerGun.cpp.o
-_Z40LoadTypedefSLdrTweakPlayerGun_Beam_ComboR29SLdrTweakPlayerGun_Beam_ComboR12CInputStream	LoadTypedefSLdrTweakPlayerGun_Beam_Combo(SLdrTweakPlayerGun_Beam_Combo&, CInputStream&)	SLdrTweakPlayerGun.cpp.o
-_Z39LoadTypedefSLdrTweakPlayerGun_Beam_MiscR28SLdrTweakPlayerGun_Beam_MiscR12CInputStream	LoadTypedefSLdrTweakPlayerGun_Beam_Misc(SLdrTweakPlayerGun_Beam_Misc&, CInputStream&)	SLdrTweakPlayerGun.cpp.o
-_Z40LoadTypedefSLdrTweakPlayerGun_HolsteringR29SLdrTweakPlayerGun_HolsteringR12CInputStream	LoadTypedefSLdrTweakPlayerGun_Holstering(SLdrTweakPlayerGun_Holstering&, CInputStream&)	SLdrTweakPlayerGun.cpp.o
-_Z34LoadTypedefSLdrTweakPlayerGun_MiscR23SLdrTweakPlayerGun_MiscR12CInputStream	LoadTypedefSLdrTweakPlayerGun_Misc(SLdrTweakPlayerGun_Misc&, CInputStream&)	SLdrTweakPlayerGun.cpp.o
-_Z38LoadTypedefSLdrTweakPlayerGun_PositionR27SLdrTweakPlayerGun_PositionR12CInputStream	LoadTypedefSLdrTweakPlayerGun_Position(SLdrTweakPlayerGun_Position&, CInputStream&)	SLdrTweakPlayerGun.cpp.o
-_Z51LoadTypedefSLdrTweakPlayerGun_RicochetDamage_FactorR40SLdrTweakPlayerGun_RicochetDamage_FactorR12CInputStream	LoadTypedefSLdrTweakPlayerGun_RicochetDamage_Factor(SLdrTweakPlayerGun_RicochetDamage_Factor&, CInputStream&)	SLdrTweakPlayerGun.cpp.o
-_Z45LoadTypedefSLdrTweakPlayerRes_AutoMapperIconsR34SLdrTweakPlayerRes_AutoMapperIconsR12CInputStream	LoadTypedefSLdrTweakPlayerRes_AutoMapperIcons(SLdrTweakPlayerRes_AutoMapperIcons&, CInputStream&)	SLdrTweakPlayerRes.cpp.o
-_Z44LoadTypedefSLdrTweakPlayerRes_MapScreenIconsR33SLdrTweakPlayerRes_MapScreenIconsR12CInputStream	LoadTypedefSLdrTweakPlayerRes_MapScreenIcons(SLdrTweakPlayerRes_MapScreenIcons&, CInputStream&)	SLdrTweakPlayerRes.cpp.o
-_Z35LoadTypedefSLdrTweakPlayer_AimStuffR24SLdrTweakPlayer_AimStuffR12CInputStream	LoadTypedefSLdrTweakPlayer_AimStuff(SLdrTweakPlayer_AimStuff&, CInputStream&)	SLdrTweakPlayer.cpp.o
-_Z36LoadTypedefSLdrTweakPlayer_CollisionR25SLdrTweakPlayer_CollisionR12CInputStream	LoadTypedefSLdrTweakPlayer_Collision(SLdrTweakPlayer_Collision&, CInputStream&)	SLdrTweakPlayer.cpp.o
-_Z36LoadTypedefSLdrTweakPlayer_DarkWorldR25SLdrTweakPlayer_DarkWorldR12CInputStream	LoadTypedefSLdrTweakPlayer_DarkWorld(SLdrTweakPlayer_DarkWorld&, CInputStream&)	SLdrTweakPlayer.cpp.o
-_Z44LoadTypedefSLdrTweakPlayer_FirstPersonCameraR33SLdrTweakPlayer_FirstPersonCameraR12CInputStream	LoadTypedefSLdrTweakPlayer_FirstPersonCamera(SLdrTweakPlayer_FirstPersonCamera&, CInputStream&)	SLdrTweakPlayer.cpp.o
-_Z33LoadTypedefSLdrTweakPlayer_FrozenR22SLdrTweakPlayer_FrozenR12CInputStream	LoadTypedefSLdrTweakPlayer_Frozen(SLdrTweakPlayer_Frozen&, CInputStream&)	SLdrTweakPlayer.cpp.o
-_Z34LoadTypedefSLdrTweakPlayer_GrappleR23SLdrTweakPlayer_GrappleR12CInputStream	LoadTypedefSLdrTweakPlayer_Grapple(SLdrTweakPlayer_Grapple&, CInputStream&)	SLdrTweakPlayer.cpp.o
-_Z38LoadTypedefSLdrTweakPlayer_GrappleBeamR27SLdrTweakPlayer_GrappleBeamR12CInputStream	LoadTypedefSLdrTweakPlayer_GrappleBeam(SLdrTweakPlayer_GrappleBeam&, CInputStream&)	SLdrTweakPlayer.cpp.o
-_Z31LoadTypedefSLdrTweakPlayer_MiscR20SLdrTweakPlayer_MiscR12CInputStream	LoadTypedefSLdrTweakPlayer_Misc(SLdrTweakPlayer_Misc&, CInputStream&)	SLdrTweakPlayer.cpp.o
-_Z33LoadTypedefSLdrTweakPlayer_MotionR22SLdrTweakPlayer_MotionR12CInputStream	LoadTypedefSLdrTweakPlayer_Motion(SLdrTweakPlayer_Motion&, CInputStream&)	SLdrTweakPlayer.cpp.o
-_Z32LoadTypedefSLdrTweakPlayer_OrbitR21SLdrTweakPlayer_OrbitR12CInputStream	LoadTypedefSLdrTweakPlayer_Orbit(SLdrTweakPlayer_Orbit&, CInputStream&)	SLdrTweakPlayer.cpp.o
-_Z36LoadTypedefSLdrTweakPlayer_ScanVisorR25SLdrTweakPlayer_ScanVisorR12CInputStream	LoadTypedefSLdrTweakPlayer_ScanVisor(SLdrTweakPlayer_ScanVisor&, CInputStream&)	SLdrTweakPlayer.cpp.o
-_Z33LoadTypedefSLdrTweakPlayer_ShieldR22SLdrTweakPlayer_ShieldR12CInputStream	LoadTypedefSLdrTweakPlayer_Shield(SLdrTweakPlayer_Shield&, CInputStream&)	SLdrTweakPlayer.cpp.o
-_Z46LoadTypedefSLdrTweakPlayer_SuitDamageReductionR35SLdrTweakPlayer_SuitDamageReductionR12CInputStream	LoadTypedefSLdrTweakPlayer_SuitDamageReduction(SLdrTweakPlayer_SuitDamageReduction&, CInputStream&)	SLdrTweakPlayer.cpp.o
-_Z42LoadTypedefSLdrTweakTargeting_Charge_GaugeR31SLdrTweakTargeting_Charge_GaugeR12CInputStream	LoadTypedefSLdrTweakTargeting_Charge_Gauge(SLdrTweakTargeting_Charge_Gauge&, CInputStream&)	SLdrTweakTargeting_Load.cpp.o
-_Z40LoadTypedefSLdrTweakTargeting_LockDaggerR29SLdrTweakTargeting_LockDaggerR12CInputStream	LoadTypedefSLdrTweakTargeting_LockDagger(SLdrTweakTargeting_LockDagger&, CInputStream&)	SLdrTweakTargeting_Load.cpp.o
-_Z38LoadTypedefSLdrTweakTargeting_LockFireR27SLdrTweakTargeting_LockFireR12CInputStream	LoadTypedefSLdrTweakTargeting_LockFire(SLdrTweakTargeting_LockFire&, CInputStream&)	SLdrTweakTargeting_Load.cpp.o
-_Z43LoadTypedefSLdrTweakTargeting_OuterBeamIconR32SLdrTweakTargeting_OuterBeamIconR12CInputStream	LoadTypedefSLdrTweakTargeting_OuterBeamIcon(SLdrTweakTargeting_OuterBeamIcon&, CInputStream&)	SLdrTweakTargeting_Load.cpp.o
+_Z26LoadTypedefActorParametersR19SLdrActorParametersR12CInputStream	LoadTypedefActorParameters(SLdrActorParameters&, CInputStream&)	CScriptPickup.cpp.o
+_Z23LoadTypedefAnimationSetR16SLdrAnimationSetR12CInputStream	LoadTypedefAnimationSet(SLdrAnimationSet&, CInputStream&)	CScriptPickup.cpp.o
+_Z27LoadTypedefCameraShakerDataR20SLdrCameraShakerDataR12CInputStream	LoadTypedefCameraShakerData(SLdrCameraShakerData&, CInputStream&)	Tweaks.cpp.o
+_Z21LoadTypedefDamageInfoR14SLdrDamageInfoR12CInputStream	LoadTypedefDamageInfo(SLdrDamageInfo&, CInputStream&)	Tweaks.cpp.o
+_Z25LoadTypedefEchoParametersR18SLdrEchoParametersR12CInputStream	LoadTypedefEchoParameters(SLdrEchoParameters&, CInputStream&)	CScriptPickup.cpp.o
+_Z21LoadTypedefPlayerItemR14SLdrPlayerItemR12CInputStream	LoadTypedefPlayerItem(SLdrPlayerItem&, CInputStream&)	CScriptPickup.cpp.o
+_ZN12NWeaponTypes16are_tokens_readyERKN4rstl6vectorI6CTokenNS0_17rmemory_allocatorEEE	NWeaponTypes::are_tokens_ready(rstl::vector<CToken, rstl::rmemory_allocator> const&)	CGSFidget.cpp.o
 REL_LoadFlyerSwarm	REL_LoadFlyerSwarm	CFlyerSwarmRel.cpp.o
 REL_LoadMetaree	REL_LoadMetaree	CScriptMetaree.cpp.o
 REL_LoadPuffer	REL_LoadPuffer	CScriptPufferRel.cpp.o
-_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamRK11CEntityInfo	REL_LoadRiftPortal(CStateManager&, CInputStream&, CEntityInfo const&)	CScriptRiftPortal.cpp.o
-StreamNewGameState__5CMainFR12CInputStreami	StreamNewGameState__5CMainFR12CInputStreami	CMainFlowDtor.cpp.o
-__nw__FUlPCcPCc	__nw__FUlPCcPCc	CMainFlowDtor.cpp.o,CScriptSkyRipple.cpp.o
+_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamR11CEntityInfo	REL_LoadRiftPortal(CStateManager&, CInputStream&, CEntityInfo&)	CScriptRiftPortal.cpp.o
+_ZN12SAreaSurfaceC1ER12CInputStream	SAreaSurface::SAreaSurface(CInputStream&)	CGameArea.cpp.o
+_ZN16SLdrAnimationSetC1Ev	SLdrAnimationSet::SLdrAnimationSet()	CScriptPickup.cpp.o
+_ZN16SLdrAnimationSetD1Ev	SLdrAnimationSet::~SLdrAnimationSet()	CScriptPickup.cpp.o,SLdrStructMembers.cpp.o
+_ZN14SLdrPlayerItemC1Ev	SLdrPlayerItem::SLdrPlayerItem()	CScriptPickup.cpp.o
+_ZN14SLdrPlayerItemD1Ev	SLdrPlayerItem::~SLdrPlayerItem()	CScriptPickup.cpp.o,SLdrStructMembers.cpp.o
+_ZN19TStateMachineState2I10CPatternedE5SetupERK14CStateMachine2	TStateMachineState2<CPatterned>::Setup(CStateMachine2 const&)	CPatterned.cpp.o
+_ZN19TStateMachineState2I10CPatternedEC1Ev	TStateMachineState2<CPatterned>::TStateMachineState2()	CPatterned.cpp.o
+__ct__12CGameOptionsFR16CBitStreamReader	__ct__12CGameOptionsFR16CBitStreamReader	CGameState.cpp.o
 fn_58_A0	fn_58_A0	CScriptCoinRel.cpp.o
 fn_60_6FF0	fn_60_6FF0	ScriptGuiSetup.cpp.o
 fn_60_7D20	fn_60_7D20	ScriptGuiSetup.cpp.o
@@ -275,45 +240,48 @@ fn_61_70	fn_61_70	CScriptPlayerActorMain.cpp.o
 fn_62_188	fn_62_188	CScriptPlayerProxy.cpp.o
 fn_65_FC	fn_65_FC	CScriptRsfAudio.cpp.o
 fn_66_70	fn_66_70	CScriptSafeZone.cpp.o
+fn_80003D00	fn_80003D00	CGameState.cpp.o
+fn_80004458	fn_80004458	CGameState.cpp.o
+fn_80004D84	fn_80004D84	CGameState.cpp.o
+fn_800068F4	fn_800068F4	CGameState.cpp.o
 fn_80020478	fn_80020478	CMainFlowDtor.cpp.o
 fn_800214A0	fn_800214A0	CMainFlowDtor.cpp.o
 fn_80022C74	fn_80022C74	CMainFlowDtor.cpp.o
 fn_80038624	fn_80038624	CStateManager.cpp.o
-_Z11fn_80041518R11queryOutputR17MapWorldInfoAreast	fn_80041518(queryOutput&, MapWorldInfoAreas&, unsigned short)	CStateManager.cpp.o
-fn_80048EA4	fn_80048EA4	CMainFlowDtor.cpp.o
-fn_8004935C	fn_8004935C	CIOWinManagerPumpMessages.cpp.o
-_Z11fn_80049ED8P6CActorR13CStateManager	fn_80049ED8(CActor*, CStateManager&)	CActor.cpp.o
-fn_8004F770	fn_8004F770	CStateManager.cpp.o
-fn_800CB764	fn_800CB764	CScriptCannonBall.cpp.o
+_Z11fn_80041518R11queryOutputRN4rstl10bit_vectorINS1_17rmemory_allocatorEEEt	fn_80041518(queryOutput&, rstl::bit_vector<rstl::rmemory_allocator>&, unsigned short)	CStateManager.cpp.o
+fn_80041CCC	fn_80041CCC	CStateManager.cpp.o
+fn_800B89FC	fn_800B89FC	CStateManager.cpp.o
 fn_801423A8	fn_801423A8	CMainFlowDtor.cpp.o
-fn_8014306C	fn_8014306C	CGameStatePlayerLoop.cpp.o
-fn_801437DC	fn_801437DC	CGameStatePlayerLoop.cpp.o
-fn_80143884	fn_80143884	CMainFlowDtor.cpp.o
-fn_80143E88	fn_80143E88	CMainFlowDtor.cpp.o
-fn_80145628	fn_80145628	CGameStateCardOptsCtor.cpp.o
-fn_80145A2C	fn_80145A2C	CGameStatePlayerLoop.cpp.o
-fn_80145C98	fn_80145C98	CPersistentOptionsCtor.cpp.o
-fn_80180430	fn_80180430	CGameStatePlayerLoop.cpp.o
 fn_80180598	fn_80180598	CMainFlowDtor.cpp.o
-fn_80192808	fn_80192808	CMainFlowDtor.cpp.o
-fn_80193E08	fn_80193E08	CGameStateCtor.cpp.o,CMainFlowDtor.cpp.o
-fn_801C5990	fn_801C5990	CPlayerGun.cpp.o
-fn_801CA0F8__10CPlayerGunFv	fn_801CA0F8__10CPlayerGunFv	CPlayerGun.cpp.o
-fn_801D9F90	fn_801D9F90	CPlayerGun.cpp.o
+fn_8018A7E8	fn_8018A7E8	CGunMotion.cpp.o
+fn_8018A8D0	fn_8018A8D0	CGSFidget.cpp.o
+fn_80193E08	fn_80193E08	CMainFlowDtor.cpp.o
 fn_801EBBC8	fn_801EBBC8	CStateManager.cpp.o
+fn_801ECE14	fn_801ECE14	CActorField25.cpp.o
 fn_801F47F4	fn_801F47F4	CMainFlowDtor.cpp.o
-fn_8029AF00	fn_8029AF00	CGameOptions.cpp.o
+fn_80270A64	fn_80270A64	Carve80271238.cpp.o
+fn_80270BB4	fn_80270BB4	Carve80271238.cpp.o
+fn_80270D44	fn_80270D44	Carve80271238.cpp.o
+fn_80270EC8	fn_80270EC8	Carve80271238.cpp.o
+fn_80271104	fn_80271104	Carve80271238.cpp.o
+fn_802711A4	fn_802711A4	Carve80271238.cpp.o
+fn_80272624	fn_80272624	Carve80270848.cpp.o,Carve80271238.cpp.o
 fn_802BBDB8	fn_802BBDB8	CModelTouch.cpp.o
+fn_802BEC6C	fn_802BEC6C	Carve8026E7F0.cpp.o
+fn_802C1FE4	fn_802C1FE4	Carve8026EC54.cpp.o
+fn_802C420C	fn_802C420C	Carve8026FBFC.cpp.o,Carve80270848.cpp.o
 fn_802CB608	fn_802CB608	CMayaSpline.cpp.o
-fn_802FA1BC	fn_802FA1BC	CResFactoryBuild.cpp.o
-fn_802FA7D4	fn_802FA7D4	CResFactoryBuild.cpp.o
-fn_802FAAE4	fn_802FAAE4	CResFactoryBuild.cpp.o
+fn_802CB918	fn_802CB918	CSteeringBehaviors.cpp.o
+fn_802CC064	fn_802CC064	CMayaSpline.cpp.o
 fn_80310F38	fn_80310F38	CModelTouch.cpp.o
-fn_803111A4	fn_803111A4	CStateManager.cpp.o
 fn_803115F8	fn_803115F8	CModelTouch.cpp.o
-fn_8033CDA0	fn_8033CDA0	main.cpp.o
-fn_8033CEE8	fn_8033CEE8	main.cpp.o
+fn_8033CDA0	fn_8033CDA0	mainMid.cpp.o
+fn_8033CEE8	fn_8033CEE8	mainMid.cpp.o
+gpDefaultFont	gpDefaultFont	CErrorOutputWindow.cpp.o
 lbl_70_rodata_C	lbl_70_rodata_C	CScriptSkyRipple.cpp.o
-lbl_80418B08	lbl_80418B08	Carve802C4248.cpp.o
+lbl_803A91C8	lbl_803A91C8	CGameState.cpp.o
+lbl_8041A3C0	lbl_8041A3C0	Carve80003858.c.o
+lbl_8041C4F4	lbl_8041C4F4	CGameOptions.cpp.o
 mp_cswarmbasics	mp_cswarmbasics	compiled_modules.cpp.o
 mp_cswarmbasics_exit	mp_cswarmbasics_exit	compiled_modules.cpp.o
+_ZTV17CCollidableSphere	vtable for CCollidableSphere	CMorphBall.cpp.o

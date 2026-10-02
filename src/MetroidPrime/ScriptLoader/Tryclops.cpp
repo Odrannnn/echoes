@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_Tryclops;
 
-CEntity* LoadTryclops(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadTryclops(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_Tryclops.value)(mgr, input, info);
 }

@@ -58,7 +58,7 @@
 // The two callees are named by what they are, not invented:
 //   - `fn_80218918` is the DOL's 0x80218918, two instructions,
 //     `stw r3, gLoader_Ings@sda21(r0); blr` (`build/G2ME01/asm/auto_03_80218918_text.s`),
-//     immediately after `LoadIngs__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at
+//     immediately after `LoadIngs__FR13CStateManagerR12CInputStreamR11CEntityInfo` at
 //     0x802188EC, which is 0x2C bytes and so ends exactly at 0x80218918. So it stores the
 //     *address* of a loader slot, not a loader. The import name is the plain `fn_80218918` that
 //     `config/G2ME01/symbols.txt` already gives it - not the long MWCC-mangled `SetLoader_...`
@@ -138,7 +138,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_29_130(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_29_130(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80218918(FScriptLoader* loader);
 
 #ifdef __MWERKS__

@@ -10,7 +10,7 @@
 #include "MetroidPrime/ScriptLoader.hpp"
 
 extern "C" void fn_8021FA80(FScriptLoader* loader);
-extern "C" CEntity* fn_58_A0(CStateManager& mgr, CInputStream& input, const CEntityInfo& info);
+extern "C" CEntity* fn_58_A0(CStateManager& mgr, CInputStream& input, CEntityInfo& info);
 
 // fn_58_0 is CScriptCoin's own virtual at vtable slot 13; its body is a dispatch to slot 14
 // (offset 0x38), which the retail vtable lbl_58_data_40 fills with

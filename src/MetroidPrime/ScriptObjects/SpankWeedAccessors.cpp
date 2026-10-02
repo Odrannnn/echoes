@@ -1,7 +1,7 @@
 // SpankWeedAccessors.cpp - a carve of SpankWeed's .text 0x000358..0x0003F4, 14 short accessors.
 //
 // The class is unnamed in retail - the only name the module's loader has is
-// `LoadSpankWeed__FR13CStateManagerR12CInputStreamRC11CEntityInfo` in the DOL, which is named after
+// `LoadSpankWeed__FR13CStateManagerR12CInputStreamR11CEntityInfo` in the DOL, which is named after
 // the module and not the type - so, as in `CScriptWallCrawler.cpp`, `CScriptMetaree.cpp`,
 // `CScriptPuffer.cpp` and `CScriptCoinTouchBounds.cpp`, the object is reached as a `void*` and
 // the offsets are stated literally.  That keeps the unit layout-immune: it reads members

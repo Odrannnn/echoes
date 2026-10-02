@@ -1,4 +1,4 @@
-// Retail `SetLoader_CannonBall__FPPFR13CStateManagerR12CInputStreamRC11CEntityInfo_P7CEntity`,
+// Retail `SetLoader_CannonBall__FPPFR13CStateManagerR12CInputStreamR11CEntityInfo_P7CEntity`,
 // .text 0x8021FAB4..0x8021FABC, 0x8 = 8 bytes:
 //
 //     8021fab4  stw  r3,-26696(r13)
@@ -33,7 +33,7 @@ struct SLoaderSlot {
 extern SLoaderSlot gLoader_CannonBall;
 
 // **Not `extern "C"`.** MWCC mangles a free function as `name__<argtypes>` whether or not it
-// is a member, so retail's `SetLoader_CannonBall__FPPFR13CStateManagerR12CInputStreamRC11CEntityInfo_P7CEntity`
+// is a member, so retail's `SetLoader_CannonBall__FPPFR13CStateManagerR12CInputStreamR11CEntityInfo_P7CEntity`
 // is a *C++* function and matches the plain declaration in
 // `include/MetroidPrime/ScriptLoaderRel.hpp`. `extern "C"` would emit the bare name
 // `SetLoader_CannonBall`, which is not the symbol `symbols.txt` and the REL import carry.

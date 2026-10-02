@@ -246,8 +246,9 @@ public:
   void SetScanTime(CAssetId res, float time);
   float GetScanTime(CAssetId time);
   void SetScanFlag(uint, bool);
-  CStaticInterference& StaticInterference() { return mStaticIntf; }
   void UpdateStaticInterference(const CStateManager& mgr, const float& dt);
+  CStaticInterference& StaticInterference() { return mStaticIntf; }
+  const CStaticInterference& StaticInterference() const { return mStaticIntf; }
 
   bool GetIsVisorTransitioning() const;
   float GetVisorTransitionFactor() const;
@@ -291,6 +292,7 @@ public:
 
   SPersistentState& GetPersistentState();
   uint GetPlayerSelection() const { return mPersistentState.mPlayerSelection; } // Guessed name
+  uint GetTeamIndex() const { return mPersistentState.mTeamIndex; } // Guessed name
   const CPowerUp& GetPowerUp(EItemType type) const { return mPowerups[type]; }
   CPowerUp& PowerUp(EItemType type) { return mPowerups[type]; }
   void SetPersistentState(const SPersistentState&);

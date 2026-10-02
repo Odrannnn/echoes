@@ -12,7 +12,7 @@ extern FScriptLoader lbl_62_bss_0;
 #else
 FScriptLoader lbl_62_bss_0 = 0;
 #endif
-CEntity* fn_62_188(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_62_188(CStateManager&, CInputStream&, CEntityInfo&);
 
 void fn_62_158() {
   lbl_62_bss_0 = fn_62_188;

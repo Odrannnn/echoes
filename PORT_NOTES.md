@@ -169,6 +169,9 @@ Aurora actually defines (not just declares).
   17 (13 stubs, the 4 AI DMA entries in `ai_dma.cpp`); the 3 genuinely new ones —
   `OSClearContext`, `OSSetCurrentContext`, `OSGetStackPointer`, referenced by
   `RAssertDolphin` and `REL_Setup` — are now stubbed there.
+- Script loaders are upstream's since the ninth sync (2026-10-02): `CEntity* LoadX(CStateManager&,
+  CInputStream&, CEntityInfo&)`, non-const. A port stub or forwarder spelled with `const CEntityInfo&`
+  is a different symbol and resolves nothing.
 - The carried-over `OSLink`/`OSUnlink` **no-op stubs were removed**: they returned
   `TRUE` without linking anything, which would have made module loading silently
   appear to work. A call to the SDK entry point is now a link error on purpose. The

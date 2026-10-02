@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_AIMannedTurret;
 
-CEntity* LoadAIMannedTurret(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadAIMannedTurret(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_AIMannedTurret.value)(mgr, input, info);
 }

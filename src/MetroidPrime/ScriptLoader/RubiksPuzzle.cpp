@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_RubiksPuzzle;
 
-CEntity* LoadRubiksPuzzle(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadRubiksPuzzle(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_RubiksPuzzle.value)(mgr, input, info);
 }

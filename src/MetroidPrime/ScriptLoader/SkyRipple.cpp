@@ -16,6 +16,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_SkyRipple;
 
-CEntity* LoadSkyRipple(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadSkyRipple(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_SkyRipple.value)(mgr, input, info);
 }

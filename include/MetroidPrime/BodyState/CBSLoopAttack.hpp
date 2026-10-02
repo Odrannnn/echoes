@@ -14,10 +14,14 @@ public:
   pas::EAnimationState UpdateBody(float dt, CBodyController& bc, CStateManager& mgr) override;
   void Shutdown(CBodyController& bc) override;
 
+  bool GetAdvance() const { return mAdvance; }
+
 private:
+  pas::EAnimationState GetBodyStateTransition(float dt, CBodyController& bc);
+
   pas::ELoopState mState;
   pas::ELoopAttackType mLoopAttackType;
-  float mElapsedTime; // Guessed name
+  float mElapsedTime;
   bool mWaitForAnimOver : 1;
   bool mAdvance : 1;
 };

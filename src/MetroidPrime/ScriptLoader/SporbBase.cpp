@@ -27,18 +27,18 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_SporbBase;
 
-CEntity* LoadSporbNeedle(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadSporbNeedle(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return gLoader_SporbBase.value->slot2(mgr, input, info);
 }
 
-CEntity* LoadSporbBase(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadSporbBase(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return gLoader_SporbBase.value->slot0(mgr, input, info);
 }
 
-CEntity* LoadSporbTop(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadSporbTop(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return gLoader_SporbBase.value->slot3(mgr, input, info);
 }
 
-CEntity* LoadSporbProjectile(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadSporbProjectile(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return gLoader_SporbBase.value->slot1(mgr, input, info);
 }

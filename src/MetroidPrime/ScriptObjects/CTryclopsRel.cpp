@@ -120,7 +120,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_81_178(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_81_178(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80218D58(FScriptLoader* loader);
 // .text 0x4FEC, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line.
 void fn_81_4FEC(void* out, const CAABox& box);

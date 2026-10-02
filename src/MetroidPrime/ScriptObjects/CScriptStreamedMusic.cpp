@@ -258,7 +258,7 @@ void CScriptStreamedMusic::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg&
   }
 }
 
-CEntity* LoadStreamedAudio(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadStreamedAudio(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   SLdrStreamedAudio data;
   // Retail writes these eight words itself, in the frame, before the property loop - they are
   // the twenty instructions our object was missing (648 bytes against retail's 728). The

@@ -80,7 +80,7 @@
 //     `stw r3, gLoader_IngSpaceJumpGuardian@sda21(r0); blr`
 //     (`build/G2ME01/asm/auto_03_8021DC2C_text.s`, and `config/G2ME01/symbols.txt:9591` already
 //     gives it that name). So it stores the *address* of a loader slot, not a loader.
-//     `LoadIngSpaceJumpGuardian__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x8021DC00
+//     `LoadIngSpaceJumpGuardian__FR13CStateManagerR12CInputStreamR11CEntityInfo` at 0x8021DC00
 //     reads it as `lwz r6, gLoader_IngSpaceJumpGuardian; lwz r12, 0(r6); mtctr r12; bctrl`,
 //     which is why the store below hands it `&lbl_34_bss_0` and why that slot is four bytes
 //     wide. It is a plain DOL symbol, so like `CTryclopsRel.cpp`'s `fn_80218D58` it needs no
@@ -141,7 +141,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_34_170(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_34_170(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_8021DC2C(FScriptLoader* loader);
 // .text 0x6814, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line.
 void fn_34_6814(void* out, const CAABox& box);

@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_StoneToad;
 
-CEntity* LoadStoneToad(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadStoneToad(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_StoneToad.value)(mgr, input, info);
 }

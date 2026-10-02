@@ -80,7 +80,7 @@
 
 #include "MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties.hpp"
 
-const CEntityInfo& LdrToEntityInfo(CEntityInfo& info, const SLdrEditorProperties& props) {
+CEntityInfo& LdrToEntityInfo(CEntityInfo& info, const SLdrEditorProperties& props) {
   info.mActive = props.active;
   info.mUpdateWhileOccluded = props.unknown_0x5d298a43 & 1;
   info.mUpdateDuringCinematicSkip = (props.unknown_0x5d298a43 >> 1) & 1;

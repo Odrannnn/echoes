@@ -25,14 +25,14 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_Parasite;
 
-CEntity* LoadParasite(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadParasite(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return gLoader_Parasite.value->slot0(mgr, input, info);
 }
 
-CEntity* LoadBrizgee(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadBrizgee(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return gLoader_Parasite.value->slot1(mgr, input, info);
 }
 
-CEntity* LoadCrystallite(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadCrystallite(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return gLoader_Parasite.value->slot2(mgr, input, info);
 }

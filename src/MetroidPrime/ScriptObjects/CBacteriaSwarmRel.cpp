@@ -26,7 +26,7 @@
 //
 // The two callees are named by what they are, not invented:
 //   - `fn_8022A5AC` is the DOL's 0x8022A5AC, two instructions, immediately after
-//     `LoadBacteriaSwarm__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x8022A580
+//     `LoadBacteriaSwarm__FR13CStateManagerR12CInputStreamR11CEntityInfo` at 0x8022A580
 //     (0x2C bytes, so it ends exactly at 0x8022A5AC): `stw r3, gLoader_BacteriaSwarm; blr`.
 //     So it stores the *address* of a loader slot, not a loader, and
 //     `src/MetroidPrime/ScriptLoader/BacteriaSwarm.cpp` - a `Matching` unit - reads that slot as
@@ -82,7 +82,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_6_A0(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_6_A0(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_8022A5AC(FScriptLoader* loader);
 
 #ifdef __MWERKS__

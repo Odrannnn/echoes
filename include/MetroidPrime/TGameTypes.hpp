@@ -1,9 +1,9 @@
 #ifndef _TGAMETYPES
 #define _TGAMETYPES
 
-#include "types.h"
 #include "rstl/construct.hpp"
 #include "rstl/pair.hpp"
+#include "types.h"
 
 class CInputStream;
 class COutputStream;
@@ -85,6 +85,17 @@ RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(TEditorId)
 // node's value with a plain `stw` and no placement-new null check, which is what the trivial
 // `construct_impl` gives; the generic `new (dest) T(src)` path emits the check and 8 bytes more.
 RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(TAreaId)
+
+template <>
+struct is_trivially_destructible< pair< TUniqueId, TUniqueId > > {
+  enum { value = true };
+};
+
+template <>
+inline void construct< pair< TUniqueId, TUniqueId > >(void* dest,
+                                                      const pair< TUniqueId, TUniqueId >& src) {
+  *static_cast< pair< TUniqueId, TUniqueId >* >(dest) = src;
+}
 
 template <>
 struct is_trivially_destructible< pair< TEditorId, bool > > {

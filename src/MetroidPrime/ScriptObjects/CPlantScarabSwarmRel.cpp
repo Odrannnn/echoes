@@ -45,7 +45,7 @@
 #include "types.h"
 
 extern "C" {
-CEntity* fn_49_D8(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_49_D8(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_8022FFF8(FScriptLoader* loader);
 
 #ifdef __MWERKS__

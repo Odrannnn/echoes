@@ -30,7 +30,7 @@
 //     (`auto_00_0000C2A4_text.s:70`).
 //
 // The word at +0 of the slot is a `FScriptLoader`, i.e.
-// `CEntity* (*)(CStateManager&, CInputStream&, const CEntityInfo&)`
+// `CEntity* (*)(CStateManager&, CInputStream&, CEntityInfo&)`
 // (`include/MetroidPrime/ScriptLoader.hpp:13`), which is what the reader uses: the claim
 // immediately below is `MetroidPrime/ScriptLoader/EmperorIngStage1.cpp`
 // (.text 0x80227540..0x8022756C), whose `LoadEmperorIngStage1` is

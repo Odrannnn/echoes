@@ -29,6 +29,9 @@ public:
   void SendScriptMsgs(EScriptObjectState state, CStateManager& mgr,
                       TUniqueId uid = kInvalidUniqueId,
                       EScriptObjectMessage msg = kSM_None);
+  void SendScriptMsgs(EScriptObjectState state, CStateManager& mgr, EScriptObjectMessage msg) {
+    SendScriptMsgs(state, mgr, kInvalidUniqueId, msg);
+  }
   // static inline void SendScriptMsg(CStateManager& mgr, CEntity* to, TUniqueId sender,
   //                                  EScriptObjectMessage msg) {
   //   mgr.SendScriptMsg(to, sender, msg);

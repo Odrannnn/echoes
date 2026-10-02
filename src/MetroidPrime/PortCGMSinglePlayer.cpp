@@ -73,7 +73,7 @@ void CGMSinglePlayer::EndGame(int resultIndex, CStateManager& mgr) {
     }
   }
   x5_ = true;
-  mgr.mUnkFlagA2 = true; // `rlwimi r0,r3,6,25,25` on 0x294c: mask 0x40
+  mgr.mQuitGame = true; // `rlwimi r0,r3,6,25,25` on 0x294c: mask 0x40
 }
 
 int CGMSinglePlayer::GetResultIndex() const { return x8_; }

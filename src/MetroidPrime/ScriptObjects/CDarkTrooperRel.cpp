@@ -105,7 +105,7 @@ extern "C" const unsigned short kInvalidUniqueId;
 
 // fn_12_12C, the module's own entity loader, 0x12C, 0x614: left retail, named here only so the
 // registration below can store its address.
-CEntity* fn_12_12C(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_12_12C(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80218DF4(FScriptLoader* loader);
 
 #ifdef __MWERKS__

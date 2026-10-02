@@ -64,9 +64,9 @@ struct SSplitter_FuncPtrs {
 };
 
 extern "C" {
-CEntity* fn_75_82B0(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_75_82B0(CStateManager&, CInputStream&, CEntityInfo&);
 // .text 0xFC, unclaimed: the module's other loader, `LoadSplitterCommandModule`.
-CEntity* fn_75_FC(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_75_FC(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80218CF0(SSplitter_FuncPtrs* record);
 
 // The module's own copy of the member-function pointer, in `.data` and not claimed by this unit,

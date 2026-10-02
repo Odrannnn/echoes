@@ -144,6 +144,34 @@ set(MP_GAME_SOURCES
     # calls - another unclaimed auto-split range, same arrangement as the file above. Needed
     # because `CPlayerGunBase.cpp` *is* in the port build, so the call has to resolve there.
     src/MetroidPrime/PortCHintManager.cpp
+    # Upstream units new in the ninth sync (2026-10-02, upstream 5f97267f). They replace the
+    # carves the sync dropped, so the port needs them for the same symbols.
+    src/MetroidPrime/ScriptObjects/CScriptTimer.cpp
+    src/MetroidPrime/CActorParameters.cpp
+    src/MetroidPrime/ScriptObjects/CScriptEMPulse.cpp
+    src/MetroidPrime/ScriptObjects/CScriptCounter.cpp
+    src/MetroidPrime/CHintState.cpp
+    src/MetroidPrime/CHintManager.cpp
+    src/MetroidPrime/CEffect.cpp
+    src/MetroidPrime/CWeaponMgr.cpp
+    src/MetroidPrime/ScriptObjects/CScriptSpiderBallWaypoint.cpp
+    src/MetroidPrime/ScriptObjects/CScriptWaypoint.cpp
+    src/MetroidPrime/BodyState/CBSScripted.cpp
+    src/MetroidPrime/BodyState/CBSLoopAttack.cpp
+    src/MetroidPrime/BodyState/CBSCover.cpp
+    src/MetroidPrime/BodyState/CBSLoopReaction.cpp
+    src/MetroidPrime/BodyState/CBSGenerate.cpp
+    src/MetroidPrime/BodyState/CBSKnockBack.cpp
+    src/MetroidPrime/BodyState/CBSFall.cpp
+    src/MetroidPrime/BodyState/CBSGetup.cpp
+    src/MetroidPrime/BodyState/CBSGroundHit.cpp
+    src/MetroidPrime/BodyState/CBSSlide.cpp
+    src/MetroidPrime/BodyState/CBSStep.cpp
+    src/MetroidPrime/BodyState/CBSTaunt.cpp
+    src/MetroidPrime/BodyState/CBSProjectileAttack.cpp
+    src/MetroidPrime/ScriptObjects/CHUDBillboardEffect.cpp
+    src/MetroidPrime/ScriptObjects/CScriptVisorGoo.cpp
+    src/MetroidPrime/ScriptObjects/CScriptSwitch.cpp
     # Port-only: the three unclaimed `.data` vtables CMorphBall.cpp's `fn_800C88C0` /
     # `fn_800C33DC` store (`lbl_803B36F0` / `lbl_803B36FC` / `lbl_803B1750`). dtk fills them
     # with retail's bytes in the DOL build; the host build has no dtk step, so without this
@@ -410,10 +438,6 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve8001FF7C.c
     src/MetroidPrime/Carve800208E8.c
     src/rstl/Carve800239F4.c
-    src/MetroidPrime/Carve80024B70.c
-    src/MetroidPrime/Carve80024D24.c
-    src/MetroidPrime/Carve80024EBC.c
-    src/MetroidPrime/Carve80024F6C.c
     src/Kyoto/Math/Carve80031414.c
     src/Kyoto/Math/Carve80031AC8.c
     src/MetroidPrime/Factories/Carve80032A98.c
@@ -433,9 +457,6 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve80046DB8.c
     src/MetroidPrime/Carve80049E20.c
     src/MetroidPrime/Carve8005065C.c
-    src/MetroidPrime/Carve800534B0.c
-    src/MetroidPrime/Carve800534BC.c
-    src/MetroidPrime/Carve80053594.c
     src/MetroidPrime/Carve80054F74.c
     src/MetroidPrime/Carve80055990.c
     src/MetroidPrime/Carve8006653C.c
@@ -443,7 +464,6 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve8006CB00.c
     src/MetroidPrime/Carve8007062C.c
     src/MetroidPrime/Carve80071498.c
-    src/MetroidPrime/Carve80073594.c
     src/MetroidPrime/Enemies/Carve80073F50.c
     src/MetroidPrime/Enemies/Carve80074774.c
     src/MetroidPrime/Enemies/Carve800766CC.c
@@ -459,7 +479,6 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve800E10EC.cpp
     src/MetroidPrime/Carve800E1548.c
     src/MetroidPrime/Carve800E39D0.c
-    src/MetroidPrime/Carve800E8E4C.c
     src/MetroidPrime/Carve800E9C14.c
     src/MetroidPrime/Carve800EC508.c
     src/MetroidPrime/Carve800EC978.c
@@ -468,51 +487,28 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve800F0198.c
     src/MetroidPrime/Carve800F1234.c
     src/MetroidPrime/Carve800F1264.c
-    src/MetroidPrime/Carve800F15C8.c
-    src/MetroidPrime/Carve800F1A10.c
-    src/MetroidPrime/Carve800F1A18.c
-    src/MetroidPrime/Carve800F2390.c
-    src/MetroidPrime/Carve800F24AC.c
     src/MetroidPrime/Carve800F2C54.c
     src/MetroidPrime/Carve800F4E28.c
-    src/MetroidPrime/Carve800F5004.c
-    src/MetroidPrime/Carve800F51EC.c
     src/MetroidPrime/Carve800F549C.c
     src/MetroidPrime/Carve800F609C.c
-    src/MetroidPrime/Carve800F794C.c
-    src/MetroidPrime/Carve800F7B80.c
-    src/MetroidPrime/Carve800F8BDC.c
-    src/MetroidPrime/Carve800FAC18.c
-    src/MetroidPrime/Carve800FACE0.c
     src/MetroidPrime/Carve800FAFE8.c
     src/MetroidPrime/Carve800FB66C.c
     src/MetroidPrime/Carve800FBEF0.c
     src/MetroidPrime/Carve800FBF68.c
     src/MetroidPrime/Carve800FC474.c
-    src/MetroidPrime/Carve800FD2D0.c
-    src/MetroidPrime/Carve800FD648.c
     src/MetroidPrime/Carve800FEE98.c
     src/MetroidPrime/Carve800FEF78.c
-    src/MetroidPrime/Carve800FF164.c
-    src/MetroidPrime/Carve800FF294.c
-    src/MetroidPrime/Carve800FFC2C.c
-    src/MetroidPrime/Carve800FFD34.c
     src/MetroidPrime/Carve801007D8.c
     src/MetroidPrime/Carve80107994.c
     src/MetroidPrime/Carve8010805C.c
     src/MetroidPrime/Carve8010EE54.c
     src/MetroidPrime/Carve801174E8.c
-    src/MetroidPrime/Carve801184E8.c
-    src/MetroidPrime/Carve801185AC.c
     src/MetroidPrime/Carve8011A97C.c
     src/MetroidPrime/Carve801255B8.c
     src/MetroidPrime/Carve80127E7C.c
     src/MetroidPrime/Carve8012CB4C.c
     src/MetroidPrime/Carve8012CD10.c
     src/MetroidPrime/Carve8012D164.c
-    src/MetroidPrime/Player/Carve801476D0.c
-    src/MetroidPrime/Player/Carve80149108.c
-    src/MetroidPrime/Player/Carve80149288.c
     src/MetroidPrime/Player/Carve8014A5DC.c
     src/MetroidPrime/Player/Carve8014A6D4.c
     src/MetroidPrime/Player/Carve8014FFCC.c
@@ -553,9 +549,6 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve801B2E38.c
     src/MetroidPrime/Carve801B3B44.c
     src/MetroidPrime/Carve801B5694.c
-    src/MetroidPrime/Carve801B9420.c
-    src/MetroidPrime/Carve801B94B4.c
-    src/MetroidPrime/Carve801B9BE0.c
     src/MetroidPrime/Carve801BC900.c
     src/MetroidPrime/Carve801C128C.c
     src/MetroidPrime/Carve801C13F4.c
@@ -568,7 +561,6 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Weapons/Carve801D688C.c
     src/MetroidPrime/Weapons/Carve801D6920.c
     src/MetroidPrime/Weapons/Carve801D6930.c
-    src/MetroidPrime/ScriptObjects/Carve801E2AE8.c
     src/MetroidPrime/ScriptObjects/Carve801E3864.c
     src/MetroidPrime/ScriptObjects/Carve801E3E34.c
     src/MetroidPrime/Cameras/Carve801E7C14.c

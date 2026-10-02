@@ -16,7 +16,7 @@ CScriptSpecialFunction::CScriptSpecialFunction(
     float value3, float value4, int intParm1, int intParm2, const CVector3f& vectorParm,
     const CColor& colorParm, const CDamageInfo& damageInfo, CPlayerState::EItemType item,
     ushort sfx1, ushort sfx2, ushort sfx3)
-: CActor(uid, name, info, 0, xf, CModelData(), CMaterialList(), CActorParameters(),
+: CActor(uid, name, info, 0, xf, CModelData(), CMaterialList(), CActorParameters::None(),
          kInvalidUniqueId)
 , mFunction(function)
 , mStringParm(stringParm)
@@ -108,7 +108,7 @@ void CScriptSpecialFunction::PreRenderSilhouette(CStateManager& mgr) {
 
 void CScriptSpecialFunction::PreRenderBillboard(CStateManager& mgr) {
   if (mIntParm1 != 0) {
-    mgr.fn_800379C4(GetUniqueId());
+    mgr.RenderLastHUD(GetUniqueId());
   }
 }
 

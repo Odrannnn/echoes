@@ -14,6 +14,8 @@ public:
   void Shutdown(CBodyController& bc) override;
 
 private:
+  pas::EAnimationState GetBodyStateTransition(float dt, CBodyController& bc);
+
   float mRotateSpeed;
   float mRemTime;
   pas::EFallState mFallState;

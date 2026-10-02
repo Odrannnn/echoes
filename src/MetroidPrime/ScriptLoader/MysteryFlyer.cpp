@@ -17,6 +17,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_MysteryFlyer;
 
-CEntity* LoadMysteryFlyer(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadMysteryFlyer(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_MysteryFlyer.value)(mgr, input, info);
 }

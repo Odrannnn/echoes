@@ -1,5 +1,6 @@
 // Functions for the RubiksPuzzle REL.
 
+#define SLDR_RUBIKS_PUZZLE_CTOR_OUT_OF_LINE
 #include "MetroidPrime/ScriptLoader/SLdrRubiksPuzzle.hpp"
 
 extern "C" const float lbl_4_rodata_0;

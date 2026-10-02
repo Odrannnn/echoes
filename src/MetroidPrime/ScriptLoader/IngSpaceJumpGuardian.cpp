@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_IngSpaceJumpGuardian;
 
-CEntity* LoadIngSpaceJumpGuardian(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadIngSpaceJumpGuardian(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_IngSpaceJumpGuardian.value)(mgr, input, info);
 }

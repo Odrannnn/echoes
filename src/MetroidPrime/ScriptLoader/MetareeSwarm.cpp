@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_MetareeSwarm;
 
-CEntity* LoadMetareeSwarm(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadMetareeSwarm(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_MetareeSwarm.value)(mgr, input, info);
 }

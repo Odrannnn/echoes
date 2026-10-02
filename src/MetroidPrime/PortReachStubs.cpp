@@ -127,10 +127,6 @@ extern "C" void reachstub_13() { mpReachStub("_ZN6CActor17UpdateSfxEmittersEv", 
 extern "C" void reachstub_19() asm("_ZN20CActorModelParticles9SetupHookE9TUniqueId");
 extern "C" void reachstub_19() { mpReachStub("_ZN20CActorModelParticles9SetupHookE9TUniqueId", "CActorModelParticles::SetupHook(TUniqueId)"); }
 
-// CActorParameters::CActorParameters()
-extern "C" void reachstub_20() asm("_ZN16CActorParametersC1Ev");
-extern "C" void reachstub_20() { mpReachStub("_ZN16CActorParametersC1Ev", "CActorParameters::CActorParameters()"); }
-
 // CBasics::Stringize(char const*, ...)
 extern "C" void reachstub_27() asm("_ZN7CBasics9StringizeEPKcz");
 extern "C" void reachstub_27() { mpReachStub("_ZN7CBasics9StringizeEPKcz", "CBasics::Stringize(char const*, ...)"); }
@@ -309,14 +305,6 @@ extern "C" void reachstub_74() asm("_ZNK19CInGameTweakManager13HasTweakValueERKN
 extern "C" void reachstub_74() { mpReachStub("_ZNK19CInGameTweakManager13HasTweakValueERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE", "CInGameTweakManager::HasTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const"); }
 
 // CInputGenerator::Update(float, CArchitectureQueue&)
-
-// CLightParameters::CLightParameters()
-extern "C" void reachstub_76() asm("_ZN16CLightParametersC1Ev");
-extern "C" void reachstub_76() { mpReachStub("_ZN16CLightParametersC1Ev", "CLightParameters::CLightParameters()"); }
-
-// CLightParameters::MakeActorLights() const
-extern "C" void reachstub_77() asm("_ZNK16CLightParameters15MakeActorLightsEv");
-extern "C" void reachstub_77() { mpReachStub("_ZNK16CLightParameters15MakeActorLightsEv", "CLightParameters::MakeActorLights() const"); }
 
 // CMain::ResetGameState()
 extern "C" void reachstub_78() asm("_ZN5CMain14ResetGameStateEv");
@@ -611,10 +599,6 @@ extern "C" void reachstub_179() { mpReachStub("_ZN10CTweakGame18GetTotalPercenta
 // CTweakPlayerGun::GetMaxAbsorbedPhazonShots()
 extern "C" void reachstub_180() asm("_ZN15CTweakPlayerGun25GetMaxAbsorbedPhazonShotsEv");
 extern "C" void reachstub_180() { mpReachStub("_ZN15CTweakPlayerGun25GetMaxAbsorbedPhazonShotsEv", "CTweakPlayerGun::GetMaxAbsorbedPhazonShots()"); }
-
-// CWeaponMgr::GetNumActive(TUniqueId, EWeaponType) const
-extern "C" void reachstub_181() asm("_ZNK10CWeaponMgr12GetNumActiveE9TUniqueId11EWeaponType");
-extern "C" void reachstub_181() { mpReachStub("_ZNK10CWeaponMgr12GetNumActiveE9TUniqueId11EWeaponType", "CWeaponMgr::GetNumActive(TUniqueId, EWeaponType) const"); }
 
 // CWeaponMgr::fn_800B321C(TUniqueId, EWeaponType)
 extern "C" void reachstub_182() asm("_ZN10CWeaponMgr11fn_800B321CE9TUniqueId11EWeaponType");
@@ -1341,10 +1325,6 @@ __attribute__((aligned(32))) char reachdata_425[0x400] = {};
 extern "C" void reachstub_426() asm("_ZN9CGraphics15SetAlphaCompareE13ERglAlphaFunch11ERglAlphaOpS0_h");
 extern "C" void reachstub_426() { mpReachStub("_ZN9CGraphics15SetAlphaCompareE13ERglAlphaFunch11ERglAlphaOpS0_h", "CGraphics::SetAlphaCompare(ERglAlphaFunc, unsigned char, ERglAlphaOp, ERglAlphaFunc, unsigned char)"); }
 
-// CGraphics::SetTevOp(ERglTevStage, CTevCombiners::CTevPass const&)
-extern "C" void reachstub_429() asm("_ZN9CGraphics8SetTevOpE12ERglTevStageRKN13CTevCombiners8CTevPassE");
-extern "C" void reachstub_429() { mpReachStub("_ZN9CGraphics8SetTevOpE12ERglTevStageRKN13CTevCombiners8CTevPassE", "CGraphics::SetTevOp(ERglTevStage, CTevCombiners::CTevPass const&)"); }
-
 // CGraphics::StreamEnd()
 extern "C" void reachstub_430() asm("_ZN9CGraphics9StreamEndEv");
 extern "C" void reachstub_430() { mpReachStub("_ZN9CGraphics9StreamEndEv", "CGraphics::StreamEnd()"); }
@@ -1393,10 +1373,6 @@ extern "C" void reachstub_445() { mpReachStub("_ZNK6CModel8IsLoadedEi", "CModel:
 extern "C" void reachstub_446() asm("_ZNK8CTexture4LoadE10GXTexMapIDNS_10EClampModeE");
 extern "C" void reachstub_446() { mpReachStub("_ZNK8CTexture4LoadE10GXTexMapIDNS_10EClampModeE", "CTexture::Load(GXTexMapID, CTexture::EClampMode) const"); }
 
-// CAnimData::GetLocatorSegId(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
-extern "C" void reachstub_447() asm("_ZNK9CAnimData15GetLocatorSegIdERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE");
-extern "C" void reachstub_447() { mpReachStub("_ZNK9CAnimData15GetLocatorSegIdERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE", "CAnimData::GetLocatorSegId(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const"); }
-
 // vtable for CCollidableSphere
 extern "C" __attribute__((aligned(32))) char reachdata_449[0x400] asm("_ZTV17CCollidableSphere");
 __attribute__((aligned(32))) char reachdata_449[0x400] = {};
@@ -1426,10 +1402,6 @@ extern "C" void reachstub_456() { mpReachStub("fn_802CC064", "fn_802CC064"); }
 // CMemoryCardSys::mIsCardBusy
 extern "C" __attribute__((aligned(32))) char reachdata_458[0x400] asm("_ZN14CMemoryCardSys11mIsCardBusyE");
 __attribute__((aligned(32))) char reachdata_458[0x400] = {};
-
-// CTextRenderBuffer::~CTextRenderBuffer()
-extern "C" void reachstub_459() asm("_ZN17CTextRenderBufferD1Ev");
-extern "C" void reachstub_459() { mpReachStub("_ZN17CTextRenderBufferD1Ev", "CTextRenderBuffer::~CTextRenderBuffer()"); }
 
 // CTextExecuteBuffer::BeginBlock(int, int, int, int, bool, ETextDirection, EJustification, EVerticalJustification)
 extern "C" void reachstub_460() asm("_ZN18CTextExecuteBuffer10BeginBlockEiiiib14ETextDirection14EJustification22EVerticalJustification");
@@ -1663,10 +1635,6 @@ extern "C" void reachstub_543() { mpReachStub("fn_80003D00", "fn_80003D00"); }
 extern "C" void reachstub_544() asm("fn_80004458");
 extern "C" void reachstub_544() { mpReachStub("fn_80004458", "fn_80004458"); }
 
-// fn_80004BEC
-extern "C" void reachstub_545() asm("fn_80004BEC");
-extern "C" void reachstub_545() { mpReachStub("fn_80004BEC", "fn_80004BEC"); }
-
 // fn_80004D84
 extern "C" void reachstub_546() asm("fn_80004D84");
 extern "C" void reachstub_546() { mpReachStub("fn_80004D84", "fn_80004D84"); }
@@ -1848,3 +1816,89 @@ extern "C" void reachstub_595() { mpReachStub("_ZN19CInGameTweakManagerD1Ev", "C
 // CBasics::CopyMemory(void*, void const*, unsigned int)
 extern "C" void reachstub_596() asm("_ZN7CBasics10CopyMemoryEPvPKvj");
 extern "C" void reachstub_596() { mpReachStub("_ZN7CBasics10CopyMemoryEPvPKvj", "CBasics::CopyMemory(void*, void const*, unsigned int)"); }
+
+// --- appended by tools/restub_reach.py on 2026-10-02T16:46:36 ---
+// Unresolved symbols one boot-probe link asked for. Diagnostic only; see the file header.
+// CGameHint* TCastToPtr<CGameHint>(CEntity*)
+extern "C" void reachstub_597() asm("_Z10TCastToPtrI9CGameHintEPT_P7CEntity");
+extern "C" void reachstub_597() { mpReachStub("_Z10TCastToPtrI9CGameHintEPT_P7CEntity", "CGameHint* TCastToPtr<CGameHint>(CEntity*)"); }
+
+// LdrToModelData(CVector3f const&, unsigned int, SLdrAnimationSet const&, bool)
+extern "C" void reachstub_598() asm("_Z14LdrToModelDataRK9CVector3fjRK16SLdrAnimationSetb");
+extern "C" void reachstub_598() { mpReachStub("_Z14LdrToModelDataRK9CVector3fjRK16SLdrAnimationSetb", "LdrToModelData(CVector3f const&, unsigned int, SLdrAnimationSet const&, bool)"); }
+
+// LdrToTransform4f(SLdrEditorProperties const&)
+extern "C" void reachstub_599() asm("_Z16LdrToTransform4fRK20SLdrEditorProperties");
+extern "C" void reachstub_599() { mpReachStub("_Z16LdrToTransform4fRK20SLdrEditorProperties", "LdrToTransform4f(SLdrEditorProperties const&)"); }
+
+// REL_LoadRiftPortal(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void reachstub_600() asm("_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamR11CEntityInfo");
+extern "C" void reachstub_600() { mpReachStub("_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamR11CEntityInfo", "REL_LoadRiftPortal(CStateManager&, CInputStream&, CEntityInfo&)"); }
+
+// LdrToEchoParameters(SLdrEchoParameters const&)
+extern "C" void reachstub_601() asm("_Z19LdrToEchoParametersRK18SLdrEchoParameters");
+extern "C" void reachstub_601() { mpReachStub("_Z19LdrToEchoParametersRK18SLdrEchoParameters", "LdrToEchoParameters(SLdrEchoParameters const&)"); }
+
+// LdrToActorParameters(SLdrActorParameters const&)
+extern "C" void reachstub_602() asm("_Z20LdrToActorParametersRK19SLdrActorParameters");
+extern "C" void reachstub_602() { mpReachStub("_Z20LdrToActorParametersRK19SLdrActorParameters", "LdrToActorParameters(SLdrActorParameters const&)"); }
+
+// LoadTypedefDamageInfo(SLdrDamageInfo&, CInputStream&)
+extern "C" void reachstub_603() asm("_Z21LoadTypedefDamageInfoR14SLdrDamageInfoR12CInputStream");
+extern "C" void reachstub_603() { mpReachStub("_Z21LoadTypedefDamageInfoR14SLdrDamageInfoR12CInputStream", "LoadTypedefDamageInfo(SLdrDamageInfo&, CInputStream&)"); }
+
+// LoadTypedefPlayerItem(SLdrPlayerItem&, CInputStream&)
+extern "C" void reachstub_604() asm("_Z21LoadTypedefPlayerItemR14SLdrPlayerItemR12CInputStream");
+extern "C" void reachstub_604() { mpReachStub("_Z21LoadTypedefPlayerItemR14SLdrPlayerItemR12CInputStream", "LoadTypedefPlayerItem(SLdrPlayerItem&, CInputStream&)"); }
+
+// LoadTypedefAnimationSet(SLdrAnimationSet&, CInputStream&)
+extern "C" void reachstub_605() asm("_Z23LoadTypedefAnimationSetR16SLdrAnimationSetR12CInputStream");
+extern "C" void reachstub_605() { mpReachStub("_Z23LoadTypedefAnimationSetR16SLdrAnimationSetR12CInputStream", "LoadTypedefAnimationSet(SLdrAnimationSet&, CInputStream&)"); }
+
+// LoadTypedefEchoParameters(SLdrEchoParameters&, CInputStream&)
+extern "C" void reachstub_606() asm("_Z25LoadTypedefEchoParametersR18SLdrEchoParametersR12CInputStream");
+extern "C" void reachstub_606() { mpReachStub("_Z25LoadTypedefEchoParametersR18SLdrEchoParametersR12CInputStream", "LoadTypedefEchoParameters(SLdrEchoParameters&, CInputStream&)"); }
+
+// LoadTypedefActorParameters(SLdrActorParameters&, CInputStream&)
+extern "C" void reachstub_607() asm("_Z26LoadTypedefActorParametersR19SLdrActorParametersR12CInputStream");
+extern "C" void reachstub_607() { mpReachStub("_Z26LoadTypedefActorParametersR19SLdrActorParametersR12CInputStream", "LoadTypedefActorParameters(SLdrActorParameters&, CInputStream&)"); }
+
+// LoadTypedefCameraShakerData(SLdrCameraShakerData&, CInputStream&)
+extern "C" void reachstub_608() asm("_Z27LoadTypedefCameraShakerDataR20SLdrCameraShakerDataR12CInputStream");
+extern "C" void reachstub_608() { mpReachStub("_Z27LoadTypedefCameraShakerDataR20SLdrCameraShakerDataR12CInputStream", "LoadTypedefCameraShakerData(SLdrCameraShakerData&, CInputStream&)"); }
+
+// CGameLight::CGameLight(TUniqueId, TAreaId, bool, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CTransform4f const&, TUniqueId, CLight const&, unsigned int, unsigned int, float, CEntityInfo const*)
+extern "C" void reachstub_609() asm("_ZN10CGameLightC1E9TUniqueId7TAreaIdbRKN4rstl12basic_stringIcNS2_11char_traitsIcEENS2_17rmemory_allocatorEEERK12CTransform4fS0_RK6CLightjjfPK11CEntityInfo");
+extern "C" void reachstub_609() { mpReachStub("_ZN10CGameLightC1E9TUniqueId7TAreaIdbRKN4rstl12basic_stringIcNS2_11char_traitsIcEENS2_17rmemory_allocatorEEERK12CTransform4fS0_RK6CLightjjfPK11CEntityInfo", "CGameLight::CGameLight(TUniqueId, TAreaId, bool, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CTransform4f const&, TUniqueId, CLight const&, unsigned int, unsigned int, float, CEntityInfo const*)"); }
+
+// CBallCamera::SetState(CBallCamera::EBallCameraState, CStateManager&)
+extern "C" void reachstub_610() asm("_ZN11CBallCamera8SetStateENS_16EBallCameraStateER13CStateManager");
+extern "C" void reachstub_610() { mpReachStub("_ZN11CBallCamera8SetStateENS_16EBallCameraStateER13CStateManager", "CBallCamera::SetState(CBallCamera::EBallCameraState, CStateManager&)"); }
+
+// CGameCollision::RayStaticLineOfSightTest(CStateManager const&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&)
+extern "C" void reachstub_611() asm("_ZN14CGameCollision24RayStaticLineOfSightTestERK13CStateManagerRK9CVector3fS5_fRK15CMaterialFilter");
+extern "C" void reachstub_611() { mpReachStub("_ZN14CGameCollision24RayStaticLineOfSightTestERK13CStateManagerRK9CVector3fS5_fRK15CMaterialFilter", "CGameCollision::RayStaticLineOfSightTest(CStateManager const&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&)"); }
+
+// CFluidPlaneManager::CreateSplash(TUniqueId, CStateManager&, CScriptWater const&, CVector3f const&, float, bool)
+extern "C" void reachstub_612() asm("_ZN18CFluidPlaneManager12CreateSplashE9TUniqueIdR13CStateManagerRK12CScriptWaterRK9CVector3ffb");
+extern "C" void reachstub_612() { mpReachStub("_ZN18CFluidPlaneManager12CreateSplashE9TUniqueIdR13CStateManagerRK12CScriptWaterRK9CVector3ffb", "CFluidPlaneManager::CreateSplash(TUniqueId, CStateManager&, CScriptWater const&, CVector3f const&, float, bool)"); }
+
+// CPlayerKnockBackMgr::fn_801C0124()
+extern "C" void reachstub_613() asm("_ZN19CPlayerKnockBackMgr11fn_801C0124Ev");
+extern "C" void reachstub_613() { mpReachStub("_ZN19CPlayerKnockBackMgr11fn_801C0124Ev", "CPlayerKnockBackMgr::fn_801C0124()"); }
+
+// CGraphics::mModelMatrix
+extern "C" __attribute__((aligned(32))) char reachdata_614[0x400] asm("_ZN9CGraphics12mModelMatrixE");
+__attribute__((aligned(32))) char reachdata_614[0x400] = {};
+
+// CFluidPlaneManager::GetLastSplashDeltaTime(TUniqueId) const
+extern "C" void reachstub_615() asm("_ZNK18CFluidPlaneManager22GetLastSplashDeltaTimeE9TUniqueId");
+extern "C" void reachstub_615() { mpReachStub("_ZNK18CFluidPlaneManager22GetLastSplashDeltaTimeE9TUniqueId", "CFluidPlaneManager::GetLastSplashDeltaTime(TUniqueId) const"); }
+
+// __dt__20SLdrEditorPropertiesFv
+extern "C" void reachstub_616() asm("__dt__20SLdrEditorPropertiesFv");
+extern "C" void reachstub_616() { mpReachStub("__dt__20SLdrEditorPropertiesFv", "__dt__20SLdrEditorPropertiesFv"); }
+
+// fn_802CB918
+extern "C" void reachstub_617() asm("fn_802CB918");
+extern "C" void reachstub_617() { mpReachStub("fn_802CB918", "fn_802CB918"); }

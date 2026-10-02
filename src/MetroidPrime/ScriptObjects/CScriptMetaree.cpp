@@ -5,7 +5,7 @@ class CStateManager;
 class CInputStream;
 class CEntityInfo;
 
-typedef CEntity* (*FScriptLoader)(CStateManager&, CInputStream&, const CEntityInfo&);
+typedef CEntity* (*FScriptLoader)(CStateManager&, CInputStream&, CEntityInfo&);
 
 struct TUniqueId {
   ushort value;
@@ -32,7 +32,7 @@ public:
 extern const TUniqueId kInvalidUniqueId;
 extern float skDamageHitTime__10CPatterned;
 extern float lbl_8041B758;
-extern "C" CEntity* REL_LoadMetaree(CStateManager&, CInputStream&, const CEntityInfo&);
+extern "C" CEntity* REL_LoadMetaree(CStateManager&, CInputStream&, CEntityInfo&);
 void SetLoader_Metaree(FScriptLoader* loader);
 
 extern "C" {

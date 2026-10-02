@@ -41,7 +41,7 @@
 //
 // The two callees are named by what they are, not invented:
 //   - `fn_80232868` is the DOL's 0x80232868, two instructions, immediately after
-//     `LoadMysteryFlyer__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x8023283C:
+//     `LoadMysteryFlyer__FR13CStateManagerR12CInputStreamR11CEntityInfo` at 0x8023283C:
 //     `stw r3, gLoader_MysteryFlyer; blr`. So it stores the *address* of a loader slot, not a
 //     loader. `LoadMysteryFlyer` in `src/MetroidPrime/ScriptLoader/MysteryFlyer.cpp` (a `Matching`
 //     unit) reads it as `lwz r6, gLoader_MysteryFlyer; lwz r12, 0(r6); mtctr r12; bctrl`, which is
@@ -96,7 +96,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_45_170(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_45_170(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80232868(FScriptLoader* loader);
 // .text 0x2BBC, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line.
 void fn_45_2BBC(void* out, const CAABox& box);

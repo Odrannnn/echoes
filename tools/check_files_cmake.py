@@ -35,6 +35,40 @@ ROOT = Path(__file__).resolve().parent.parent
 # true; `tools/check_raw_offsets.py`'s rule applies here too - a named blocker beats a
 # silent omission.
 EXCLUDED = {
+    "src/MetroidPrime/CSplashScreen.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 10 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/ScriptObjects/CScriptCameraFilterKeyframe.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 1 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/ScriptObjects/CScriptCameraBlurKeyframe.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 1 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/HUD/CHudRadarInterface.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 4 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/HUD/CHudVisorBeamMenu.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 9 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/ScriptObjects/CScriptPlayerHint.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 5 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/CPlayerHintManager.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 1 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/CExplosion.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 2 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/CFluidPlaneManager.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 3 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/ScriptObjects/CScriptTriggerEllipsoid.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 14 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/BodyState/CBSAttack.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 1 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/BodyState/CBSLieOnGround.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 1 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/BodyState/CBSDie.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 1 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/ScriptObjects/CScriptVisorFlare.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 6 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/ScriptObjects/CScriptWorldTeleporter.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 11 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/ScriptObjects/CScriptControllerAction.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). Measured with nm over build-port-link: listing it adds 2 more undefined name(s) to the port link than it resolves (greedy removal order, 388 -> 316 over the 16 units excluded that day), so it stays out until its dependencies exist on the host",
+    "src/MetroidPrime/TGameTypes.cpp":
+        "upstream unit new in the ninth sync (2026-10-02). PortGlobals.cpp already defines kInvalidEditorId/kInvalidUniqueId/kInvalidAreaId with host-safe values and CWorldSaveGameInfo.cpp defines TEditorId(CInputStream&); linking this one as well measured 4 duplicate definitions in tools/link_check.sh",
     "src/MetroidPrime/Player/CGameStateCtor.cpp":
         "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/Player/CGameState.cpp, now listed in files.cmake: the host dropped its opaque TARGET_PC CGameState layout for upstream's, and this carve either duplicates a body that TU defines or is written against the opaque members. Not a configure.py unit either, so nothing compiles it.",
     "src/MetroidPrime/Player/CGameStatePlayerLoop.cpp":

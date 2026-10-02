@@ -29,7 +29,7 @@ FScriptLoader lbl_31_bss_20 = 0;
 // what the DOL's LoadIngBlobSwarm thunk calls it with: (CStateManager&, CInputStream&,
 // const CEntityInfo&). Only its address is taken here, so the body is not needed to
 // reproduce these three functions.
-CEntity* fn_31_D8(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_31_D8(CStateManager&, CInputStream&, CEntityInfo&);
 
 // .text 0xA8, 0x30 bytes. Publishes the module's loader and hands the slot to the DOL.
 void fn_31_A8() {

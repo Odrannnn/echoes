@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_DestructableBarrier;
 
-CEntity* LoadDestructableBarrier(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadDestructableBarrier(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_DestructableBarrier.value)(mgr, input, info);
 }

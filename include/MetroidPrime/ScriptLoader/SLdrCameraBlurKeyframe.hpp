@@ -17,6 +17,14 @@ struct SLdrCameraBlurKeyframe {
   float interpolateOutTime; // 0x3eaf78fe
 };
 
-void LoadTypedefSLdrCameraBlurKeyframe(SLdrCameraBlurKeyframe& data, CInputStream& input);
+inline SLdrCameraBlurKeyframe::SLdrCameraBlurKeyframe() : editorProperties() {
+  blurType = 0;
+  blurRadius = 0.0f;
+  whichFilterGroup = 0;
+  interpolateInTime = 0.0f;
+  interpolateOutTime = 0.0f;
+}
+
+inline SLdrCameraBlurKeyframe::~SLdrCameraBlurKeyframe() {}
 
 #endif

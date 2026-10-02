@@ -150,7 +150,7 @@ public:
 extern "C" {
 // fn_72_140, the module's own entity loader, 0x140, 0xACC: left retail, named here only so the
 // registration below can store its address.
-CEntity* fn_72_140(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_72_140(CStateManager&, CInputStream&, CEntityInfo&);
 
 // **The import is the plain DOL symbol `fn_80200E3C`, and it has to stay that name.** It is the
 // DOL's 0x80200E3C - `stw r3,-0x6a28(r13); blr` (`tools/dis.sh 0x80200E3C 0x8`), and

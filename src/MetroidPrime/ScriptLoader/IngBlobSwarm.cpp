@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_IngBlobSwarm;
 
-CEntity* LoadIngBlobSwarm(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadIngBlobSwarm(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_IngBlobSwarm.value)(mgr, input, info);
 }

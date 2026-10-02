@@ -100,7 +100,7 @@ extern "C" const unsigned short kInvalidUniqueId;
 
 // `SetLoader_AtomicAlpha` is a C++ function, not a C one, and that is the whole point of the
 // declaration: `mwcceppc` mangles it to
-// `SetLoader_AtomicAlpha__FPPFR13CStateManagerR12CInputStreamRC11CEntityInfo_P7CEntity`, the name
+// `SetLoader_AtomicAlpha__FPPFR13CStateManagerR12CInputStreamR11CEntityInfo_P7CEntity`, the name
 // `config/G2ME01/symbols.txt` gives the DOL's 0x8021BB9C, and the same trick
 // `CScriptPlayerProxy.cpp` uses on `SetLoader_PlayerController`. The three modules whose setter
 // is still an unnamed `fn_80xxxxxx` in the DOL had to declare that name instead; do not copy that
@@ -126,7 +126,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_2_13C(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_2_13C(CStateManager&, CInputStream&, CEntityInfo&);
 
 #ifdef __MWERKS__
 extern FScriptLoader lbl_2_bss_0;

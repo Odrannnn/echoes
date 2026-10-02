@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_PillBug;
 
-CEntity* LoadPillBug(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadPillBug(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_PillBug.value)(mgr, input, info);
 }

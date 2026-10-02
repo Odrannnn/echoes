@@ -591,7 +591,3 @@ CAABox CPatterned::GetScanVisorRenderBounds(const CStateManager&) const {
 }
 
 CPatterned::~CPatterned() {}
-
-bool CPatterned::fn_80073938(CStateManager& mgr, TUniqueId id) const {
-  return TCastToConstPtr< CScriptWaypoint >(mgr.GetObjectById(id)) != nullptr;
-}

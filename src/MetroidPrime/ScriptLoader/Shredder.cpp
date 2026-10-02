@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_Shredder;
 
-CEntity* LoadShredder(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadShredder(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_Shredder.value)(mgr, input, info);
 }

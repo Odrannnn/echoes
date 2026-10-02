@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_IngBoostBallGuardian;
 
-CEntity* LoadIngBoostBallGuardian(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadIngBoostBallGuardian(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_IngBoostBallGuardian.value)(mgr, input, info);
 }

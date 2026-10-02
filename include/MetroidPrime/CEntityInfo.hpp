@@ -82,10 +82,12 @@ enum EEntityType {
   kET_ScriptTargetingPoint = 87,
   kET_ScriptTeamAi = 88,
   kET_ScriptTextPane = 89,
+  kET_ScriptTimer = 91,
   kET_ScriptTrigger = 92,
   kET_ScriptTriggerEllipsoid = 93,
   kET_ScriptTriggerOrientated = 94,
-  kET_ScriptSafeZone = 95,
+  kET_ScriptSafeZone = 95, // Guessed name; REL ScriptSafeZone.
+  kET_ScriptVisorFlare = 96,
   kET_ScriptWater = 97,
   kET_ScriptWorldTeleporter = 98,
   kET_SnakeWeedSwarm = 99,
@@ -157,6 +159,7 @@ enum EScriptObjectState {
   kSS_Inside = 0x494e5344,
   kSS_Exited = 0x45584954,
   kSS_Zero = 0x5a45524f,
+  kSS_NonZero = 0x215a4552,
   kSS_DefaultState = 0x44465354,
   kSS_MaxReached = 0x4d415852,
   kSS_ScanStart = 0x4553434e,
@@ -166,6 +169,8 @@ enum EScriptObjectState {
   kSS_Footstep = 0x464f4f54, // Guessed name
   kSS_Play = 0x504c4159,
   kSS_Connect = 0x434f4e4e,
+  kSS_XINF = 0x58494e46, // Guessed name: first-pass elevator camera.
+  kSS_XINB = 0x58494e42, // Guessed name: second-pass elevator camera.
   kSS_Slave = 0x534c4156,
   kSS_Opened = 0x4f50454e,
   kSS_Closed = 0x434c4f53,
@@ -196,6 +201,8 @@ enum EScriptObjectMessage {
   kSM_SetToZero = 0x5a45524f,
   kSM_SetToMax = 0x534d4158,
   kSM_Reset = 0x52534554,
+  kSM_ResetAndStart = 0x52535453,
+  kSM_StopAndReset = 0x53545052,
   kSM_Follow = 0x464f4c57,
   kSM_Attach = 0x41544348,
   kSM_Open = 0x4f50454e,
@@ -273,7 +280,7 @@ class CEntityInfo {
   // definition of that function lives in an unclaimed .text range that no matching unit owns,
   // so the port has to spell it out (src/MetroidPrime/LdrToEntityInfo.cpp). Declared as a
   // friend, as the pre-upstream header had it, so nothing is made public.
-  friend const CEntityInfo& LdrToEntityInfo(CEntityInfo&, const SLdrEditorProperties&);
+  friend CEntityInfo& LdrToEntityInfo(CEntityInfo&, const SLdrEditorProperties&);
 #endif
 
 public:
@@ -328,6 +335,6 @@ public:
 };
 
 struct SLdrEditorProperties;
-const CEntityInfo& LdrToEntityInfo(const CEntityInfo&, const SLdrEditorProperties&);
+CEntityInfo& LdrToEntityInfo(CEntityInfo&, const SLdrEditorProperties&);
 
 #endif // _CENTITYINFO

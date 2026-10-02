@@ -1,6 +1,6 @@
 #include "MetroidPrime/ScriptLoader.hpp"
 
-extern "C" CEntity* REL_LoadFlyerSwarm(CStateManager&, CInputStream&, const CEntityInfo&);
+extern "C" CEntity* REL_LoadFlyerSwarm(CStateManager&, CInputStream&, CEntityInfo&);
 extern "C" void fn_80229FBC(FScriptLoader* loader);
 
 extern "C" {

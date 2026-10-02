@@ -241,6 +241,10 @@ public:
   void Teleport(const CTransform4f& xf, CStateManager& mgr, bool resetBallCam);
   void SetSpawnedMorphBallState(EPlayerMorphBallState state, CStateManager& mgr);
   const CCameraManager* GetCameraManager() const { return mCameraManager; }
+  bool IsOverrideRadarRadius() const { return x126a_29_; }
+  float GetRadarXYRadiusOverride() const { return mRadarXYRadiusOverride; }
+  float GetRadarZRadiusOverride() const { return mRadarZRadiusOverride; }
+  float GetEchoPulsePhase() const { return mEchoPulsePhase; } // Guessed name
   bool GetDoneSidewaysDashing() const { return mDoneSidewaysDashing; }
 
   void Update(float dt, CStateManager& mgr);
@@ -274,7 +278,11 @@ public:
   void BreakFrozenState(CStateManager& mgr, EBreakFrozenState state, bool playSound);
   void SetVisorSteam(float targetAlpha, float alphaInDuration, float alphaOutDuration,
                      CAssetId texture);
-  void SetHudDisable(float staticTimer, float fadeOutSpeed, float fadeInSpeed);
+  static const float skDefaultHudFadeOutSpeed;
+  static const float skDefaultHudFadeInSpeed;
+  void SetHudDisable(float staticTimer, float fadeOutSpeed = skDefaultHudFadeOutSpeed,
+                     float fadeInSpeed = skDefaultHudFadeInSpeed);
+  float GetStaticTimer() const { return mStaticTimer; }
   bool WasDamaged() const;
   float GetDamageAmount() const;
   float GetPrevDamageAmount() const;
@@ -774,8 +782,8 @@ private:
   int mSustainedDamageCount;
   float mSustainedDamageTime;
   float x12cc_;
-  float x12d0_;
-  float x12d4_;
+  float mRadarXYRadiusOverride;
+  float mRadarZRadiusOverride;
   float mAttachedActorStruggle;
   int x12dc_;
   float x12e0_;
@@ -793,7 +801,7 @@ private:
   CCameraManager* mCameraManager; // 0x1318
   SFrozenResources* mFrozenResources;
   int mControlScheme;
-  float x1324_;
+  float mEchoPulsePhase; // Guessed name: normalized repeating Echo Visor pulse phase
   int x1328_;
   int x132c_;
   CSfxHandle mDarkAetherDamageSfx;

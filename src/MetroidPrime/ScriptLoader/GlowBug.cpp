@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_GlowBug;
 
-CEntity* LoadGlowBug(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadGlowBug(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_GlowBug.value)(mgr, input, info);
 }

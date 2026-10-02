@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_ChozoGhost;
 
-CEntity* LoadChozoGhost(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadChozoGhost(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_ChozoGhost.value)(mgr, input, info);
 }

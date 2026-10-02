@@ -60,7 +60,7 @@
 // `config/G2ME01/rels/Splinter/symbols.txt` where the family's slots are usually `size:0x4` -
 // so, per the rule `RUNNING_THE_DECOMP.md` states for exactly this case, the DOL was grepped for
 // every reader of `gLoader_Splinter` before the shape was decided. There is **one** reader,
-// `LoadSplinter__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x80218C38, and it reads
+// `LoadSplinter__FR13CStateManagerR12CInputStreamR11CEntityInfo` at 0x80218C38, and it reads
 // **word 0 only** (`lwz r6, gLoader_Splinter; lwz r12, 0x0(r6); mtctr r12; bctrl`) - no second
 // reader, no `__ptmf_scall`, no pointer-to-member-function. The registration likewise stores one
 // word (`stwu r0, lbl_74_bss_70@l(r3)`), not three copied out of `.data` the way
@@ -72,7 +72,7 @@
 // The two callees are named by what they are, not invented:
 //   - `fn_80218C64` is the DOL's 0x80218C64, two instructions,
 //     `stw r3, gLoader_Splinter@sda21(r0); blr` (`build/G2ME01/asm/auto_03_80218C64_text.s`),
-//     immediately after `LoadSplinter__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at
+//     immediately after `LoadSplinter__FR13CStateManagerR12CInputStreamR11CEntityInfo` at
 //     0x80218C38, which is 0x2C bytes and so ends exactly at 0x80218C64. So it stores the
 //     *address* of the record, not a loader - which is why the store below hands it
 //     `&lbl_74_bss_70`. The import name is the plain `fn_80218C64` that
@@ -82,7 +82,7 @@
 //     and the call would resolve to nothing.
 //   - `fn_74_118` is the module's entity loader, referenced only by address in the registration.
 //     Its 0x724 bytes and its `mr r19, r3 / mr r24, r4 / mr r18, r5` prologue are the loader
-//     signature `(CStateManager&, CInputStream&, const CEntityInfo&)` that `LoadSplinter` calls
+//     signature `(CStateManager&, CInputStream&, CEntityInfo&)` that `LoadSplinter` calls
 //     through the record; it is left unclaimed, and the range above it too.
 //
 // `fn_74_78` is a vtable entry, not a free function: `.data:0x854` - this module's own 0x26C-byte
@@ -158,7 +158,7 @@ public:
 
 extern "C" {
 // .text 0x118, unclaimed: the module's own entity loader.
-CEntity* fn_74_118(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_74_118(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80218C64(FScriptLoader* loader);
 
 // `lbl_74_bss_70` is the module's own copy of the record, in `.bss` and not claimed by this unit,

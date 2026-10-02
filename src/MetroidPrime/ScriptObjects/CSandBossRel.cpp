@@ -52,7 +52,7 @@
 //
 // The two callees are named by what they are, not invented:
 //   - `fn_802189D0` is the DOL's 0x802189D0, two instructions, immediately after
-//     `LoadSandBoss__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x802189A4:
+//     `LoadSandBoss__FR13CStateManagerR12CInputStreamR11CEntityInfo` at 0x802189A4:
 //     `stw r3, gLoader_SandBoss@sda21(r0); blr`. So it stores the *address* of a loader slot, not
 //     a loader. `LoadSandBoss` in `src/MetroidPrime/ScriptLoader/SandBoss.cpp` (a `Matching`
 //     unit) reads it as `lwz r6, gLoader_SandBoss; lwz r12, 0(r6); mtctr r12; bctrl`, which is
@@ -112,7 +112,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_55_178(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_55_178(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_802189D0(FScriptLoader* loader);
 // .text 0x10C78, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line.
 void fn_55_10C78(void* out, const CAABox& box);

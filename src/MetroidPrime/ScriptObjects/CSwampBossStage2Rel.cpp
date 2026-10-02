@@ -54,7 +54,7 @@
 //   - `fn_8022EC30` is the DOL's 0x8022EC30, two instructions,
 //     `stw r3, gLoader_SwampBossStage2@sda21(r0); blr` (see
 //     `build/G2ME01/asm/auto_03_8022EC30_text.s`), immediately *before*
-//     `LoadSwampBossStage2__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x8022EC04, which
+//     `LoadSwampBossStage2__FR13CStateManagerR12CInputStreamR11CEntityInfo` at 0x8022EC04, which
 //     is 44 bytes and so ends exactly there. So it stores the *address* of a loader slot, not a
 //     loader. `LoadSwampBossStage2` in `src/MetroidPrime/ScriptLoader/SwampBossStage2.cpp` (a
 //     `Matching` unit) reads it as `lwz r6, gLoader_SwampBossStage2; lwz r12, 0(r6); mtctr r12;
@@ -113,7 +113,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_79_170(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_79_170(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_8022EC30(FScriptLoader* loader);
 // .text 0xD4E8, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line.
 void fn_79_D4E8(void* out, const CAABox& box);

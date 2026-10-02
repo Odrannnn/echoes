@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_SwampBossStage1;
 
-CEntity* LoadSwampBossStage1(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadSwampBossStage1(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_SwampBossStage1.value)(mgr, input, info);
 }

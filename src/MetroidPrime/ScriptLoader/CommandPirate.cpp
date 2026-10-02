@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_CommandPirate;
 
-CEntity* LoadCommandPirate(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadCommandPirate(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_CommandPirate.value)(mgr, input, info);
 }

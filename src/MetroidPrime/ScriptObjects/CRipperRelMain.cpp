@@ -89,11 +89,11 @@ public:
 
 extern "C" {
 // .text 0x178, unclaimed: CRipper's own entity loader.
-CEntity* fn_54_178(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_54_178(CStateManager&, CInputStream&, CEntityInfo&);
 
 // The import is named the way retail's symbol table names it, which is the long MWCC-mangled form -
 // see the note at the top of the file.
-void SetLoader_Ripper__FPPFR13CStateManagerR12CInputStreamRC11CEntityInfo_P7CEntity(
+void SetLoader_Ripper__FPPFR13CStateManagerR12CInputStreamR11CEntityInfo_P7CEntity(
     FScriptLoader* loader);
 
 #ifdef __MWERKS__
@@ -108,7 +108,7 @@ FScriptLoader lbl_54_bss_0 = 0;
 // `CMysteryFlyerRel.cpp`'s `fn_45_140`.
 void fn_54_148() {
   lbl_54_bss_0 = fn_54_178;
-  SetLoader_Ripper__FPPFR13CStateManagerR12CInputStreamRC11CEntityInfo_P7CEntity(&lbl_54_bss_0);
+  SetLoader_Ripper__FPPFR13CStateManagerR12CInputStreamR11CEntityInfo_P7CEntity(&lbl_54_bss_0);
 }
 
 // Every REL module defines RELMain/RELExit, which a flat host link cannot hold, so on the host
@@ -118,13 +118,13 @@ void fn_54_148() {
 void RELMain() { fn_54_148(); }
 
 void RELExit() {
-  SetLoader_Ripper__FPPFR13CStateManagerR12CInputStreamRC11CEntityInfo_P7CEntity(nullptr);
+  SetLoader_Ripper__FPPFR13CStateManagerR12CInputStreamR11CEntityInfo_P7CEntity(nullptr);
 }
 #else
 void mp_relmain_ripper() { fn_54_148(); }
 
 void mp_relexit_ripper() {
-  SetLoader_Ripper__FPPFR13CStateManagerR12CInputStreamRC11CEntityInfo_P7CEntity(nullptr);
+  SetLoader_Ripper__FPPFR13CStateManagerR12CInputStreamR11CEntityInfo_P7CEntity(nullptr);
 }
 #endif
 

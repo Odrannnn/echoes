@@ -17,6 +17,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_FogOverlay;
 
-CEntity* LoadFogOverlay(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadFogOverlay(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_FogOverlay.value)(mgr, input, info);
 }

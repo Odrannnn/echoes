@@ -23,10 +23,10 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_SplitterMainChassis;
 
-CEntity* LoadSplitterMainChassis(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadSplitterMainChassis(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return gLoader_SplitterMainChassis.value->slot0(mgr, input, info);
 }
 
-CEntity* LoadSplitterCommandModule(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadSplitterCommandModule(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return gLoader_SplitterMainChassis.value->slot1(mgr, input, info);
 }

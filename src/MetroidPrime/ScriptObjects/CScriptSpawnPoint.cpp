@@ -130,6 +130,6 @@ extern "C" void fn_800B9C60(
   self->mCount = count;
 }
 
-CEntity* LoadSpawnPoint(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadSpawnPoint(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   
 }

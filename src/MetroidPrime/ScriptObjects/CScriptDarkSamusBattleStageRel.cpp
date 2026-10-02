@@ -76,7 +76,7 @@ extern "C" {
 // .text 0x74, 0x150 bytes, still retail. The module's own entity loader; its signature is
 // fixed by what the DOL's `LoadDarkSamusBattleStage` thunk calls it with, and only its address
 // is taken here, so the body is not needed to reproduce the three functions above.
-CEntity* fn_11_74(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_11_74(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80235DCC(FScriptLoader* loader);
 
 #ifdef __MWERKS__

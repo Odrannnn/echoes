@@ -65,7 +65,7 @@
 // The two callees are named by what they are, not invented:
 //   - `fn_80227AF8` is the DOL's 0x80227AF8, two instructions,
 //     `stw r3, gLoader_Rezbit@sda21(r0); blr` (`build/G2ME01/asm/auto_03_80227AF8_text.s`),
-//     immediately after `LoadRezbit__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at
+//     immediately after `LoadRezbit__FR13CStateManagerR12CInputStreamR11CEntityInfo` at
 //     0x80227ACC, which is 44 bytes and so ends exactly at 0x80227AF8. So it stores the
 //     *address* of a loader slot, not a loader.
 //     `src/MetroidPrime/ScriptLoader/Rezbit.cpp` - a `Matching` unit, and the file that already
@@ -132,7 +132,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_53_168(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_53_168(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80227AF8(FScriptLoader* loader);
 // .text 0x88A4, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line.
 void fn_53_88A4(void* out, const CAABox& box);

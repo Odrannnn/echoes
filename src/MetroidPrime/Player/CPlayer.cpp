@@ -22,6 +22,9 @@
 // NonMatching structure pass; incomplete behavior is explicit below.
 // Definitions follow reverse target order for the TU's deferred-inlining emission.
 
+const float CPlayer::skDefaultHudFadeOutSpeed = 0.5f;
+const float CPlayer::skDefaultHudFadeInSpeed = 2.5f;
+
 CPlayer::CPlayer(TUniqueId uid, const CTransform4f& xf, const CAABox& aabb, CAssetId resId,
                  const CVector3f& playerScale, float mass, float stepUp, float stepDown,
                  float ballRadius, const CMaterialList& ml, CPlayerState* playerState,
@@ -259,8 +262,8 @@ CPlayer::CPlayer(TUniqueId uid, const CTransform4f& xf, const CAABox& aabb, CAss
 , mSustainedDamageCount(0)
 , mSustainedDamageTime(0.f)
 , x12cc_(9999.f)
-, x12d0_(1.f)
-, x12d4_(1.f)
+, mRadarXYRadiusOverride(1.f)
+, mRadarZRadiusOverride(1.f)
 , mAttachedActorStruggle(0.f)
 , x12dc_(2)
 , x12e0_(4.f)
@@ -277,7 +280,7 @@ CPlayer::CPlayer(TUniqueId uid, const CTransform4f& xf, const CAABox& aabb, CAss
 , mCameraManager(cameraManager)
 , mFrozenResources(nullptr)
 , mControlScheme(controlScheme)
-, x1324_(0.f)
+, mEchoPulsePhase(0.f)
 , x1328_(0)
 , x132c_(0)
 , mDarkAetherDamageSfx()

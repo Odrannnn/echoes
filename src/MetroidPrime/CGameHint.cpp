@@ -17,17 +17,10 @@ extern "C" const EMaterialTypes lbl_804188D0;
 
 CGameHint::CGameHint(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
                      const CTransform4f& xf, int priority, float timer, int acrossAreas,
-                     int breakType, uint deleteOnRemoval, uint requiredPresses, float unknown16c,
-                     const SCallback& onExpire, const SCallback& onBreak, float breakDelay)
-// The comma in the eighth argument is load-bearing and changes no behaviour: reading the const
-// TUniqueId has no side effect and the value is discarded, so the expression is exactly
-// CActorParameters(). Retail materialises the kInvalidUniqueId copy (`lhz` + `sth r0,16(r1)`)
-// *before* the CActorParameters temporary's constructor call; written plainly, MW evaluates the
-// arguments the other way round, sinks the `sth` into the CMaterialList window, and those 7
-// instructions come out permuted - the same 7 instructions, 412 bytes, but the ctor stops at
-// 94.16667%. The comma sequences the copy first, which is retail's order.
-: CActor(uid, name, info, 0, xf, CModelData::CModelDataNull(), CMaterialList(lbl_804188D0),
-         (static_cast< void >(kInvalidUniqueId), CActorParameters()), kInvalidUniqueId)
+                     EBreakHintType breakType, uint deleteOnRemoval, uint requiredPresses,
+                     float unknown16c, SCallback onExpire, SCallback onBreak, float breakDelay)
+: CActor(uid, name, info, 0, xf, CModelData::CModelDataNull(), CMaterialList(kMT_NoStepLogic),
+         CActorParameters::None(), kInvalidUniqueId)
 , mPriority(priority)
 , mTimer(timer)
 , mBreakType(breakType)

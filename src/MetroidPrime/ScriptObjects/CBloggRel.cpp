@@ -53,7 +53,7 @@ extern "C" {
 // by what the DOL's LoadBlogg thunk calls it with - (CStateManager&, CInputStream&,
 // const CEntityInfo&) - and only its address is taken here, so the body is not needed to
 // reproduce these three functions.
-CEntity* fn_7_108(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_7_108(CStateManager&, CInputStream&, CEntityInfo&);
 
 // The DOL's loader setter, 0x80218B08; see the note at the top.
 void fn_80218B08(FScriptLoader* loader);

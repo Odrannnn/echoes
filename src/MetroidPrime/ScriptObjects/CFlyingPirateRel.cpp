@@ -80,7 +80,7 @@
 // The two callees are named by what they are, not invented:
 //   - `fn_80218A04` is the DOL's 0x80218A04, two instructions, `stw r3, gLoader_FlyingPirate; blr`
 //     (`build/G2ME01/asm/` disassembly via tools/dis.sh), immediately after
-//     `LoadGrenchler__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x80218A0C, which is
+//     `LoadGrenchler__FR13CStateManagerR12CInputStreamR11CEntityInfo` at 0x80218A0C, which is
 //     0x2C bytes and so ends exactly at 0x80218A38 - the next function. So it stores the
 //     *address* of a loader slot, not a loader, which is why the store below hands it
 //     `&lbl_22_bss_58` and why that slot is four bytes wide. `src/MetroidPrime/ScriptLoader/
@@ -148,7 +148,7 @@ public:
 extern "C" {
 // fn_22_5D4, the module's own entity loader, 0x5D4, 0x90C: left retail, named here only so the
 // registration below can store its address.
-CEntity* fn_22_5D4(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_22_5D4(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80218A04(FScriptLoader* loader);
 // .text 0xAA48, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line.
 void fn_22_AA48(void* out, const CAABox& box);

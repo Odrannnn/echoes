@@ -162,7 +162,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_56_DC(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_56_DC(CStateManager&, CInputStream&, CEntityInfo&);
 
 #ifdef __MWERKS__
 extern SSandworm_FuncPtrs lbl_56_bss_38;

@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (217)
+## other game methods (214)
 
 - `_Z10TCastToPtrI11CScriptDockEPT_P7CEntity`
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
@@ -15,11 +15,12 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
 - `_Z10TCastToPtrI7CPlayerEPT_P7CEntity`
 - `_Z10TCastToPtrI7CPlayerEPT_R7CEntity`
+- `_Z10TCastToPtrI9CGameHintEPT_P7CEntity`
 - `_Z11fn_80041518R11queryOutputRN4rstl10bit_vectorINS1_17rmemory_allocatorEEEt`
-- `_Z14ReadPlayerItemRiR12CInputStream`
+- `_Z14LdrToModelDataRK9CVector3fjRK16SLdrAnimationSetb`
 - `_Z15LdrToDamageInfoRK14SLdrDamageInfo`
 - `_Z16LdrToTransform4fRK20SLdrEditorProperties`
-- `_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamRK11CEntityInfo`
+- `_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamR11CEntityInfo`
 - `_Z19LdrToEchoParametersRK18SLdrEchoParameters`
 - `_Z20LdrToActorParametersRK19SLdrActorParameters`
 - `_Z25FindMinMaxConnectionTimesRKN4rstl6vectorI14SLdrConnectionNS_17rmemory_allocatorEEE`
@@ -93,10 +94,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN15CSaveGameScreenC1E12ESaveContextm`
 - `_ZN15CSaveGameScreenD1Ev`
 - `_ZN15CTweakPlayerRes16ResolveResourcesEv`
-- `_ZN16CActorParametersC1Ev`
 - `_ZN16CCollidableAABoxD1Ev`
-- `_ZN16CLightParametersC1Ev`
-- `_ZN16CPASAnimParmDataC1EN3pas15EAnimationStateERK12CPASAnimParmS4_S4_S4_S4_S4_S4_S4_`
 - `_ZN16CPlayerCameraBob10ReadTweaksERK18SLdrTweakCameraBob`
 - `_ZN17CAnimationManagerD1Ev`
 - `_ZN17CCharacterFactoryC1ER11CSimplePoolRK12TLockedTokenI17CAnimCharacterSetEj`
@@ -110,8 +108,8 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN17CDSPStreamManager7CanStopEi`
 - `_ZN17CParticleElectricC1E6TTokenI20CElectricDescriptionE`
 - `_ZN17CPortalTransitionD1Ev`
-- `_ZN17CTextRenderBufferD1Ev`
 - `_ZN18CAreaRenderOctTreeC1ERKN4rstl8auto_ptrIKhEE`
+- `_ZN18CFluidPlaneManager12CreateSplashE9TUniqueIdR13CStateManagerRK12CScriptWaterRK9CVector3ffb`
 - `_ZN18CStaticGeometryMapC1ERK12TLockedTokenI22CStaticGeometryMapDataE`
 - `_ZN18CTextExecuteBuffer10BeginBlockEiiiib14ETextDirection14EJustification22EVerticalJustification`
 - `_ZN18CTextExecuteBuffer7AddFontERK6TTokenI11CRasterFontE`
@@ -194,7 +192,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CMapWorld22SetWhichMapAreasLoadedERK6IWorldii`
 - `_ZNK10CTweakGame27GetHardModeDamageMultiplierEv`
 - `_ZNK10CTweakGame27GetHardModeWeaponMultiplierEv`
-- `_ZNK10CWeaponMgr12GetNumActiveE9TUniqueId11EWeaponType`
 - `_ZNK11CGameCamera20ConvertToScreenSpaceERK9CVector3f`
 - `_ZNK11CGameCamera6GetFovEv`
 - `_ZNK11CPVSAreaSet18GetEntityIdByIndexEj`
@@ -210,9 +207,9 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK13CStateManager26DisplayAlertAboutOutOfAmmoERK7CPlayerN12CPlayerState9EItemTypeE`
 - `_ZNK14CBodyStateInfo15GetCurrentStateEv`
 - `_ZNK15CMaterialFilter6PassesERK13CMaterialList`
-- `_ZNK16CLightParameters15MakeActorLightsEv`
 - `_ZNK16CPlayerTargeting18GetScanTargetIndexERK13CStateManager9TUniqueId`
 - `_ZNK17CTextRenderBuffer6RenderERK6CColorf`
+- `_ZNK18CFluidPlaneManager22GetLastSplashDeltaTimeE9TUniqueId`
 - `_ZNK18CTextExecuteBuffer17BuildRenderBufferEv`
 - `_ZNK19CInGameTweakManager13GetTweakValueERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK19CInGameTweakManager13HasTweakValueERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
@@ -226,7 +223,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK8CTexture4LoadE10GXTexMapIDNS_10EClampModeE`
 - `_ZNK9CMapWorld19IsMapAreasStreamingEv`
 
-## unmangled: fn_/lbl_/globals (56)
+## unmangled: fn_/lbl_/globals (55)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -284,16 +281,15 @@ See `port_link_gap.md` for what the groups mean.
 - `lbl_8041A3C0`
 - `lbl_8041C4F4`
 
-## REL module loaders (8)
+## REL module loaders (7)
 
 - `_Z10LoadCAABoxR13CStateManagerRK7TAreaIdRK9CVector3fS6_`
-- `_Z13LoadModelDataRK9CVector3fjRK23SLdrAnimationParametersb`
-- `_Z18LoadAreaAttributesR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z21LoadTypedefDamageInfoR14SLdrDamageInfoR12CInputStream`
+- `_Z21LoadTypedefPlayerItemR14SLdrPlayerItemR12CInputStream`
+- `_Z23LoadTypedefAnimationSetR16SLdrAnimationSetR12CInputStream`
 - `_Z25LoadTypedefEchoParametersR18SLdrEchoParametersR12CInputStream`
 - `_Z26LoadTypedefActorParametersR19SLdrActorParametersR12CInputStream`
-- `_Z31LoadTypedefSLdrCameraShakerDataR20SLdrCameraShakerDataR12CInputStream`
-- `_Z34LoadTypedefSLdrAnimationParametersR23SLdrAnimationParametersR12CInputStream`
+- `_Z27LoadTypedefCameraShakerDataR20SLdrCameraShakerDataR12CInputStream`
 
 ## static data members (5)
 

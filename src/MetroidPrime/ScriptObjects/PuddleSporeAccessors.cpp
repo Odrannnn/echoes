@@ -1,7 +1,7 @@
 // PuddleSporeAccessors.cpp - a carve of PuddleSpore's .text 0x0002F0..0x00038C, 14 short accessors.
 //
 // The class is unnamed in retail - the only name the module's loader has is
-// `LoadPuddleSpore__FR13CStateManagerR12CInputStreamRC11CEntityInfo` in the DOL, which is named after
+// `LoadPuddleSpore__FR13CStateManagerR12CInputStreamR11CEntityInfo` in the DOL, which is named after
 // the module and not the type - so, as in `CScriptWallCrawler.cpp`, `CScriptMetaree.cpp`,
 // `CScriptPuffer.cpp` and `CScriptCoinTouchBounds.cpp`, the object is reached as a `void*` and
 // the offsets are stated literally.  That keeps the unit layout-immune: it reads members

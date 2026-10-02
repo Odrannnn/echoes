@@ -140,7 +140,7 @@ extern "C" const unsigned short kInvalidUniqueId;
 
 // fn_39_190, the module's own entity loader, 0x190, 0x5A8: left retail, named here only so the
 // registration below can store its address.
-CEntity* fn_39_190(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_39_190(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80218BFC(FScriptLoader* loader);
 
 #ifdef __MWERKS__

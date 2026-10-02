@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_FrontEndDataNetwork;
 
-CEntity* LoadFrontEndDataNetwork(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadFrontEndDataNetwork(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_FrontEndDataNetwork.value)(mgr, input, info);
 }

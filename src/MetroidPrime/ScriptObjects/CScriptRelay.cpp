@@ -14,7 +14,7 @@
 // the stack at r1+16, a two-case property loop, `operator new`(0x28), one four-argument
 // constructor call, and the `SLdrEditorProperties` destructor. `sldrThis.oneShot` is the
 // byte at r1+76 = 0x4c, which is `SLdrEditorProperties` (0x3c) into the aggregate.
-CEntity* LoadRelay(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadRelay(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   SLdrRelay sldrThis;
   sldrThis.oneShot = false;
 

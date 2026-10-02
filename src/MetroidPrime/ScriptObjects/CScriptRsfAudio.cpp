@@ -24,7 +24,7 @@ extern FScriptLoader lbl_65_bss_0;
 #else
 FScriptLoader lbl_65_bss_0 = 0;
 #endif
-CEntity* fn_65_FC(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_65_FC(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80227B2C(FScriptLoader*);
 
 void fn_65_CC() {

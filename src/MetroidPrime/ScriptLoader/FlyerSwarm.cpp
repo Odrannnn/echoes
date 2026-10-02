@@ -16,6 +16,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_FlyerSwarm;
 
-CEntity* LoadFlyerSwarm(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadFlyerSwarm(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_FlyerSwarm.value)(mgr, input, info);
 }

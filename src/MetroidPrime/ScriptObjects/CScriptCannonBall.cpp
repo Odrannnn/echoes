@@ -15,7 +15,7 @@ CScriptCannonBall::CScriptCannonBall(TUniqueId uid, const rstl::string& name,
                                      const CEntityInfo& info, const CTransform4f& xf,
                                      CAssetId effect)
 
-: CActor(uid, name, info, 0, xf, CModelData(), CMaterialList(), CActorParameters(),
+: CActor(uid, name, info, 0, xf, CModelData(), CMaterialList(), CActorParameters::None(),
          kInvalidUniqueId)
 , m_effect(effect) {}
 
@@ -162,31 +162,10 @@ void CScriptCannonBall::TrackedShot::FreeScriptObject(CStateManager& mgr) {
   mgr.DeleteObjectRequest(m_scriptObject);
 }
 
-CTransform4f LdrToTransform4f(const SLdrEditorProperties&);
 
-// Retail has this one out of line, in this REL (__dt__14SLdrCannonBallFv at .text 0x1F8).
-SLdrCannonBall::~SLdrCannonBall() {}
-
-CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   SLdrCannonBall sldrThis;
-
-  int propertyCount = input.ReadUint16();
-  for (int i = 0; i < propertyCount; ++i) {
-    uint propertyId = (uint)input.ReadInt32();
-    u16 propertySize = input.ReadUint16();
-
-    switch (propertyId) {
-    case 0x255a4580:
-      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
-      break;
-    case 0xb68c6d96:
-      sldrThis.effect = input.ReadInt32();
-      break;
-    default:
-      input.ReadBytes(nullptr, propertySize);
-      break;
-    }
-  }
+#include "MetroidPrime/ScriptLoader/SLdrCannonBall.inc"
 
   return new CScriptCannonBall(mgr.AllocateUniqueId(), sldrThis.editorProperties.name,
                                LdrToEntityInfo(info, sldrThis.editorProperties),

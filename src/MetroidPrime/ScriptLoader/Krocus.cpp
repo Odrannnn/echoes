@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_Krocus;
 
-CEntity* LoadKrocus(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadKrocus(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_Krocus.value)(mgr, input, info);
 }

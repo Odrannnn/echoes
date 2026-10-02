@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_Rezbit;
 
-CEntity* LoadRezbit(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadRezbit(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_Rezbit.value)(mgr, input, info);
 }

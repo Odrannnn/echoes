@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_Sandworm;
 
-CEntity* LoadSandworm(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadSandworm(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_Sandworm.value)(mgr, input, info);
 }

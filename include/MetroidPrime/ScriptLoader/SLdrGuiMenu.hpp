@@ -17,6 +17,12 @@ struct SLdrGuiMenu {
   int selectionChangedSound; // 0xbe50269e
 };
 
-void LoadTypedefSLdrGuiMenu(SLdrGuiMenu& data, CInputStream& input);
+inline SLdrGuiMenu::SLdrGuiMenu() : editorProperties(), widgetProperties(), selectionChangedSound(-1) {
+  editorProperties.active = false;
+  controlDirection = 0;
+  wrapSelection = true;
+}
+
+inline SLdrGuiMenu::~SLdrGuiMenu() {}
 
 #endif

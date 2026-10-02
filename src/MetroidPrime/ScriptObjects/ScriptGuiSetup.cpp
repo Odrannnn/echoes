@@ -4,11 +4,11 @@ class CInputStream;
 class CStateManager;
 class CEntityInfo;
 
-extern "C" CEntity* fn_60_6FF0(CStateManager&, CInputStream&, const CEntityInfo&);
-extern "C" CEntity* fn_60_A30(CStateManager&, CInputStream&, const CEntityInfo&);
-extern "C" CEntity* fn_60_8E90(CStateManager&, CInputStream&, const CEntityInfo&);
-extern "C" CEntity* fn_60_7D20(CStateManager&, CInputStream&, const CEntityInfo&);
-extern "C" CEntity* fn_60_B8(CStateManager&, CInputStream&, const CEntityInfo&);
+extern "C" CEntity* fn_60_6FF0(CStateManager&, CInputStream&, CEntityInfo&);
+extern "C" CEntity* fn_60_A30(CStateManager&, CInputStream&, CEntityInfo&);
+extern "C" CEntity* fn_60_8E90(CStateManager&, CInputStream&, CEntityInfo&);
+extern "C" CEntity* fn_60_7D20(CStateManager&, CInputStream&, CEntityInfo&);
+extern "C" CEntity* fn_60_B8(CStateManager&, CInputStream&, CEntityInfo&);
 
 extern "C" {
 GUILoaders gGUILoaders;

@@ -16,6 +16,12 @@ struct SLdrTriggerEllipsoid {
   bool deactivateOnExit; // 0x1c453986
 };
 
-void LoadTypedefSLdrTriggerEllipsoid(SLdrTriggerEllipsoid& data, CInputStream& input);
+inline SLdrTriggerEllipsoid::SLdrTriggerEllipsoid() : editorProperties(), trigger() {
+  editorProperties.unknown_0x5d298a43 = 0x00000003u;
+  deactivateOnEnter = false;
+  deactivateOnExit = false;
+}
+
+inline SLdrTriggerEllipsoid::~SLdrTriggerEllipsoid() {}
 
 #endif

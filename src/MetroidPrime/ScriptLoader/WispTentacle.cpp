@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_WispTentacle;
 
-CEntity* LoadWispTentacle(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadWispTentacle(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_WispTentacle.value)(mgr, input, info);
 }

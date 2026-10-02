@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_DarkTrooper;
 
-CEntity* LoadDarkTrooper(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadDarkTrooper(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_DarkTrooper.value)(mgr, input, info);
 }

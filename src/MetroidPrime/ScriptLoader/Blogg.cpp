@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_Blogg;
 
-CEntity* LoadBlogg(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadBlogg(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_Blogg.value)(mgr, input, info);
 }

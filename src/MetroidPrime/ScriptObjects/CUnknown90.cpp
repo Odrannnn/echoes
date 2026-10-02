@@ -54,7 +54,7 @@ extern "C" const float lbl_8041D648 = 1.0f;
 // the `SLdrEditorProperties` destructor; the loop has exactly two properties. The
 // frame is 112 bytes with r26-r31 saved, which is what mwcceppc emits for this
 // source shape - the same shape as LoadAreaProperties and LoadStreamedAudio.
-CEntity* LoadTimeKeyframe(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadTimeKeyframe(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   SLdrTimeKeyframe sldrThis;
   // The default has to live in the struct rather than in a bare local: a bare local
   // is register-cached by mwcceppc (it kept ours in f31 and grew the frame to 128),

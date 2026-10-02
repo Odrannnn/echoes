@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_SpankWeed;
 
-CEntity* LoadSpankWeed(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadSpankWeed(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_SpankWeed.value)(mgr, input, info);
 }

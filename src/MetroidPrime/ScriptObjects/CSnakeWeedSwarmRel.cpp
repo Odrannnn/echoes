@@ -116,7 +116,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_71_DC(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_71_DC(CStateManager&, CInputStream&, CEntityInfo&);
 
 #ifdef __MWERKS__
 extern SSnakeWeedSwarm_FuncPtrs lbl_71_bss_40;

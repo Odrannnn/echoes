@@ -55,7 +55,7 @@ CScriptEffect::CScriptEffect(
     bool dieWhenSystemsDone, const CGameSplineDesc& spline, bool useLocalTranslation,
     bool destroyParticlesOnDeactivate, bool orientToSpline, ERenderOrder renderOrder)
 : CActor(uid, name, info, 0, xf, CModelData(), CMaterialList(kMT_NoStepLogic),
-         CActorParameters().WithAlphaSorting(true), kInvalidUniqueId)
+         CActorParameters::None().WithAlphaSorting(true), kInvalidUniqueId)
 , mLightId(kInvalidUniqueId)
 , mEffectId(effectId)
 , mRateInverseCamDist(rateInverseCamDist)
@@ -394,7 +394,7 @@ void CScriptEffect::PreRender(CStateManager& mgr) {
     case kRO_Normal:
       break;
     case kRO_Queue2:
-      mgr.fn_80037984(TUniqueId(id));
+      mgr.RenderLast(TUniqueId(id));
       break;
     case kRO_Queue1:
       mgr.fn_80037A04(id);

@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_EyeBall;
 
-CEntity* LoadEyeBall(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadEyeBall(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_EyeBall.value)(mgr, input, info);
 }

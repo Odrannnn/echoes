@@ -4,7 +4,7 @@
 void SetLoader_RiftPortal(FScriptLoader* loader);
 
 extern CEntity* REL_LoadRiftPortal(CStateManager& mgr, CInputStream& input,
-                                   const CEntityInfo& info);
+                                   CEntityInfo& info);
 
 // Host-only initialiser; see CScriptPufferRel.cpp. MWCC keeps the retail common symbol.
 #ifdef __MWERKS__

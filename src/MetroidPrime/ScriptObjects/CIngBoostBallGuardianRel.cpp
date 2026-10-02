@@ -129,7 +129,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_30_130(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_30_130(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_8022FFC4(FScriptLoader* loader);
 
 #ifdef __MWERKS__

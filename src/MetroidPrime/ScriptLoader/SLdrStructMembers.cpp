@@ -69,6 +69,8 @@
 #include "MetroidPrime/ScriptLoader/Structs/SLdrIngPossessionData.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrDamageVulnerability.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrHealthInfo.hpp"
+#include "MetroidPrime/ScriptLoader/Structs/SLdrAnimationSet.hpp"
+#include "MetroidPrime/ScriptLoader/Structs/SLdrPlayerItem.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrPickup.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrSequenceTimer.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrTweakPlayer.hpp"
@@ -111,22 +113,12 @@ SLdrDamageInfo::~SLdrDamageInfo() {}
 SLdrEchoParameters::SLdrEchoParameters() {}
 SLdrEchoParameters::~SLdrEchoParameters() {}
 
-// --- include/MetroidPrime/ScriptLoader/SLdrSequenceTimer.hpp - 2 classes ---
-// Retail constructs neither out of line; SLdrSequenceTimer has a 100-byte __dt__ and no __ct__.
-SLdrConnection::SLdrConnection() {}
-SLdrConnection::~SLdrConnection() {}
-
-SLdrSequenceTimer::SLdrSequenceTimer() {}
-SLdrSequenceTimer::~SLdrSequenceTimer() {}
-
 // --- Loader structs upstream's ScriptObjects TUs construct (2026-09-28 merge) ---
 // Retail defines none of these names out of line (no __ct__/__dt__ in any symbols.txt); upstream's
 // CScriptAreaProperties/HUDMemo/Relay/StreamedMusic/TimeKeyframe loaders construct one on the stack.
-SLdrAreaAttributes::SLdrAreaAttributes() {}
-SLdrAreaAttributes::~SLdrAreaAttributes() {}
 
-SLdrHUDMemo::SLdrHUDMemo() {}
-SLdrHUDMemo::~SLdrHUDMemo() {}
+// Since the ninth sync (2026-10-02) upstream defines the AreaAttributes, Connection, SequenceTimer,
+// HUDMemo, CannonBall and Pickup constructors inline in their headers, so they are gone from here.
 
 SLdrRelay::SLdrRelay() {}
 SLdrRelay::~SLdrRelay() {}
@@ -148,14 +140,8 @@ SLdrWeaponVulnerability::~SLdrWeaponVulnerability() {}
 SLdrDamageVulnerability::SLdrDamageVulnerability() {}
 SLdrDamageVulnerability::~SLdrDamageVulnerability() {}
 
-// --- include/MetroidPrime/ScriptLoader/SLdrCannonBall.hpp ---
-// Only the constructor lives here: retail has no __ct__14SLdrCannonBallFv, but it does have the
-// destructor, in the ScriptCannonBall REL, so CScriptCannonBall.cpp defines that one.
-SLdrCannonBall::SLdrCannonBall() {}
-
 // --- include/MetroidPrime/ScriptLoader/SLdrPickup.hpp ---
-// Retail has a 328-byte __ct__10SLdrPickupFv and no __dt__ at all.
-SLdrPickup::SLdrPickup() {}
+// Retail has no __dt__ at all; the constructor is inline in upstream's header.
 SLdrPickup::~SLdrPickup() {}
 
 // --- include/MetroidPrime/ScriptLoader/Structs/SLdrCameraShakerData.hpp ---
@@ -175,7 +161,7 @@ SLdrScannableParameters::~SLdrScannableParameters() {}
 
 // --- include/MetroidPrime/ScriptLoader/SLdrAreaAttributes.hpp ---
 // Retail has no SLdrAreaAttributes type at all; its area attributes are loaded by
-// LoadAreaAttributes(CStateManager&, CInputStream&, const CEntityInfo&). See the note in
+// LoadAreaAttributes(CStateManager&, CInputStream&, CEntityInfo&). See the note in
 // docs/research/sldr_ctors.md - the type is the loader generator's, and its layout is unverified.
 // Its constructor and destructor are deliberately NOT defined here: retail's loader at 0x8013C2E4
 // calls __ct__20SLdrEditorPropertiesFv on the member in place and __dt__20SLdrEditorPropertiesFv
@@ -186,3 +172,12 @@ SLdrScannableParameters::~SLdrScannableParameters() {}
 // Nothing to define: SLdrSpline::SLdrSpline() is in src/Kyoto/Math/CMayaSpline.cpp (Matching),
 // and upstream's header defines ~SLdrSpline() inline and leaves the copy assignment implicit -
 // retail has neither __dt__10SLdrSplineFv nor an __as__ for the type.
+
+// --- Structs/SLdrAnimationSet.hpp, Structs/SLdrPlayerItem.hpp (ninth sync, 2026-10-02) ---
+// Upstream's names for what this file knew as SLdrAnimationParameters and a bare int;
+// CScriptPickup.cpp constructs both on the host.
+SLdrAnimationSet::SLdrAnimationSet() {}
+SLdrAnimationSet::~SLdrAnimationSet() {}
+
+SLdrPlayerItem::SLdrPlayerItem() {}
+SLdrPlayerItem::~SLdrPlayerItem() {}

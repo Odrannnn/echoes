@@ -16,6 +16,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_RsfAudio;
 
-CEntity* LoadRsfAudio(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadRsfAudio(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_RsfAudio.value)(mgr, input, info);
 }

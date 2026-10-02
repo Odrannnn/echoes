@@ -80,7 +80,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_33_A8(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_33_A8(CStateManager&, CInputStream&, CEntityInfo&);
 // The import is named the way retail's symbol table names it. `SetLoader_IngSnatchingSwarm` is
 // what the C++ function is called in `src/MetroidPrime/ScriptLoaderRel.cpp`, and MWCC mangles that
 // one into the long name because the `FScriptLoader*` parameter is a function-pointer typedef -
@@ -90,7 +90,7 @@ CEntity* fn_33_A8(CStateManager&, CInputStream&, const CEntityInfo&);
 //   Failed to find symbol SetLoader_IngSnatchingSwarm in any module
 // whereas the long one is what the module imports (it is in the preplf's import list and in
 // `config/G2ME01/symbols.txt:9529` at 0x8021BA8C).
-void SetLoader_IngSnatchingSwarm__FPPFR13CStateManagerR12CInputStreamRC11CEntityInfo_P7CEntity(
+void SetLoader_IngSnatchingSwarm__FPPFR13CStateManagerR12CInputStreamR11CEntityInfo_P7CEntity(
     FScriptLoader* loader);
 
 #ifdef __MWERKS__
@@ -101,7 +101,7 @@ FScriptLoader lbl_33_bss_0 = 0;
 
 void fn_33_78() {
   lbl_33_bss_0 = fn_33_A8;
-  SetLoader_IngSnatchingSwarm__FPPFR13CStateManagerR12CInputStreamRC11CEntityInfo_P7CEntity(
+  SetLoader_IngSnatchingSwarm__FPPFR13CStateManagerR12CInputStreamR11CEntityInfo_P7CEntity(
       &lbl_33_bss_0);
 }
 
@@ -119,13 +119,13 @@ void fn_33_78() {
 void RELMain() { fn_33_78(); }
 
 void RELExit() {
-  SetLoader_IngSnatchingSwarm__FPPFR13CStateManagerR12CInputStreamRC11CEntityInfo_P7CEntity(nullptr);
+  SetLoader_IngSnatchingSwarm__FPPFR13CStateManagerR12CInputStreamR11CEntityInfo_P7CEntity(nullptr);
 }
 #else
 void mp_relmain_ingsnatchingswarm() { fn_33_78(); }
 
 void mp_relexit_ingsnatchingswarm() {
-  SetLoader_IngSnatchingSwarm__FPPFR13CStateManagerR12CInputStreamRC11CEntityInfo_P7CEntity(nullptr);
+  SetLoader_IngSnatchingSwarm__FPPFR13CStateManagerR12CInputStreamR11CEntityInfo_P7CEntity(nullptr);
 }
 #endif
 

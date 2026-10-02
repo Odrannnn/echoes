@@ -251,7 +251,7 @@ void CCameraManager::UpdateCameraTriggers(TUniqueId uid, CStateManager& mgr) {
 }
 
 void CCameraManager::Update(float dt, CStateManager& mgr) {
-  mCameraHintManager->Update(dt);
+  mCameraHintManager->Update(dt, mgr);
   UpdateCameras(dt, mgr);
   UpdateAudioListener(mgr);
   mCameraShakeManager->Update(dt, mgr);

@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_IngPuddle;
 
-CEntity* LoadIngPuddle(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadIngPuddle(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_IngPuddle.value)(mgr, input, info);
 }

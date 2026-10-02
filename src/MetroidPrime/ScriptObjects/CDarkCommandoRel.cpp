@@ -161,7 +161,7 @@ extern "C" const float lbl_3_rodata_0;
 
 // fn_3_19C, the module's own entity loader, 0x19C, 0x33C: left retail, named here only so the
 // registration below can store its address.
-CEntity* fn_3_19C(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_3_19C(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80235E00(FScriptLoader* loader);
 
 #ifdef __MWERKS__

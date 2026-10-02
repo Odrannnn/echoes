@@ -33,7 +33,7 @@
 //     `src/MetroidPrime/ScriptObjects/CGeomBlobV2Rel.cpp:37-41` already names this setter.
 //
 // The word at +0 of each slot is a `FScriptLoader`, i.e.
-// `CEntity* (*)(CStateManager&, CInputStream&, const CEntityInfo&)`
+// `CEntity* (*)(CStateManager&, CInputStream&, CEntityInfo&)`
 // (`include/MetroidPrime/ScriptLoader.hpp:13`), which is what the reader uses: the claim
 // immediately below is `MetroidPrime/ScriptLoader/Krocus.cpp` (.text 0x802274C8..0x802274F4),
 // whose `LoadKrocus` is `(*gLoader_Krocus.value)(mgr, input, info)` - it loads the slot's word

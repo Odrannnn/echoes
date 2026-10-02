@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_DarkCommando;
 
-CEntity* LoadDarkCommando(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadDarkCommando(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_DarkCommando.value)(mgr, input, info);
 }

@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_BacteriaSwarm;
 
-CEntity* LoadBacteriaSwarm(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadBacteriaSwarm(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_BacteriaSwarm.value)(mgr, input, info);
 }

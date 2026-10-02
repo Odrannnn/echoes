@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_Ings;
 
-CEntity* LoadIngs(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadIngs(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_Ings.value)(mgr, input, info);
 }

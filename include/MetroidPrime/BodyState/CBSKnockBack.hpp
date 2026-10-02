@@ -18,6 +18,8 @@ private:
   float mCurTime;
   float mRotateSpeed;
   float mRemTime;
+
+  pas::EAnimationState GetBodyStateTransition(float dt, CBodyController& bc);
 };
 CHECK_SIZEOF(CBSKnockBack, 0x10)
 

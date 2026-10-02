@@ -66,7 +66,7 @@
 // The two callees are named by what they are, not invented:
 //   - `fn_80218C30` is the DOL's 0x80218C30, two instructions,
 //     `stw r3, gLoader_Shrieker@sda21(r0); blr` (`build/G2ME01/asm/auto_03_80218C30_text.s`),
-//     immediately after `LoadShrieker__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at
+//     immediately after `LoadShrieker__FR13CStateManagerR12CInputStreamR11CEntityInfo` at
 //     0x80218C04, which is 0x2C bytes and so ends exactly at 0x80218C30. So it stores the
 //     *address* of a loader slot, not a loader. `src/MetroidPrime/ScriptLoader/Shrieker.cpp` (a
 //     `Matching` unit) reads it as a loader pointer to call, which is why the store below hands
@@ -128,7 +128,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_69_154(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_69_154(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_80218C30(FScriptLoader* loader);
 // .text 0x6EE4, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line.
 void fn_69_6EE4(void* out, const CAABox& box);

@@ -38,7 +38,7 @@ extern "C" float sqrt__Ff(float x);
 // undefined symbols and the flip cannot link. `SetDepthRange` is what writes them - `stfs
 // f5,-25624(r13); stfs f6,-29328(r13)` (`tools/dis.sh 0x802BFA38 0xA0`, resolved with
 // `tools/sda.py s:-0x6418` / `s:-0x7290`) - so these are the same two words.
-extern "C" float lbl_80419968; // CGraphics::mDepthNear
+extern "C" float mDepthNear__9CGraphics; // CGraphics::mDepthNear (named by upstream; was lbl_80419968)
 extern "C" float mDepthFar__9CGraphics; // CGraphics::mDepthFar
 
 extern "C" const char lbl_803A8AB0[];
@@ -125,7 +125,7 @@ void CWorldShadow::BuildLightShadowTexture(const CStateManager& mgr, TAreaId are
   gpRender->PrepareWorldRendering(&areaSet, 1, frustum, nullptr, rstl::vector< CLight >(), nullptr,
                                   0);
 
-  const float depthNear = lbl_80419968;
+  const float depthNear = mDepthNear__9CGraphics;
   const float depthFar = mDepthFar__9CGraphics;
   CGraphics::SetDepthRange(0.f, 1.f);
   // Upstream's four separate reads, not one `const CViewport` copy: retail loads only the four

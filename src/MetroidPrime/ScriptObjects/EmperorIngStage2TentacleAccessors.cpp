@@ -1,7 +1,7 @@
 // EmperorIngStage2TentacleAccessors.cpp - a carve of EmperorIngStage2Tentacle's .text 0x000000..0x00009C, 14 short accessors.
 //
 // The class is unnamed in retail - the only name the module's loader has is
-// `LoadEmperorIngStage2Tentacle__FR13CStateManagerR12CInputStreamRC11CEntityInfo` in the DOL, which is named after
+// `LoadEmperorIngStage2Tentacle__FR13CStateManagerR12CInputStreamR11CEntityInfo` in the DOL, which is named after
 // the module and not the type - so, as in `CScriptWallCrawler.cpp`, `CScriptMetaree.cpp`,
 // `CScriptPuffer.cpp` and `CScriptCoinTouchBounds.cpp`, the object is reached as a `void*` and
 // the offsets are stated literally.  That keeps the unit layout-immune: it reads members

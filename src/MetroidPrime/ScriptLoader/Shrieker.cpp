@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_Shrieker;
 
-CEntity* LoadShrieker(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadShrieker(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_Shrieker.value)(mgr, input, info);
 }

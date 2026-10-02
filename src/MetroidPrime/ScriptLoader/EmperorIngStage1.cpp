@@ -15,6 +15,6 @@ struct SLoaderSlot {
 
 SLoaderSlot gLoader_EmperorIngStage1;
 
-CEntity* LoadEmperorIngStage1(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CEntity* LoadEmperorIngStage1(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   return (*gLoader_EmperorIngStage1.value)(mgr, input, info);
 }

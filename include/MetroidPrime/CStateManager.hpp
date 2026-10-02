@@ -5,6 +5,8 @@ extern const int gkPVSEnabled;
 
 #include "Kyoto/Math/CFrustumPlanes.hpp"
 #include "MetroidPrime/CEntityInfo.hpp"
+#include "MetroidPrime/Cameras/CCameraBlurPass.hpp"
+#include "MetroidPrime/Cameras/CCameraFilterPass.hpp"
 #include "MetroidPrime/CFilteredObjectList.hpp"
 #include "MetroidPrime/CObjectList.hpp"
 #include "MetroidPrime/CScriptObjectLoaderHelper.hpp"
@@ -147,6 +149,9 @@ public:
 
   void AddObject(CEntity&);
   void AddObject(CEntity*);
+  bool RenderLast(TUniqueId uid);        // Guessed name.
+  bool RenderLastOverlay(const TUniqueId& uid); // Guessed name.
+  bool RenderLastHUD(const TUniqueId& uid); // Guessed name.
   void DeleteObjectRequest(TUniqueId);
   void UpdateObjectInLists(CEntity&);
   // Retail 0x80037F90 returns CWeaponMgr::GetNumActive (CPlayerGun reads it before firing).
@@ -199,6 +204,8 @@ public:
   TIdListResult GetIdListForScript(TEditorId) const;
 
   CWorld* World() { return mWorld; }
+  CWorldTransManager* WorldTransManager() const { return mWorldTransManager.GetPtr(); }
+  void QuitGame() { mQuitGame = true; }
   const CWorld* GetWorld() const { return mWorld; }
   CFluidPlaneManager* FluidPlaneManager() { return mFluidPlaneManager; }
   bool IsFullyInitialized() const { return mInitPhase == kIP_Done; }
@@ -230,6 +237,17 @@ public:
   int Get0x244c() const { return x244c; }
 
   int GetNumPlayers() const { return mNumPlayers; }
+  int GetViewportLayoutIndex() const; // Guessed name
+  typedef rstl::reserved_vector< rstl::reserved_vector< CCameraFilterPass, 11 >, 4 >
+      TCameraFilterPasses;
+  typedef rstl::reserved_vector< rstl::reserved_vector< CCameraBlurPass, 11 >, 4 >
+      TCameraBlurPasses;
+  CCameraFilterPass& CameraFilterPass(uint player, int stage) {
+    return mCameraFilterPasses[player][stage];
+  }
+  CCameraBlurPass& CameraBlurPass(uint player, int stage) {
+    return mCameraBlurPasses[player][stage];
+  }
   uint ReturnFirstIfSingleElseSecond(uint single, uint multi) const; // Guessed name.
   CPlayer* GetPlayer(int index) { return mPlayers[index]; }
   const CPlayer* GetPlayer(int index) const { return mPlayers[index]; }
@@ -268,6 +286,7 @@ public:
   void EnterSaveGameScreen() { DeferStateTransition(kSMT_SaveGame); }
   void EnterMessageScreen(uint, float);
   bool GetWantsToEnterMapScreen() const { return mDeferredTransition == kSMT_MapScreen; }
+  bool GetInMapScreen() const { return mInMapScreen; }
   bool GetWantsToEnterPauseScreen() const { return mDeferredTransition == kSMT_PauseGame; }
   void SetCinematicPause(bool paused) { mCinematicPause = paused; } // Guessed name
   void SetSkipCinematicReceiver(TUniqueId uid) { mSpecialFunctionId = uid; } // Guessed name
@@ -297,11 +316,7 @@ public:
   void fn_80036650();
   void fn_80037784();
   void fn_800362E0();
-  int fn_80036B6C() const;
-  bool fn_80037904(TUniqueId id);
   bool fn_80037944(TUniqueId id);
-  bool fn_80037984(TUniqueId id);
-  bool fn_800379C4(TUniqueId id);
   bool fn_80037A04(TUniqueId id);
   float fn_80036F78(float value);
   float fn_80038364();
@@ -374,7 +389,9 @@ public:
   char x16e8_[4];
   EGameState mGameState;
   EInitPhase mInitPhase;
-  char x16f4_[0xD40];
+  TCameraFilterPasses mCameraFilterPasses; // 0x16f4
+  TCameraBlurPasses mCameraBlurPasses;     // 0x1e98
+  char x242c_[8];
 
   CAssetId mPauseHudMessage; // 0x2434
   float mEscapeTotalTime;
@@ -412,9 +429,9 @@ public:
   // guessed `mCinematicPause` sat on the sixth field, so it moved to the third and the unnamed
   // flags shifted up one place, leaving every bit where retail has it.
   bool mUnkFlagA1 : 1;
-  bool mUnkFlagA2 : 1;
+  bool mQuitGame : 1;
   bool mCinematicPause : 1; // Guessed name; 0x294c bit 26
-  bool mUnkFlagA4 : 1;
+  bool mInMapScreen : 1;
   bool mUnkFlagA5 : 1;
   bool mUnkFlagA6 : 1;
   bool mUnkFlagA7 : 1;

@@ -53,7 +53,7 @@
 //
 // The two callees are named by what they are, not invented:
 //   - `fn_8022EC64` is the DOL's 0x8022EC64, two instructions, immediately after
-//     `LoadSwampBossStage1__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x8022EC38 (44
+//     `LoadSwampBossStage1__FR13CStateManagerR12CInputStreamR11CEntityInfo` at 0x8022EC38 (44
 //     bytes, so it ends exactly there): `stw r3, gLoader_SwampBossStage1@sda21(r0); blr`. So it
 //     stores the *address* of a loader slot, not a loader. `LoadSwampBossStage1` in
 //     `src/MetroidPrime/ScriptLoader/SwampBossStage1.cpp` (a `Matching` unit) reads it as
@@ -111,7 +111,7 @@ public:
 };
 
 extern "C" {
-CEntity* fn_78_160(CStateManager&, CInputStream&, const CEntityInfo&);
+CEntity* fn_78_160(CStateManager&, CInputStream&, CEntityInfo&);
 void fn_8022EC64(FScriptLoader* loader);
 // .text 0xBCD0, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line.
 void fn_78_BCD0(void* out, const CAABox& box);

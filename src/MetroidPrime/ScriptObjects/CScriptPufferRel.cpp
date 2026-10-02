@@ -1,6 +1,6 @@
 #include "MetroidPrime/ScriptLoader.hpp"
 
-extern "C" CEntity* REL_LoadPuffer(CStateManager&, CInputStream&, const CEntityInfo&);
+extern "C" CEntity* REL_LoadPuffer(CStateManager&, CInputStream&, CEntityInfo&);
 extern "C" {
 // The initialiser is host-only. Under `-common on` the retail form is a common symbol, and
 // this unit's split claims the module's .bss slot for it; turning it into an initialised
