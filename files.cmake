@@ -445,6 +445,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Enemies/Carve800358E0.c
     src/MetroidPrime/Carve80003858.c
     src/MetroidPrime/Carve80004010.c
+    src/MetroidPrime/Carve80004438.c
     src/MetroidPrime/Carve800045A0.c
     src/MetroidPrime/Carve80004744.c
     src/MetroidPrime/Player/Carve80004B9C.c
@@ -564,6 +565,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptObjects/Carve801E3864.c
     src/MetroidPrime/ScriptObjects/Carve801E3E34.c
     src/MetroidPrime/Cameras/Carve801E7C14.c
+    src/MetroidPrime/Cameras/Carve801E8028.c
     src/MetroidPrime/ScriptObjects/Carve801E8AEC.c
     src/MetroidPrime/Carve801F3690.c
     src/MetroidPrime/Carve801F36DC.c
@@ -575,6 +577,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptObjects/Carve801FD638.c
     src/MetroidPrime/ScriptObjects/Carve801FD8E0.c
     src/MetroidPrime/ScriptObjects/Carve801FDAA4.c
+    src/MetroidPrime/ScriptObjects/Carve801FEE40.c
     src/MetroidPrime/ScriptObjects/Carve801FEEF0.c
     src/MetroidPrime/ScriptObjects/Carve801FF4A4.c
     src/MetroidPrime/ScriptObjects/Carve801FF5A0.cpp

@@ -9,7 +9,9 @@
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   187 functions, 6 data objects (counted 2026-10-02, after the ninth upstream sync; before it, after `fn_801FD67C` was added by hand
+ *   187 functions, 6 data objects (counted 2026-10-02, after the ninth upstream sync; before it 165 and 4, after `fn_801FEE88` was added by hand
+ *   below for `Carve801FEE40.c` and `fn_801FEE40`'s stub retired in its place - an exchange, so
+ *   the total did not move; after `fn_801FD67C` was added by hand
  *   below for `Carve801FD638.c`, and after `fn_801FD8E0`'s stub was retired for
  *   `Carve801FD8E0.c` with `fn_801FD924`'s added in its place - an exchange, so the total did not
  *   move; before that 164, after `fn_80008C28` was added by hand
@@ -772,12 +774,12 @@ extern "C" void stub_178() {}
 // `docs/research/port_link_gap.md` keeps all three listed as still missing. `fn_801FD638`, the
 // third of them, was a stub here from 2026-10-02 until
 // `src/MetroidPrime/ScriptObjects/Carve801FD638.c` matched it for real, so this trade now stands
-// for two of the three symbols.
+// for two of the three symbols.  **And `fn_801FEE40` was a stub here (`stub_180`) until
+// `src/MetroidPrime/ScriptObjects/Carve801FEE40.c` claimed it for real on 2026-10-02**, so that
+// trade now stands for the allocator alone; `stub_180` is **deleted** below, because two
+// definitions of one symbol in the port's flat link is a duplicate and `tools/gate.sh` fails it.
 extern "C" void stub_179() asm("allocate__Q24rstl17rmemory_allocatorFi");
 extern "C" void stub_179() {}
-
-extern "C" void stub_180() asm("fn_801FEE40");
-extern "C" void stub_180() {}
 
 // fn_80008D68 - retail 0x80008D68, 0x80 = 128 bytes (`config/G2ME01/symbols.txt:180`), the
 // recursive node teardown of the 3-node string-keyed tree: destroy both subtrees, release the
@@ -1121,6 +1123,35 @@ extern "C" void stub_198() {}
 extern "C" void stub_199() asm("fn_801FDAE8");
 extern "C" void stub_199() {}
 
+// fn_801FEE88 - retail 0x801FEE88, 0x68 = 104 bytes (`config/G2ME01/symbols.txt:8323`), the
+// 0x24-byte element's copy constructor: store the `.data` vtable `lbl_803B7BCC` into +0x0 and then
+// the one at `lbl_803B7BFC` over it (the base constructor inside the derived one), copy-construct
+// the `rstl::basic_string` at +0x4 through
+// `__ct__Q24rstl66basic_string<...>`, and `fn_801FE8B8` over the member at +0x14. Asked for by the
+// port because `src/MetroidPrime/ScriptObjects/Carve801FEE40.c` (Matching,
+// 0x801FEE40..0x801FEE88) reproduces `fn_801FEE60` byte for byte and that body's `bl fn_801FEE88`
+// at 0x801FEE74 is in retail's bytes, so the carve cannot drop the call. This block also
+// **retires `stub_180`**: that stub stood in for `fn_801FEE40`, which the new unit now defines for
+// real, and leaving both would be two definitions of one symbol in the port's flat link. One
+// function stub out, one in - the total does not move.
+//
+// For the DOL nothing is needed: 0x801FEE88 is exactly 0x0 bytes past that unit's claim end, so it
+// stays retail's and dtk emits its own bytes from `auto_03_801FDC88_text.o` (0x801FDC88..0x801FEEF0,
+// the `auto_*` object this claim splits out of); this file is not in `configure.py`, so the stub
+// cannot reach main.dol. The port link does not carry that object, which is why its gap would grow
+// by this symbol without the block: `fn_801FEE40` was defined only by this file before the carve
+// and `fn_801FEE88` was referenced by nothing at all, so nothing was undefined for it then - the
+// carve is what makes the linker ask.
+//
+// This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
+// claim that fn_801FEE88 is decompiled - it is not. Claiming it instead only moves the same gap one
+// function along: its 0x68 bytes need the two `.data` vtables (`lbl_803B7BCC` 0x803B7BCC and
+// `lbl_803B7BFC` 0x803B7BFC, `symbols.txt:18343` and `:18347`) as well as the bodies of that
+// string constructor and `fn_801FE8B8` (0x801FE8B8, 0xC4), which are themselves unclaimed. The same
+// trade `stub_196`/`stub_197`/`stub_198`/`stub_199` above make for their carves' callees.
+extern "C" void stub_200() asm("fn_801FEE88");
+extern "C" void stub_200() {}
+
 
 // Data objects. A vtable or typeinfo stub is zero-filled: harmless to take the
 // address of, and a crash if used - which unreachable means it is not.
@@ -1132,100 +1163,100 @@ extern "C" void stub_199() {}
 // --- Ninth upstream sync (2026-10-02): names tools/link_reach.py lists in
 // docs/research/boot_path_stubbable.tsv after the sync, added by hand. ---
 // CBodyController::FaceDirection(CVector3f const&, float)
-extern "C" void stub_200() asm("_ZN15CBodyController13FaceDirectionERK9CVector3ff");
-extern "C" void stub_200() {}
-
-// CBodyController::GetAnimTimeRemaining() const
-extern "C" void stub_201() asm("_ZNK15CBodyController20GetAnimTimeRemainingEv");
+extern "C" void stub_201() asm("_ZN15CBodyController13FaceDirectionERK9CVector3ff");
 extern "C" void stub_201() {}
 
-// CBodyController::GetFallState() const
-extern "C" void stub_202() asm("_ZNK15CBodyController12GetFallStateEv");
+// CBodyController::GetAnimTimeRemaining() const
+extern "C" void stub_202() asm("_ZNK15CBodyController20GetAnimTimeRemainingEv");
 extern "C" void stub_202() {}
 
-// CBodyController::GetPASDatabase() const
-extern "C" void stub_203() asm("_ZNK15CBodyController14GetPASDatabaseEv");
+// CBodyController::GetFallState() const
+extern "C" void stub_203() asm("_ZNK15CBodyController12GetFallStateEv");
 extern "C" void stub_203() {}
 
-// CBodyController::LoopBestAnimation(CPASAnimParmData const&, CRandom16&)
-extern "C" void stub_204() asm("_ZN15CBodyController17LoopBestAnimationERK16CPASAnimParmDataR9CRandom16");
+// CBodyController::GetPASDatabase() const
+extern "C" void stub_204() asm("_ZNK15CBodyController14GetPASDatabaseEv");
 extern "C" void stub_204() {}
 
-// CBodyController::PlayBestAnimation(CPASAnimParmData const&, CRandom16&)
-extern "C" void stub_205() asm("_ZN15CBodyController17PlayBestAnimationERK16CPASAnimParmDataR9CRandom16");
+// CBodyController::LoopBestAnimation(CPASAnimParmData const&, CRandom16&)
+extern "C" void stub_205() asm("_ZN15CBodyController17LoopBestAnimationERK16CPASAnimParmDataR9CRandom16");
 extern "C" void stub_205() {}
 
-// CBodyController::SetCurrentAnimation(CAnimPlaybackParms const&, bool, bool)
-extern "C" void stub_206() asm("_ZN15CBodyController19SetCurrentAnimationERK18CAnimPlaybackParmsbb");
+// CBodyController::PlayBestAnimation(CPASAnimParmData const&, CRandom16&)
+extern "C" void stub_206() asm("_ZN15CBodyController17PlayBestAnimationERK16CPASAnimParmDataR9CRandom16");
 extern "C" void stub_206() {}
 
-// CBodyController::SetDeltaRotation(CQuaternion const&)
-extern "C" void stub_207() asm("_ZN15CBodyController16SetDeltaRotationERK11CQuaternion");
+// CBodyController::SetCurrentAnimation(CAnimPlaybackParms const&, bool, bool)
+extern "C" void stub_207() asm("_ZN15CBodyController19SetCurrentAnimationERK18CAnimPlaybackParmsbb");
 extern "C" void stub_207() {}
 
-// CBodyController::SetFallState(pas::EFallState)
-extern "C" void stub_208() asm("_ZN15CBodyController12SetFallStateEN3pas10EFallStateE");
+// CBodyController::SetDeltaRotation(CQuaternion const&)
+extern "C" void stub_208() asm("_ZN15CBodyController16SetDeltaRotationERK11CQuaternion");
 extern "C" void stub_208() {}
 
-// CElementGen::IsIndirectTextured() const
-extern "C" void stub_209() asm("_ZNK11CElementGen18IsIndirectTexturedEv");
+// CBodyController::SetFallState(pas::EFallState)
+extern "C" void stub_209() asm("_ZN15CBodyController12SetFallStateEN3pas10EFallStateE");
 extern "C" void stub_209() {}
 
-// CHUDBillboardEffect::TypesMatch(int) const
-extern "C" void stub_210() asm("_ZNK19CHUDBillboardEffect10TypesMatchEi");
+// CElementGen::IsIndirectTextured() const
+extern "C" void stub_210() asm("_ZNK11CElementGen18IsIndirectTexturedEv");
 extern "C" void stub_210() {}
 
-// CScriptCounter::TypesMatch(int) const
-extern "C" void stub_211() asm("_ZNK14CScriptCounter10TypesMatchEi");
+// CHUDBillboardEffect::TypesMatch(int) const
+extern "C" void stub_211() asm("_ZNK19CHUDBillboardEffect10TypesMatchEi");
 extern "C" void stub_211() {}
 
-// CScriptSpiderBallWaypoint::TypesMatch(int) const
-extern "C" void stub_212() asm("_ZNK25CScriptSpiderBallWaypoint10TypesMatchEi");
+// CScriptCounter::TypesMatch(int) const
+extern "C" void stub_212() asm("_ZNK14CScriptCounter10TypesMatchEi");
 extern "C" void stub_212() {}
 
-// CScriptSwitch::TypesMatch(int) const
-extern "C" void stub_213() asm("_ZNK13CScriptSwitch10TypesMatchEi");
+// CScriptSpiderBallWaypoint::TypesMatch(int) const
+extern "C" void stub_213() asm("_ZNK25CScriptSpiderBallWaypoint10TypesMatchEi");
 extern "C" void stub_213() {}
 
-// CScriptTimer::TypesMatch(int) const
-extern "C" void stub_214() asm("_ZNK12CScriptTimer10TypesMatchEi");
+// CScriptSwitch::TypesMatch(int) const
+extern "C" void stub_214() asm("_ZNK13CScriptSwitch10TypesMatchEi");
 extern "C" void stub_214() {}
 
-// CScriptWaypoint::TypesMatch(int) const
-extern "C" void stub_215() asm("_ZNK15CScriptWaypoint10TypesMatchEi");
+// CScriptTimer::TypesMatch(int) const
+extern "C" void stub_215() asm("_ZNK12CScriptTimer10TypesMatchEi");
 extern "C" void stub_215() {}
 
-// LoadAreaAttributes(CStateManager&, CInputStream&, CEntityInfo&)
-extern "C" void stub_216() asm("_Z18LoadAreaAttributesR13CStateManagerR12CInputStreamR11CEntityInfo");
+// CScriptWaypoint::TypesMatch(int) const
+extern "C" void stub_216() asm("_ZNK15CScriptWaypoint10TypesMatchEi");
 extern "C" void stub_216() {}
 
-// LoadCameraBlurKeyframe(CStateManager&, CInputStream&, CEntityInfo&)
-extern "C" void stub_217() asm("_Z22LoadCameraBlurKeyframeR13CStateManagerR12CInputStreamR11CEntityInfo");
+// LoadAreaAttributes(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_217() asm("_Z18LoadAreaAttributesR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_217() {}
 
-// LoadCameraFilterKeyframe(CStateManager&, CInputStream&, CEntityInfo&)
-extern "C" void stub_218() asm("_Z24LoadCameraFilterKeyframeR13CStateManagerR12CInputStreamR11CEntityInfo");
+// LoadCameraBlurKeyframe(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_218() asm("_Z22LoadCameraBlurKeyframeR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_218() {}
 
-// LoadControllerAction(CStateManager&, CInputStream&, CEntityInfo&)
-extern "C" void stub_219() asm("_Z20LoadControllerActionR13CStateManagerR12CInputStreamR11CEntityInfo");
+// LoadCameraFilterKeyframe(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_219() asm("_Z24LoadCameraFilterKeyframeR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_219() {}
 
-// LoadTriggerEllipsoid(CStateManager&, CInputStream&, CEntityInfo&)
-extern "C" void stub_220() asm("_Z20LoadTriggerEllipsoidR13CStateManagerR12CInputStreamR11CEntityInfo");
+// LoadControllerAction(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_220() asm("_Z20LoadControllerActionR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_220() {}
 
-// LoadTypedefScannableParameters(SLdrScannableParameters&, CInputStream&)
-extern "C" void stub_221() asm("_Z30LoadTypedefScannableParametersR23SLdrScannableParametersR12CInputStream");
+// LoadTriggerEllipsoid(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_221() asm("_Z20LoadTriggerEllipsoidR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_221() {}
 
-// LoadVisorFlare(CStateManager&, CInputStream&, CEntityInfo&)
-extern "C" void stub_222() asm("_Z14LoadVisorFlareR13CStateManagerR12CInputStreamR11CEntityInfo");
+// LoadTypedefScannableParameters(SLdrScannableParameters&, CInputStream&)
+extern "C" void stub_222() asm("_Z30LoadTypedefScannableParametersR23SLdrScannableParametersR12CInputStream");
 extern "C" void stub_222() {}
 
-// LoadWorldTeleporter(CStateManager&, CInputStream&, CEntityInfo&)
-extern "C" void stub_223() asm("_Z19LoadWorldTeleporterR13CStateManagerR12CInputStreamR11CEntityInfo");
+// LoadVisorFlare(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_223() asm("_Z14LoadVisorFlareR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_223() {}
+
+// LoadWorldTeleporter(CStateManager&, CInputStream&, CEntityInfo&)
+extern "C" void stub_224() asm("_Z19LoadWorldTeleporterR13CStateManagerR12CInputStreamR11CEntityInfo");
+extern "C" void stub_224() {}
 
 // typeinfo for CGunWeapon
 extern "C" char stub_data_0[64] asm("_ZTI10CGunWeapon") = {};

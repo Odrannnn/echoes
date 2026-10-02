@@ -34,6 +34,15 @@
 // `fn_801FEE40` and `fn_801FD638` (0x20 bytes each, `symbols.txt:8321` and `:8271`) are the
 // element copy and the element destructor: each is the MWCC `destroy<T>(T*)` shape - prologue,
 // one `bl`, epilogue, no register shuffling - forwarding to `fn_801FEE60` / `fn_801FD658`.
+// **Superseded in part**: this paragraph used to be the reason `stub_180` stood in for
+// `fn_801FEE40` in `src/MetroidPrime/PortLinkStubs.cpp`.  `fn_801FEE40` and `fn_801FEE60` are now
+// claimed for real by `ScriptObjects/Carve801FEE40.c` (a `Matching` unit, 0x801FEE40..0x801FEE88,
+// both functions 100.00%), `stub_180` is deleted, and the call this unit makes at 0x801FF6E8 now
+// resolves to a real body.  What is still true is the half about `fn_801FD638`: it remains
+// unclaimed and still needs a stand-in, because `fn_801FD658` behind it is a real destructor and
+// claiming either would only move the port's link gap one function along.  The same goes for
+// `fn_801FEE88`, the callee `fn_801FEE60` calls at 0x801FEE74: `stub_200` stands in for it, the
+// trade `stub_199` makes for `Carve801FDAA4.c`'s.
 //
 // **The argument struct is load-bearing, and it is why `fn_801FF6B8` takes a struct at all.**
 // Retail's guard is `lwz r31,0(r3)` for `begin` and `mr r29,r4` for `end`, and the loop

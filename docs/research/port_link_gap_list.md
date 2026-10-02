@@ -239,7 +239,7 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_65_FC`
 - `fn_66_70`
 - `fn_80003D00`
-- `fn_80004458`
+- `fn_8000447C`
 - `fn_80004D84`
 - `fn_800068F4`
 - `fn_80020478`

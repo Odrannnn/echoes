@@ -285,7 +285,7 @@ void CScriptPickup::Touch(CActor& act, CStateManager& mgr) {
 }
 
 rstl::optional_object< CAABox > CScriptPickup::GetTouchBounds() const {
-  const CVector3f& off = GetTranslation();
+  CVector3f off = GetTranslation();
   return CAABox(mTouchBounds.GetMinPoint() + off, mTouchBounds.GetMaxPoint() + off);
 }
 
@@ -326,6 +326,11 @@ void CScriptPickup::fn_800B4518(CStateManager& mgr) {
     mUnknownProp = true;
   }
   mUnk3 = true;
+}
+
+// Retail's 116-byte free function at 0x800B44A4; nothing in the DOL calls it.
+extern "C" CVector3f GetPosition_800B44A4(const CScriptPickup& pickup) {
+  return pickup.GetTranslation() + pickup.GetTransform().Rotate(pickup.GetOrbitOffset());
 }
 
 CAABox LoadCAABox(CStateManager& mgr, const TAreaId& areaId, const CVector3f& collisionSize,

@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    13012 / 28465 functions        (36.95% fuzzy, 30.39% of code, 13.39% fully linked)
-linked     6118 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  11411 / 16726 functions        (main/*, including the SDK's)
+matched    13020 / 28465 functions        (36.95% fuzzy, 30.39% of code, 13.39% fully linked)
+linked     6124 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  11419 / 16726 functions        (main/*, including the SDK's)
 port link  287 undefined, 0 duplicates   (287 since the ninth upstream sync, 2026-10-02: 26 upstream
                                    units joined files.cmake, five listed names were renamed and three
                                    opened - docs/research/port_link_gap.md, "The ninth upstream sync".
@@ -27,6 +27,19 @@ REL units   1601 / 11739 functions        (the 86 modules, counted as the comple
 
 How these numbers got here - the first seven upstream syncs and the unit flips, each with what it
 traded - is in `docs/history/handoff-to-2026-10-01.md`.
+
+**OPEN BLOCKER, 2026-10-02: `master` cannot be pushed until the history is repaired.** The goal
+loop's docs carry (`tools/union_docs_conflicts.sh`) used `git merge-file --union`, which doubles a
+line both sides rewrote; from `55be8668` (12:29) to `1eccea81` (16:39) two probe-count lines doubled
+on carry after carry until `docs/HANDOFF.md` was 935,562,435 bytes and `docs/RUNNING_THE_DECOMP.md`
+362,809,814, each line repeated 2,155,590 times. Every gate stayed green. The merge that follows
+the ninth sync collapsed the repeats (both files are their normal size again) and the script now
+resolves a rewritten hunk to the tip's lines and caps every repeat at its input count. **What is
+not fixed:** the 61 commits between `origin/master` (`08ac570c`'s parent) and that merge still
+carry the bloated blobs, nine of them over GitHub's 100 MB limit (`5dd4446f` onwards), so
+`git push origin master` is rejected until those commits are rewritten or squashed - a decision
+for the user, since it rewrites `goal/decomp`. Measure a doc's size before trusting a green gate:
+`git cat-file -s goal/decomp:docs/HANDOFF.md` should be tens of kilobytes.
 
 **The ninth sync (`PrimeDecomp/echoes` 5f97267f, 2026-10-02, merge base 8bb7bd0f)** took matched
 12699 -> 13012 and linked 6058 -> 6118 against the judge's baseline, with no function worse. The code
@@ -107,7 +120,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 804 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 807 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## What is not in git (check these before blaming the tree)
@@ -182,7 +195,7 @@ with `boot_path.md` for port work and `port_link_gap.md` for what the port's lin
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (804 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (807 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -202,7 +215,7 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 **1. The DOL** - the `DOL units` line above. Work is per unit: write it, measure with objdiff, flip
 to `Matching` when `tools/flip_test.sh` passes. The two units the whole port was
 waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 28/102 is `NonMatching` since the upstream
-merge widened it. Others: `TypesMatch` 511/511, `CStateManager` 110/239, `CPlayerGun` 68/136,
+merge widened it. Others: `TypesMatch` 510/511, `CStateManager` 110/239, `CPlayerGun` 68/136,
 merge widened it. Others: `TypesMatch` 511/511, `CStateManager` 103/239, `CPlayerGun` 68/136,
 merge widened it. Others: `TypesMatch` 510/511, `CStateManager` 101/239, `CPlayerGun` 68/136,
 merge widened it. Others: `TypesMatch` 509/511, `CStateManager` 108/239, `CPlayerGun` 68/136,
