@@ -61,7 +61,14 @@
 // 100.00%), so `stub_189` is **deleted** and this unit's `bl fn_801FEC64` at 0x801FF9E8 now
 // resolves to a real body; the link gap moved one function along exactly as that sentence
 // predicted, to the carve's own callee `fn_801FECAC` (`stub_226` in
-// `src/MetroidPrime/PortLinkStubs.cpp`).
+// `src/MetroidPrime/PortLinkStubs.cpp`), and the gap has now been chased to the end of that chain.
+// **Superseded a third time**: `fn_801FECAC` is claimed for real by
+// `ScriptObjects/Carve801FECAC.cpp` (a `Matching` unit, 0x801FECAC..0x801FED24, 30 of 30
+// instructions), so `stub_226` is **deleted** too.  What that chain showed is worth recording
+// against the sentence above: "claiming X would only move the link gap one function along" was true
+// of the **port** and wrong about the **DOL** every time - a `Matching` unit needs its callees'
+// *symbols*, not their bodies - so each of these carves was available long before the stand-in it
+// called for was retired.
 //
 // The internal call edges line up one for one as well: `fn_801FF8A0` calls `fn_801FF9B8` at
 // 0x801FF908 and `fn_801FF94C` at 0x801FF91C, `fn_801FF94C` calls `fn_801FF96C` at 0x801FF958.

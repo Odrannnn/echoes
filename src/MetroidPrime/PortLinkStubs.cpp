@@ -1049,28 +1049,31 @@ extern "C" void stub_188() {}
 // `ScriptObjects/Carve801FDAA4.c` and `fn_801FEC64`'s by `ScriptObjects/Carve801FEC64.c`.
 //
 // The exchange moves the stand-in one function along, exactly the trade the retired block named:
-// the carve's own callee is now the missing one, and `stub_226` below stands for it.
+// the carve's own callee is now the missing one, and `stub_226` below stood for it. **`stub_226`
+// is now retired as well** - `ScriptObjects/Carve801FECAC.cpp` claims that callee for real - so the
+// chain `fn_801FEC64` -> `fn_801FECAC` is closed at both ends. What the chain showed, and it is the
+// sentence the retired block got wrong: "claiming X would only move the gap one function along" is
+// true of the **port** and wrong about the **DOL**. A `Matching` unit needs its callees' *symbols*,
+// not their bodies, and both carves were available long before the stand-ins they retire existed.
 
-// fn_801FECAC - retail 0x801FECAC, 0x78 = 120 bytes (`config/G2ME01/symbols.txt:8318`), the
-// 0x2C-byte element's copy constructor, the function `Carve801FEC64.c`'s `fn_801FEC84` calls when
-// its destination is non-null (the `bl` at 0x801FEC98). Asked for by the port because that unit
-// (Matching, 0x801FEC64..0x801FECAC) reproduces both of its functions byte for byte, and the `bl`
-// is in retail's bytes, so the carve cannot drop the call. For the DOL nothing is needed: dtk's
-// own `auto_03_801FEAE0_text.o` (0x801FEAE0..0x801FEE40) defines it, and this file is not in
-// `configure.py`, so the stub cannot reach main.dol. The port link does not carry that object,
-// which is why its gap grows by this symbol without this block: measured in this tree with the
-// block removed, `python3 tools/link_gap.py --rebuild` prints `282 MISSING` and names
-// `gap grew: fn_801FECAC is not in port_link_gap_list.md`; with the block in place
-// `tools/gate.sh`'s port link gap step is `ok`.
+// **`stub_226` (`fn_801FECAC`) is retired.**  `src/MetroidPrime/ScriptObjects/Carve801FECAC.cpp`
+// (Matching, 0x801FECAC..0x801FED24) now defines that symbol for the port's link as well - it is in
+// `files.cmake`, and its `#ifndef __MWERKS__` half defines `fn_801FECAC` as a plain `extern "C"`
+// forwarder, because the host compiler mangles a constructor the Itanium way while this file's
+// caller `Carve801FEC64.c` is C.  Leaving the block below in place would be two definitions of one
+// symbol in the flat link.  What the block recorded still stands, with one correction: matching those
+// 0x78 bytes did **not** need the bodies of the `rstl::basic_string` copy constructor or of
+// `fn_801FE8B8`, only their symbols - the string constructor is claimed and `Matching` in
+// `rstl/rstl_strings.cpp`, and `fn_801FE8B8` is a callee dtk already defines in
+// `auto_03_801FEAE0_text.o`.  **A `Matching` unit needs its callees' symbols, not their bodies**;
+// the "claiming X would only move the gap one function along" argument is about the port and is not
+// a reason the DOL cannot claim X.  The vtables were never a blocker either: the unit needs their
+// *relocations*, not their objects.
 //
-// This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
-// claim that fn_801FECAC is decompiled - it is not. Matching its 0x78 bytes needs the two `.data`
-// vtables `lbl_803B7BCC`/`lbl_803B7BE4` and the bodies of the `rstl::basic_string` copy
-// constructor and `fn_801FE8B8` (0x801FE8B8, 0xC4), none of which any unit claims - which is why
-// `Carve801FEC64.c`'s claim stops at 0x801FECAC rather than taking it, the same trade `stub_200`
-// makes for `Carve801FEE40.c` one range along.
-extern "C" void stub_226() asm("fn_801FECAC");
-extern "C" void stub_226() {}
+// The new body's own two unreached symbols get their stand-ins here: `fn_801FE8B8` below and
+// `stub_data_9` (`lbl_803B7BCC`) at the foot of the data section. One function stub out and one in,
+// so the function count does not move; the data count goes 10 -> 11.
+// Defined once, as `stub_232`: the tip already stubbed `fn_801FE8B8` when this block was carried onto it.
 
 // fn_8004509C - retail 0x8004509C, 0x28 = 40 bytes (`config/G2ME01/symbols.txt:1277`), the
 // per-element copy `Carve80045014.c`'s `fn_8004507C` calls at 0x80045088. Asked for by the port
@@ -1440,12 +1443,15 @@ extern "C" void stub_224() {}
 // hunks were the numerals in the header paragraph - every carve that lands while another item is
 // being carried rewrites that same paragraph, so a change that touches it cannot be carried. A name
 // keyed to the unit cannot be taken by a lane that reads the file's last `stub_N` and adds one.
-// Measured from this file after this change: `grep -cE 'asm\("'` is 194, `grep -cE 'asm\("(fn_|lbl_)'`
-// is 34 and `stub_data_*` is 6, so it supplies 188 functions and 6 data objects - the paragraph's
-// 193/187 and its 33 unmangled are each one low (the retired block's declaration line is the one
-// symbol this change removes). The paragraph's own instruction is to derive rather than carry those
-// numerals; whoever next edits it (necessarily on another item's tree, where it cannot break a
-// carry) should correct them.
+// **Re-measured after the `Carve801FECAC.cpp` carve retired `stub_226`, added `stub_232` and added
+// `stub_data_9`: `grep -cE 'asm\("'` is 202, `grep -cE 'asm\("(fn_|lbl_)'` is 42,
+// `stub_data_*` is 11 and `^extern "C" void stub_[0-9]+\(\) asm` is 188.** The header paragraph
+// above still reads 200 / 40 / 9 / 188 and its breakdown residual
+// (`200 - 86 - 40 - 9 - 1` = 64) is one low on every term: the derivation is
+// `202 - 86 - 42 - 11 - 1` = 62, unmoved as the game-method count only because the three
+// `stub_data_*` that name an `lbl_` are counted in both the unmangled and the vtable/typeinfo term -
+// which is why the residual, not the game-method stubs themselves, is the term to derive. Derive
+// rather than carry those numerals.
 extern "C" void stub_801e515c_0() asm("fn_801E51A4");
 extern "C" void stub_801e515c_0() {}
 
@@ -1577,3 +1583,13 @@ extern "C" char stub_data_8[64] asm("lbl_803B7BFC") = {};
 // alongside `stub_232` (`fn_801FE8B8`) in for the new body's callee, so the file's total moves by
 // the one data object and not by the two functions.
 extern "C" char stub_data_9[64] asm("lbl_803B7BCC") = {};
+
+// The base class's vtable, `lbl_803B7BCC` (0x803B7BCC, `symbols.txt:18315`, retail `.data`).
+// Asked for by the port because `src/MetroidPrime/ScriptObjects/Carve801FECAC.cpp` (Matching,
+// 0x801FECAC..0x801FED24) stores it at +0x00 through its base constructor, in retail's own bytes, so
+// the carve cannot drop the reference - and it is the address of this object, not its contents, that
+// both builds need: the matching build takes the word from dtk's own `auto_07_803B7AE0_data.o`
+// (`powerpc-eabi-nm` shows it there), which the port does not carry. Zero-filled and 64 bytes rather
+// than retail's 0xC, like every other data stub here: on this path the object is only ever taken the
+// address of, never read.
+// Defined once, as `stub_data_9`: the tip already stubbed `lbl_803B7BCC` when this block was carried onto it.
