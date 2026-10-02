@@ -1249,6 +1249,20 @@ list(APPEND MP_GAME_SOURCES
     # guard CEmperorIngStage3Rel.cpp uses for fn_18_DAEC. The rest reads raw offsets and calls
     # into this unit, so the port's undefined count is unchanged.
     src/MetroidPrime/ScriptObjects/CMetareeSwarmDes.cpp
+    # Module 43's outlined rstl block, .text 0x2690..0x27B0 - two functions, its own
+    # `uninitialized_copy` over `IGameArea::Dock` and `vector<CEffectComponent>::reserve`. Listed
+    # for the same reason as the CMetareeSwarmDes.cpp entry above: it defines neither RELMain nor
+    # RELExit, so a flat link cannot collide with it, and its only relocations outside itself -
+    # the calls to `fn_43_1F70` and `fn_43_27B0`, both in the module's unclaimed ranges - are
+    # behind the same `#ifdef __MWERKS__` guard, so the host object defines nothing and the
+    # port's undefined count is unchanged.
+    src/MetroidPrime/ScriptObjects/CMetareeSwarmRelTwins.cpp
+    # Module 43's second outlined rstl block, .text 0x23D4..0x24A0 - `vector<CWorldState>::reserve`
+    # and its destroy forwarder. Listed for the same reason as the entry above: no RELMain/RELExit,
+    # and its only relocations outside itself - the calls to `fn_43_2530` and `fn_43_24A0`, both in
+    # the module's unclaimed ranges - are behind the `#ifdef __MWERKS__` guard, so the host object
+    # defines nothing and the port's undefined count is unchanged.
+    src/MetroidPrime/ScriptObjects/CMetareeSwarmRelTwins2.cpp
     src/MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp
     # Module 15's .text 0x6144..0x617C - one function, `fn_14_6144`, the module's own copy of
     # `rstl::destroy(It, It)`. Listed for the same reason as the DigitalGuardianAccessors.cpp

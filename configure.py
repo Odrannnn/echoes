@@ -1512,11 +1512,26 @@ config.libs = [
     # MetareeSwarm's head, .text 0x0..0xD8: fn_43_0, fn_43_3C, RELExit, RELMain and the loader
     # registration RELMain calls. Module 43, next to Metaree above. Everything from fn_43_D8
     # (0xD8) up is left unclaimed, so dtk fills it from retail and the module's sha1 still holds.
+    # `CMetareeSwarmRelTwins.cpp` (2026-10-02) is a third range, .text 0x2690..0x27B0: the two
+    # outlined `rstl` instantiations above the module's class code - its own
+    # `uninitialized_copy` over the 0x4C-byte `IGameArea::Dock`, and the reserve of a vector of
+    # this module's own 0x1C-byte record (whose outlined copy is the module's 0x27B0, left
+    # unclaimed). Both are 100.00% and the module's sha1 is unchanged. **`mw_version="GC/2.7"` is
+    # load-bearing and measured**: under the module's default GC/1.3.2 the same source reproduces
+    # `fn_43_26F8` byte for byte and puts `fn_43_2690`'s `lwz r31,0(r3)` after the r30/r29 saves
+    # (92.31%, the same save-order class as `CLumiteRelTail.cpp`), and 2.7 emits retail's order.
+    # `CMetareeSwarmRelTwins2.cpp` (same date) is a fourth range, .text 0x23D4..0x24A0: the
+    # module's `vector<CWorldState>::reserve` (the DOL's own 0x801466F4 instantiation is the same
+    # 0xAC bytes) and the destroy forwarder it calls, both exact under the module's default
+    # version. One unit cannot claim two discontiguous ranges, so each is a file of its own;
+    # everything between the named ranges stays unclaimed and dtk fills it from retail.
     Rel(
         "MetareeSwarm",
         [
             Object(NonMatching, "MetroidPrime/ScriptObjects/CMetareeSwarmDes.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CMetareeSwarmRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CMetareeSwarmRelTwins.cpp", mw_version="GC/2.7"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CMetareeSwarmRelTwins2.cpp"),
         ],
     ),
     # BacteriaSwarm's head, .text 0x0..0xA0: fn_6_0, RELExit, RELMain and the loader registration

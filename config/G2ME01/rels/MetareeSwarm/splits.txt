@@ -12,6 +12,12 @@ MetroidPrime/ScriptObjects/CMetareeSwarmRel.cpp:
 MetroidPrime/ScriptObjects/CMetareeSwarmDes.cpp:
 	.text       start:0x00001F38 end:0x00001FB8
 
+MetroidPrime/ScriptObjects/CMetareeSwarmRelTwins2.cpp:
+	.text       start:0x000023D4 end:0x000024A0
+
+MetroidPrime/ScriptObjects/CMetareeSwarmRelTwins.cpp:
+	.text       start:0x00002690 end:0x000027B0
+
 REL/REL_Setup.cpp:
 	.text       start:0x0000291C end:0x00002AC0
 	.rodata     start:0x00000028 end:0x000000AC
