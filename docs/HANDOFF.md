@@ -455,7 +455,11 @@ pairs with `dspDoneCallback`), so the twin's source is a template, not always th
 2026-10-02 with the user's approval, behind 155 queued items: `progress-twin-rel-digitalguardian`,
 `-sandboss`, `-ingboostballguardian`, `-emperoringstage1`, `-darksamus`. Read their verdicts and
 `docs/goal-notes/progress-twin-rel-*.md` before seeding the other 77; more seeding needs approval
-again.
+again. **Superseded 2026-10-02 late evening:** the user approved and `goal_seed.py --only twin
+--max 100 --apply` seeded the rest in the run-list format. Measured in the queue afterwards: 244
+items, 75 of them `progress-twin-*` (70 modules, 69 of those listing runs of adjacent functions,
+and 5 DOL units); the seeder now prints "nothing to seed" for twin. No lane has run one yet, so
+the run-list format's pass rate is unmeasured.
 
 **Loop speed-ups, 2026-10-02 evening (six proposed, what each came to).** Measured first, from that
 day's lane logs: the agent run is 80% of lane time (153.4 h of 191), and landed per kind was carve
