@@ -9,6 +9,12 @@ Sections:
 MetroidPrime/ScriptObjects/SpankWeedAccessors.cpp:
 	.text       start:0x00000358 end:0x000003F4
 
+MetroidPrime/ScriptObjects/SpankWeedCopyFloat.cpp:
+	.text       start:0x000039E8 end:0x00003ABC
+
+MetroidPrime/ScriptObjects/SpankWeedCopyDesc.cpp:
+	.text       start:0x00003B7C end:0x00003BE4
+
 REL/REL_Setup.cpp:
 	.text       start:0x00003DA8 end:0x00003F4C
 	.rodata     start:0x00000160 end:0x000001E4

@@ -1178,6 +1178,17 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/StoneToadAccessors.cpp
     src/MetroidPrime/ScriptObjects/SporbAccessors.cpp
     src/MetroidPrime/ScriptObjects/SpankWeedAccessors.cpp
+    # Module 73's .text 0x39E8..0x3ABC - `rstl::vector<SConnection, rmemory_allocator>::reserve`
+    # and the `rstl::uninitialized_copy` it calls - and .text 0x3B7C..0x3BE4 - one more
+    # `uninitialized_copy`, over this module's own 0x68-byte record. Both are the same
+    # `uninitialized_copy` shape CElitePirateVecCopy.cpp already writes for module 15, and both are
+    # listed for the same reason: neither defines RELMain nor RELExit, so check_files_cmake.py's
+    # MODULE_ENTRY exemption is not needed, and their only relocations outside themselves are guest
+    # module symbols with no PC-side definition, behind the same `#ifdef __MWERKS__` guard.
+    # `powerpc-eabi-nm -u` on either host object prints nothing, so the port's undefined count is
+    # unchanged.
+    src/MetroidPrime/ScriptObjects/SpankWeedCopyFloat.cpp
+    src/MetroidPrime/ScriptObjects/SpankWeedCopyDesc.cpp
     src/MetroidPrime/ScriptObjects/ShredderAccessors.cpp
     src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmUpdate.cpp
     src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmAi.cpp

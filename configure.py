@@ -2772,13 +2772,26 @@ config.libs = [
         ],
     ),
     Rel(
-        # 14 short accessors, .text 0x000358..0x0003F4: the accessor set the REL loader
-        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
-        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
-        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        # Three claims, all inside the module's own text, all byte-exact:
+        #   0x000358..0x0003F4  14 short accessors, the accessor set the REL loader generator
+        #     emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        #     MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        #   0x00039E8..0x0003ABC  `rstl::vector<SConnection, rmemory_allocator>::reserve(int)`
+        #     and the `rstl::uninitialized_copy` it calls - instruction for instruction the DOL's
+        #     `reserve__Q24rstl48vector<11SConnection,Q24rstl17rmemory_allocator>Fi` (0x800485E4)
+        #     and the copy at 0x8004867C, both Matching in CEntity.cpp.
+        #   0x0003B7C..0x0003BE4  one `rstl::uninitialized_copy` over this module's 0x68-byte
+        #     `CJointCollisionDescription`, written the way CElitePirateVecCopy.cpp writes module
+        #     15's copy of the same shape over its own 0x68-byte record.
+        # The two `rstl` units carry `mw_version="GC/2.7"` because REL objects default to
+        # GC/1.3.2, which schedules the by-value `pointer_iterator` load differently from the code
+        # generator retail used (CElitePirateVecCopy.cpp measures the difference). Everything else
+        # in the module is left unclaimed, so dtk fills it from retail.
         "SpankWeed",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/SpankWeedAccessors.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/SpankWeedCopyFloat.cpp", mw_version="GC/2.7"),
+            Object(Matching, "MetroidPrime/ScriptObjects/SpankWeedCopyDesc.cpp", mw_version="GC/2.7"),
         ],
     ),
     Rel(
