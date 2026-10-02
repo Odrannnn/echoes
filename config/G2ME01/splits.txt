@@ -1247,6 +1247,9 @@ MetroidPrime/CPauseScreen.cpp:
 MetroidPrime/ScriptObjects/CScanTreeInventory.cpp:
 	.text       start:0x8020EBF0 end:0x8020EE18
 
+MetroidPrime/ScriptObjects/Carve80210978.c:
+	.text       start:0x80210978 end:0x80210980
+
 MetroidPrime/ScriptObjects/Carve80210980.c:
 	.text       start:0x80210980 end:0x80210990
 
