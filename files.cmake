@@ -588,6 +588,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     # one definition of `fn_80216D38` in both builds - see the note above and the file header.
     src/MetroidPrime/Tweaks/Carve80216D2C.c
     src/MetroidPrime/ScriptLoader/Carve80220294.c
+    src/MetroidPrime/ScriptLoader/Carve80220394.c
     src/MetroidPrime/ScriptLoader/Carve802274F4.c
     src/MetroidPrime/ScriptLoader/Carve80229410.c
     src/MetroidPrime/ScriptLoader/Carve80229568.c
