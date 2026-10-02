@@ -140,3 +140,117 @@ chunk loop with a byte tail, i.e. `resize`/`reserve` on `rstl::vector`;
 `LoadGameFileState__10CGameStateFPCv` (488 bytes), retail's memcard load. Each needs a source
 body and an `extern "C"` claim in the same style as `fn_80143CD4` (see the note above
 `fn_80144818` in the source for why retail's unnamed symbols have to be claimed by name).
+
+---
+
+# Second attempt (lane 2, `wt-mp2-goal-L2`, head `fcb6470b`)
+
+## STALE: the item's premise is already landed on this tree
+
+`__sinit_CGameState_cpp` is **already 100.00%** at HEAD and in the judge baseline the driver
+recorded for this item (`build/goal/judge/report.base.json`, written 19:02 from `fcb6470b`), and
+`src/MetroidPrime/Player/CGameState.cpp:922` already carries Lane 7's `SGameModeLayer(const char*
+const a, uint b)`. The unit was at **107 / 116** before I touched anything, so the item was
+requeued without the function it names. Since the item's *target* is the unit, I spent the run on
+the remaining eight unmatched functions instead. Measured, not recalled.
+
+## Result: +1 matched function, `goal_check: PASS`
+
+`__ct__11CWorldStateFR16CBitStreamReaderUiRC18CWorldSaveGameInfo` **97.169014% -> 100.00%**;
+`MetroidPrime/Player/CGameState` **107 -> 108 / 116**; global matched **13053 -> 13054**.
+
+One word in the mem-init list of `CWorldState::CWorldState(CBitStreamReader&, CAssetId, const
+CWorldSaveGameInfo&)` (`src/MetroidPrime/Player/CGameState.cpp:576`):
+
+    - , mAreaId(kInvalidAreaId)      -> li r7,0 + lwz r5,0(r0)/R_PPC_EMB_SDA21 + stw r5,4(r29)
+    + , mAreaId(TAreaId(-1))         -> li r7,-1 + li r5,0 + stw r7,4(r29)
+
+Everything else in the function was already retail's; those four instructions at +0x08 and
++0x40..+0x4C were the whole 2.83%.
+
+## The rule this is worth, because it is not specific to this function
+
+**An `extern const` named in a constructor's mem-init list is not the same code as the literal it
+holds.** `kInvalidAreaId` is `extern const TAreaId` (`include/MetroidPrime/TGameTypes.hpp:15`), so
+naming it emits `lwz rX,disp(r0)` + `R_PPC_EMB_SDA21`; retail *materialises* the value (`li r7,-1`)
+in the prologue and reuses that register for the store, which also frees the second `li r5,0` that
+retail spends zeroing the next member. Same value, same member - only the spelling moves the code,
+and the score with it. Worth grepping for every `extern const` initialiser in a constructor whose
+function sits just under 100%: `kInvalidAssetId` is still spelled that way at lines 570, 650, 651,
+735 and 736 of this file (those functions are 84-96% for other reasons, so they are not evidence
+either way).
+
+## Negative results measured this run
+
+* **`static inline` on `rstl::destroy`/`destroy_impl(It, It)`** (`include/rstl/construct.hpp`,
+  lines 97-113) changed nothing: the object came back byte-identical and
+  `reserve<vector<CWorldState>>` stayed at **71.37%**. Reverted. So the reserve gap below is not
+  reachable through linkage/inline hints on `destroy`, even though `uninitialized_copy` carries
+  exactly that `static` and *is* emitted out-of-line and called.
+* **`reserve__Q24rstl48vector<11CWorldState,Q24rstl17rmemory_allocator>Fi`, 71.37%, ours 180 bytes
+  vs retail's 172** (retail 0x80146754). The whole difference is one structural choice: ours
+  **inlines** `destroy_impl`'s loop (`mr r3,r30 ; li r4,-1 ; bl __dt__11CWorldStateFv ;
+  addi r30,r30,36 ; cmplw ; bne` plus the `b` into it), retail **calls** the out-of-line pair
+  (`bl fn_801467A0` -> `fn_801467C0`, which this object already emits and matches). The inlined
+  loop needs two more callee-saved registers, so `self`/`size` land in `r27`/`r28` instead of
+  `r29`/`r30` and the save/restore becomes `stmw/lmw` instead of three `stw`/`lwz` pairs - that is
+  why the register shift is a *consequence*, not a second bug. The copy step is already a call in
+  both (`uninitialized_copy<pointer_iterator<CWorldState,...>>` / `fn_8014680C`), so only the
+  destroy step is open. One spelling tried this run; not a wall.
+* **`push_back__Q24rstl48vector<11CWorldState,...>FRC11CWorldState`, 0.00%** - the previous run's
+  wall stands and I did not re-measure it beyond confirming the numbers: retail 56 bytes, our
+  template instantiation 144 (the growth check), and the byte-identical `fn_801426E0` (56 bytes,
+  ours at 0x90C) still scores 0 because objdiff pairs by name. Confirmed the note's claim that
+  `StateForWorld` reserves first and then appends, so retail's body really is the unsafe one.
+* **`LoadGameFileState__10CGameStateFPCv`, 0.00%, 488 bytes** - still the **only** retail name
+  absent from `CGameState.o` (checked by comparing both objects' `nm` output: 116 retail symbols,
+  203 of ours, this one missing). `CMemoryCardDriver.cpp:839,852` calls it and **no object defines
+  it**; the link only succeeds because that unit is `NonMatching` and its retail object is used.
+  Already filed as `progress-cgamestate-absent-functions` by Lane 7, so no duplicate `NEW:` here.
+* The other four are register-allocation walls, measured with the tool below:
+  `PutTo__CGameStateFR16CBitStreamWriter` 96.47% (ours saves `r23-r27`, retail saves `r22-r27` -
+  one extra long-lived value, and everything after shifts), `__ct__CPersistentOptionsFR16CBitStreamReader`
+  95.52%, `__ct__CGameStateFR16CBitStreamReader` 84.14% (ours 0x688 vs retail 0x684 bytes),
+  `StartGameFromFrontEnd__Fv` 60.11% (frame `stwu r1,-192` vs retail's `-208`, and a loop that
+  materialises `lis/addi` where retail compares against a half-constant built with `addis`).
+
+## A measurement trap worth the same warning as `readlines(True)`
+
+`tools/dis.sh` and `build/G2ME01/main.elf` are **our build** inside a claimed range, so comparing
+our object against them is circular - I did it for `push_back` and "confirmed" a byte-exact match
+that objdiff scores 0.00%, because our `push_back` is 144 bytes and retail's is 56. The retail
+bytes for a claimed range are in **`build/G2ME01/obj/<unit>.o`** (the retail-derived split object
+objdiff pairs against); offset = `addr - 0x80142188` for this unit. Same for `R_PPC_REL24` targets.
+
+`tools/bytescmp.py` counts a relocated field as a difference, which buries the real one under ~20
+`bl`s. `.tmp/opencode/realdiff.py` (gitignored, this run) prints the same diff with a `RELOC`/`REAL`
+tag per line by intersecting the differing instructions with each side's relocations - that is what
+made the `li -1` vs `lwz` pair visible at all.
+
+## Files touched
+
+- `src/MetroidPrime/Player/CGameState.cpp:573-587` - `mAreaId(TAreaId(-1))` plus a comment
+  recording the `extern const` rule. Nothing else; `include/rstl/construct.hpp` was reverted and
+  `git status` shows one modified file.
+
+## Verification
+
+    $ ./tools/fast_try.sh MetroidPrime/Player/CGameState
+    main/MetroidPrime/Player/CGameState: 93.03% fuzzy, 70.28% matched (108 / 116 functions)
+    $ ./tools/decomp_build.sh | grep '^All:'
+    All:  37.00% fuzzy, 30.44% matched, 13.43% linked (13054 / 28465 functions)
+    $ sha1sum build/G2ME01/main.dol
+    6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+    $ python3 tools/check_symbol_names.py
+    checked 579 units; 0 declared names are missing from their object
+    $ python3 tools/check_decl_order.py --unit MetroidPrime/Player/CGameState
+    ok: 4 unit(s) checked, none emits its functions out of retail order
+    $ ./tools/goal_check.sh build/goal/item.json
+    ok  counts: matched 13053 -> 13054   linked 6163 -> 6163
+    ok  target rose: main/MetroidPrime/Player/CGameState: 107 -> 108 / 116 functions
+    goal_check: PASS progress-cgamestate-sinit-plain-struct
+
+Per-function diff against the judge baseline: **1 better, 0 worse, 0 added, 0 removed** - only
+`__ct__11CWorldStateFR16CBitStreamReaderUiRC18CWorldSaveGameInfo` 97.169014 -> 100.0.
+`unit_fit.sh` still reports the unit's pre-existing extras (203 symbols vs retail's 116, unchanged
+by this diff); it is a `NonMatching` unit either way.

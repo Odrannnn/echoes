@@ -570,10 +570,17 @@ CWorldState::CWorldState(CAssetId worldId)
 , mDesiredAreaAssetId(kInvalidAssetId)
 , mLayerState(rs_new CWorldLayerState) {}
 
+// `mAreaId` is initialised with the **literal** `-1`, not with `kInvalidAreaId`, and the two are
+// not interchangeable in the code retail emits: `kInvalidAreaId` is an `extern const TAreaId`
+// (`include/MetroidPrime/TGameTypes.hpp:15`), so naming it loads the word out of `.sdata` with
+// `lwz rX,disp(r0)` + `R_PPC_EMB_SDA21`, while retail materialises `0xFFFFFFFF` in a register with
+// `li r7,-1` in the prologue and stores *that* (0x8014509C). One instruction differs and the
+// function sits at 97.17%; with the literal it is byte-for-byte retail's. The same value, the same
+// member, the same initialiser - only the spelling of the constant moves the code.
 CWorldState::CWorldState(CBitStreamReader& in, CAssetId worldId,
                          const CWorldSaveGameInfo& saveWorld)
 : mWorldId(worldId)
-, mAreaId(kInvalidAreaId)
+, mAreaId(TAreaId(-1))
 , mRelayTracker(nullptr)
 , mMapWorldInfo(nullptr)
 , mDesiredAreaAssetId(kInvalidAssetId)
