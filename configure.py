@@ -727,6 +727,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/Carve80193DB8.c"),
             Object(Matching, "MetroidPrime/Carve80193E04.c"),
             Object(Matching, "MetroidPrime/Carve801997B0.c"),
+            Object(Matching, "MetroidPrime/Carve8019AC78.c"),
             Object(Matching, "MetroidPrime/Carve8019CE6C.c"),
             Object(Matching, "MetroidPrime/Carve8019E368.c"),
             Object(Matching, "MetroidPrime/CStateManagerScriptMsgArray.cpp"),
