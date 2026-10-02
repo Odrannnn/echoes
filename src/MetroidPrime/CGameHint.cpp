@@ -42,23 +42,27 @@ CGameHint::CGameHint(TUniqueId uid, const rstl::string& name, const CEntityInfo&
 CGameHint::~CGameHint() {}
 
 void CGameHint::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
-  if (!mgr.IsMultiplayer()) {
-    CActor::AcceptScriptMsg(mgr, msg);
-    return;
-  }
-
-  CScriptMsg forwarded = msg;
-  switch (msg.GetMessage()) {
-  case kSM_Deactivate:
-  case kSM_Decrement:
-  case kSM_Increment:
-    if (CGameCamera* camera = TCastToPtr< CGameCamera >(mgr.ObjectById(msg.GetOriginator()))) {
-      forwarded = CScriptMsg(msg.GetUnk(), msg.GetId(), camera->Player(mgr).GetUniqueId(),
-                             msg.GetMessage(), msg.GetState());
+  if (mgr.IsMultiplayer()) {
+    CScriptMsg forwarded = msg;
+    switch (msg.GetMessage()) {
+    case kSM_Deactivate:
+    case kSM_Decrement:
+    case kSM_Increment:
+      if (CGameCamera* camera = TCastToPtr< CGameCamera >(mgr.ObjectById(msg.GetOriginator()))) {
+        // Retail reads the state, then calls Player(), and only then reads the message; the named
+        // `uid` and the `TUniqueId(uid)` copy reproduce that order and the two stack copies of it.
+        // Written as one expression, MW hoists every load of `msg` above the call (77.5%).
+        EScriptObjectState state = msg.GetState();
+        TUniqueId uid = camera->Player(mgr).GetUniqueId();
+        forwarded =
+            CScriptMsg(msg.GetUnk(), msg.GetId(), TUniqueId(uid), msg.GetMessage(), state);
+      }
+      break;
+    default:
+      break;
     }
-    break;
-  default:
-    break;
+    CActor::AcceptScriptMsg(mgr, forwarded);
+  } else {
+    CActor::AcceptScriptMsg(mgr, msg);
   }
-  CActor::AcceptScriptMsg(mgr, forwarded);
 }
