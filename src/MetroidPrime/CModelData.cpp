@@ -14,7 +14,10 @@
 #include "Kyoto/Graphics/CModelFlags.hpp"
 #include "Kyoto/Math/CAABox.hpp"
 #include "Kyoto/Math/CPlane.hpp"
+#include "Kyoto/Math/CTransform4f.hpp"
 #include "Kyoto/SObjectTag.hpp"
+
+#include <dolphin/mtx.h>
 #include "MetaRender/CCubeRenderer.hpp"
 #include "MetaRender/SModelRenderData.hpp"
 #include "MetroidPrime/CActorLights.hpp"
@@ -74,6 +77,21 @@ extern "C" void fn_80027AE8(const SModelHolder* holder);
 // which is only reachable if the callee is declared `bool` on this side.
 extern "C" void fn_80310E8C(CModel* model);
 extern "C" bool fn_80310F14(CModel* model);
+
+// Retail 0x800295BC, `symbols.txt`'s `fn_800295BC`: `CAnimData`'s own "hand my particle database
+// to the renderer, clipped" step, defined in `src/MetroidPrime/CAnimData.cpp` (which owns that
+// address). Retail's `RenderParticles` below calls it on the `mAnimData` it already loaded and
+// leaves the `planes` argument where it was, so reaching the database's own
+// `AddToRendererClipped` from here instead costs an extra `addi r3,r3,376` and four wrong bytes.
+extern "C" void fn_800295BC(const CAnimData& animData, const CFrustumPlanes& planes);
+
+// Retail 0x8033A28C (`symbols.txt`'s `fn_8033A28C`, 0x190 bytes) is the portal-plane step
+// `SetupWorldSpacePortalPlane` ends in, and it sits in an **unclaimed** `.text` gap, so the DOL
+// build resolves it from retail's own bytes and nothing has to define it. It reads its two matrix
+// arguments as addresses (its `__ct__12CTransform4fFRC12CTransform4f` at 0x8033A2E4 copies r4 whole),
+// so `ConstMtxPtr` is the right spelling for them - and, measured, it is also what makes the two
+// call sites share one stack temporary instead of needing a named copy of their own.
+extern "C" void fn_8033A28C(const CPlane& plane, ConstMtxPtr xf, ConstMtxPtr mtx);
 
 static const CAdvancementDeltas skNullAdvance(CVector3f::Zero(), CQuaternion::NoRotation());
 
@@ -338,7 +356,7 @@ void CModelData::Touch() const {
 
 void CModelData::RenderParticles(const CFrustumPlanes& planes) const {
   if (HasAnimation()) {
-    mAnimData->GetParticleDB().AddToRendererClipped(planes);
+    fn_800295BC(*mAnimData, planes);
   }
 }
 
@@ -677,6 +695,24 @@ void CModelData::SetScale(const CVector3f& scale) {
   }
 }
 
+// Retail 0x800E4A58 is five calls and an epilogue, read off the DOL: the **vector** overload
+// `CTransform4f::Scale(mScale)` (retail passes `this` as its argument at 0x800E4A7C, because
+// `mScale` is the member at offset 0), then `xf * that` through the out-of-line
+// `__ml__12CTransform4fCFRC12CTransform4f`, then `PSMTXConcat(lbl_80417330, scaledXf, out)` -
+// `lbl_80417330` is `CGraphics::mCameraMtx`, `.bss:0x80417330` in `config/G2ME01/symbols.txt` - and
+// finally `fn_8033A28C(plane, out, scaledXf)`.
+//
+// The `__ct__12CTransform4fFRC12CTransform4f` at 0x800E4A9C is **not** a named copy in retail's
+// source: `PSMTXConcat`'s `Mtx` parameters are by value, and mwcceppc materialises each by-value
+// argument in a stack temporary using that copy constructor (`r1+152` for the second argument,
+// `r1+104` for the third), then hands the third one to `fn_8033A28C` as well. Declaring a `mtx`
+// local to hold that copy as well gets all 132 bytes on the first try **and then spends them
+// again** - it puts the copy at `r1+200` and adds a fourth 0x30-byte temporary, for 144 bytes and
+// 23 wrong instructions. Declaring `out` as an `Mtx` rather than a `CTransform4f` is what stops a
+// second copy: an `Mtx` lvalue matches the decayed parameter exactly, a `CTransform4f` does not.
 void CModelData::SetupWorldSpacePortalPlane(const CTransform4f& xf, const CPlane& plane) const {
-  // TODO: Set the portal plane using both the scaled model matrix and its model-view matrix.
+  const CTransform4f scaledXf = xf * CTransform4f::Scale(mScale);
+  Mtx modelView;
+  PSMTXConcat(CGraphics::GetCameraMtx(), scaledXf.GetCStyleMatrix(), modelView);
+  fn_8033A28C(plane, modelView, scaledXf.GetCStyleMatrix());
 }

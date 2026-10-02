@@ -161,13 +161,41 @@ u8 lbl_80418AFC = 1;
  *
  * The initialisers are explicit because a C++ `extern "C"` block has no tentative definitions
  * (see the note above this block); retail's own value here is zero, all `.bss`.
+ *
+ * `lbl_80417330`, the fourth of the four, is **not** defined here: it is `CGraphics::mCameraMtx`
+ * and is declared by alias below, next to that member, so the two names are one object.
  */
 Mtx lbl_804172A0 = { { 0.f } };
 Mtx lbl_804172D0 = { { 0.f } };
 Mtx lbl_80417300 = { { 0.f } };
-Mtx lbl_80417330 = { { 0.f } };
 
 } // extern "C"
+
+// ---------------------------------------------------------------------------
+// `CGraphics::mCameraMtx` - the view-projection matrix `PSMTXConcat`'s first argument in
+// `CModelData::SetupWorldSpacePortalPlane` (retail 0x800E4AA0 passes `0x80417330`, which
+// `config/G2ME01/symbols.txt` names `mCameraMtx__9CGraphics` at `.bss:0x80417330`).
+//
+// Retail's own value before `CGraphics::SetViewPointMatrix` has run is zero, all `.bss`, so the
+// zero initialiser below is retail's value and not a stand-in.
+//
+// `lbl_80417330` is the same object under the name retail's `SetViewPointMatrix`
+// (`src/Kyoto/Graphics/Carve802C2534.cpp`:119) and `fn_802C2614`
+// (`src/Kyoto/Graphics/Carve802C2614.c`:106,109) reach it by. Without this alias the port would
+// have *two* camera matrices: the C++ member every caller of the inline `GetCameraMtx()` reads -
+// `CModelData::SetupWorldSpacePortalPlane` (`src/MetroidPrime/CModelData.cpp`:716) among them -
+// and the one the carves write, so that reader would be handed a permanently-zero matrix nothing
+// ever writes. An alias, not a second definition, is what makes them one, and it is the same fix
+// `src/MetroidPrime/PortGlobals.cpp` applies to `mViewMatrix__9CGraphics` at 0x80416F44.
+//
+// A GCC alias attribute is the mechanism because both spellings have to name one object and a
+// second `extern "C"` definition would be a duplicate; `alias` on a C++ object with C linkage
+// gives `lbl_80417330` the same address as `_ZN9CGraphics10mCameraMtxE`, which is what
+// `config/G2ME01/symbols.txt` records for retail (`.bss:0x80417330`, `size:0x30`). Verified with
+// `nm` on the port object.
+// ---------------------------------------------------------------------------
+Mtx CGraphics::mCameraMtx = { { 0.f } };
+extern "C" Mtx lbl_80417330 __attribute__((alias("_ZN9CGraphics10mCameraMtxE")));
 
 // ---------------------------------------------------------------------------
 // `CGraphics::mpSpareBuffer` and `CGraphics::mSpareBufferSize` - retail's spare texture

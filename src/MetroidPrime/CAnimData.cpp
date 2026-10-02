@@ -380,6 +380,18 @@ void CAnimData::Render(const CSkinnedModel& model, const CModelFlags& flags) con
   DrawSkinnedModel(model, flags);
 }
 
+// Retail 0x800295BC, `symbols.txt`'s `fn_800295BC`, is the out-of-line `CAnimData` step that
+// `CModelData::RenderParticles` (0x800E5C4C) is the only caller of: it does nothing but reach the
+// particle database at +0x178 and hand it to `AddToRendererClipped`. It lives in this unit's claim
+// (`tools/range_owner.py .text 0x800295BC 0x800295E0 -> MetroidPrime/CAnimData.cpp`), so it is
+// defined here rather than reached through the database from the caller - which is the only way
+// `RenderParticles` gets retail's 44 bytes instead of 48. It sits between `Render` (0x800295E0)
+// and `RecalcPoseBuilder` (0x8002945C) because that is where 0x800295BC falls, and
+// `tools/check_decl_order.py --unit MetroidPrime/CAnimData` says so.
+extern "C" void fn_800295BC(const CAnimData& animData, const CFrustumPlanes& planes) {
+  animData.GetParticleDB().AddToRendererClipped(planes);
+}
+
 void CAnimData::RecalcPoseBuilder(const CCharAnimTime* time) const {
   // TODO: Sample the root into joint storage, add additive segments and build the linear pose.
   // The inherited IAnimReader virtual interface must be recovered before dispatching here.

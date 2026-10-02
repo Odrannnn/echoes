@@ -11,6 +11,11 @@
 
 #include "Kyoto/Graphics/CModel.hpp"
 
+#include "Kyoto/Math/CPlane.hpp"
+#include "Kyoto/Math/CTransform4f.hpp"
+
+#include <stdio.h>
+
 CModel::~CModel() {}
 
 /**
@@ -64,4 +69,31 @@ void CModel::FrameDone() {}
 void CModel::Draw(const CModelFlags&) const {}
 void CModel::DrawSortedParts(const CModelFlags&) const {}
 void CModel::DrawUnsortedParts(const CModelFlags&) const {}
+
+/**
+ * Retail `fn_8033A28C` (0x8033A28C, 0x190 bytes), the last step of
+ * `CModelData::SetupWorldSpacePortalPlane` (0x800E4A58). **Port-only**, for the same reason as
+ * `~CModel` and the three `Draw*` above: this file is not in `configure.py`, so the matching
+ * build never sees it. In the DOL build the symbol resolves from retail's own bytes - the address
+ * is in an *unclaimed* `.text` gap, and `CModelData.o` is `NonMatching`, so nothing of ours is
+ * linked there either.
+ *
+ * **The body is not written and this does not pretend to be it.** Retail's own first statements
+ * store the four plane floats to a guest global at 0x804176BC, set a one-byte latch at 0x80417538,
+ * invert the model-view matrix and walk a model list; none of those words exist in a host build,
+ * and the two matrices it takes are the ones `SetupWorldSpacePortalPlane` just composed from
+ * `CGraphics::mCameraMtx`. So the honest host body announces itself once and returns, rather than
+ * writing a plausible-looking plane somewhere. It is reachable only when a script actor has called
+ * `SetPortalPlane`, so on the shipped boot path it is never entered.
+ *
+ * **Delete this when `fn_8033A28C` is carved** (it is 0x190 bytes in an unclaimed gap, so it
+ * wants its own `src/Kyoto/Graphics/Carve8033A28C.cpp`), or the link sees two definitions.
+ */
+extern "C" void fn_8033A28C(const CPlane&, ConstMtxPtr, ConstMtxPtr) {
+  static bool reported = false;
+  if (!reported) {
+    reported = true;
+    printf("port stand-in reached: fn_8033A28C - the real body is not written\n");
+  }
+}
 

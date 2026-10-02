@@ -405,3 +405,284 @@ define it.** `nm build/G2ME01/obj/MetroidPrime/CModelData.o` is also a trap: tha
 `GetResourceTypeById`, `SetInfraModel`, `fn_8033A28C`, `CreateCharacter`, ...) corresponds to a
 *different* `CModelData.cpp` than the one on disk. The current object is
 `build/G2ME01/src/MetroidPrime/CModelData.o`. Both directories exist; only `src/` is current.
+
+---
+
+# Run 3 (2026-10-02, lane 5) — `RenderParticles` + `SetupWorldSpacePortalPlane`, 39 -> 41
+
+Re-measured on this tree first, as the brief requires: the unit was **39 / 49** (fuzzy 86.32%,
+matched code 73.16%) exactly as run 2 left it, global `matched_functions` **12378**, `linked`
+5863, 758 linked units, `All: 34.97% fuzzy, 28.64% matched, 12.90% linked (12378 / 28465
+functions)`. Nothing was `STALE:` and run 1's named deliverable (the `IRenderer` declaration, three
+functions) was already landed, so this run took the two **remaining TODO stubs that are pure
+callee plumbing** - `SetupWorldSpacePortalPlane` and `RenderParticles` - and left the two that
+need shared-header surgery (`MultipassDrawCallback`, `RenderModelMultipleTimesWithFlags`).
+
+## Result
+
+* `main/MetroidPrime/CModelData` **39 -> 41** of 49 matched (fuzzy 86.32% -> 87.81%, matched code
+  73.16% -> 75.15%). `RenderParticles` **90.91% -> 100.00%** and `SetupWorldSpacePortalPlane`
+  **3.03% -> 100.00%**, both on the **first** spelling - no `tools/try_edit.py` run was needed, so
+  nothing was spent a later lane would repeat.
+* **`main/MetroidPrime/CAnimData` 101 -> 102** of 216 as well: defining the callee that
+  `RenderParticles` needs gave `fn_800295BC` a body of its own, and it pairs with retail's symbol
+  by name, so it is a real +1 and not a side effect.
+* Global `matched_functions` **12378 -> 12381**; `linked` unchanged at 5863.
+  `All: 34.98% fuzzy, 28.64% matched, 12.90% linked (12381 / 28465 functions)`.
+* `./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PARTIAL`**, the pass verdict for a
+  `match` item whose flip failed and whose target rose. Its own output: `ok gate.sh (includes DOL
+  sha1, 86 RELs, report diff, wiring, docs claims, port probe)`, `ok counts: matched 12378 -> 12381
+  linked 5863 -> 5863`, `ok target rose: main/MetroidPrime/CModelData: 39 -> 41 / 49 functions`,
+  `ok no asm added`.
+* `sha1sum build/G2ME01/main.dol` -> `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+* `tools/probe_sources.sh` -> `752 files, 0 failed, 0 errors; link: LINKED (289 undefined, 0
+  duplicates)`. The recorded baseline is 291, so `link_check.sh --strict` is satisfied and the two
+  new references are both **defined** for the host (see below) - neither raised the count.
+* `python3 tools/check_symbol_names.py` -> ok (run by `goal_check.sh`).
+* `python3 tools/check_decl_order.py --unit MetroidPrime/CAnimData` -> `ok: 1 unit(s) checked, none
+  emits its functions out of retail order`; `--unit MetroidPrime/CModelData` unchanged.
+* `tools/unit_fit.sh MetroidPrime/CModelData.cpp` -> the same **7** weak-COMDAT extras run 2
+  recorded, so this change adds none, and `.text ours 8532 retail 8852` (was 8407: the two stubs
+  were 3 bytes each).
+
+Diff, five files (`docs/HANDOFF.md`'s state block was rewritten by the judge's own
+`MP_GATE_DOCS_WRITE=1 gate.sh`, not by hand; the driver discards it):
+
+```
+src/MetroidPrime/CModelData.cpp          +40/-4   two bodies, two extern "C" declarations, 2 includes
+src/MetroidPrime/CAnimData.cpp           +12      fn_800295BC, in its claim, at its decl-order slot
+src/Kyoto/Graphics/CModelPortStub.cpp    +32      fn_8033A28C host stand-in (port-only file)
+src/Kyoto/Graphics/CGraphicsHostGlobals.cpp +20   CGraphics::mCameraMtx host storage (port-only file)
+docs/HANDOFF.md                           +2/-2   the state block, rewritten by the judge's gate.sh
+```
+
+No `configure.py`, no `config/`, no carve, no `files.cmake`, no `tools/`.
+
+## `RenderParticles`: the callee is `CAnimData`'s, not the particle database's
+
+`tools/bytescmp.py` on the 44-byte function showed 6 of 12 instructions differing and **ours 48
+bytes against retail's 44** - the whole residual was one extra instruction:
+
+```
++18  ours addi r3,r3,376  | retail bl 800295bc        # 376 = 0x178, CAnimData::mParticleDB
+```
+
+Retail does not reach the database here at all: it calls `fn_800295BC` (`symbols.txt:747`,
+`.text:0x800295BC`, 0x24 bytes) on the `mAnimData` it has already loaded, leaving `r4` where it
+was. `tools/dis.sh 0x800295BC 0x24` shows what that is - `addi r3,r3,376 / bl
+AddToRendererClipped__17CParticleDatabaseCFRC14CFrustumPlanes` and an epilogue - and
+`python3 tools/who_calls.py 0x800295BC` shows **`CModelData::RenderParticles` is its only caller in
+the whole DOL**. Run 2 read this as "`fn_800295BC` lives in another unit's claim" and left it; that
+is true (`python3 tools/range_owner.py .text 0x800295BC 0x800295E0 -> MetroidPrime/CAnimData.cpp`)
+and it is also **where the definition belongs**, which is worth +1 there rather than nothing:
+
+```cpp
+extern "C" void fn_800295BC(const CAnimData& animData, const CFrustumPlanes& planes) {
+  animData.GetParticleDB().AddToRendererClipped(planes);
+}
+```
+
+`extern "C"` with retail's own placeholder name, so objdiff pairs it with `symbols.txt`'s
+`fn_800295BC` instead of seeing a renamed function. It goes **between `CAnimData::Render`
+(0x800295E0) and `CAnimData::RecalcPoseBuilder` (0x8002945C)** in the source, and putting it
+anywhere else is what cost this run its one `gate.sh` failure: the first attempt placed it *above*
+`Render`, `check_decl_order.py` reported `main/MetroidPrime/CAnimData permuted and not in
+decl_order.md`, and moving it one definition down fixed it. **A callee you have to define in a unit
+you do not own also has to go in that unit's reverse-decl-order slot** - the gate does not care
+which unit the function belongs to.
+
+`CModelData.cpp` declares it locally, next to `fn_80310E8C`/`fn_80310F14`, the same pattern the
+file already uses for `fn_80027AE8`/`fn_80027B44`.
+
+## `SetupWorldSpacePortalPlane`: 132 bytes, and **no named copy**
+
+Retail 0x800E4A58 is five calls:
+
+```
+800e4a7c: mr    r4,r0            # arg = this: mScale is CModelData's member at offset 0
+800e4a80: bl    Scale__12CTransform4fFRC9CVector3f     -> r1+8
+800e4a90: bl    __ml__12CTransform4fCFRC12CTransform4f  r1+56 = xf * that
+800e4a9c: bl    __ct__12CTransform4fFRC12CTransform4f  r1+152 = copy of r1+56
+800e4ab0: bl    PSMTXConcat       (0x80417330, r1+152, r1+104)
+800e4ac0: bl    fn_8033A28C       (plane, r1+104, r1+152)
+```
+
+Three readings, all measured, and **the second one is wrong in a way that costs the whole
+function**:
+
+* `0x80417330` is `mCameraMtx__9CGraphics` (`.bss:0x80417330`, `symbols.txt:19388`), reachable in
+  C++ as the public `CGraphics::GetCameraMtx()`. It is **not** `lbl_80417330`: that `extern "C"`
+  name lives in `src/Kyoto/Graphics/CGraphicsHostGlobals.cpp`, which is **port-only** (its own
+  header says so and `configure.py` does not declare it), so it does not exist in the DOL build.
+  `Carve802C2534.cpp:97` uses `lbl_80417330` because that file is compiled for both worlds and
+  needs the *host* name; `CModelData.cpp` is compiled for both too, so it needs retail's.
+* **`PSMTXConcat`'s `Mtx` parameters are by value and mwcceppc materialises each argument in a
+  stack temporary using `CTransform4f`'s copy constructor.** That is what the `__ct__` at 0x800E4A9C
+  is: `r1+152` is the by-value temporary for argument two, `r1+104` for argument three, and
+  `fn_8033A28C` is handed the same two. Declaring a named `mtx` local "to hold the copy" adds a
+  *fourth* 0x30-byte object: measured 144 bytes and 23 wrong instructions, with the copy at
+  `r1+200`. Deleting the named copy is what makes it 132 bytes.
+* **Argument three has to be an `Mtx` lvalue, not a `CTransform4f`.** A `CTransform4f` does not
+  match the decayed `Mtx` (`f32[3][4]`) parameter, so mwcceppc copies it again; an `Mtx modelView;`
+  matches exactly and is passed by address with no copy. `include/dolphin/mtx/GeoTypes.h` is where
+  `Mtx` is `f32[3][4]`, which is also why `CHECK_SIZEOF(CTransform4f, 0x30)` and the four 0x30
+  stack slots line up.
+
+Landed, first try:
+
+```cpp
+const CTransform4f scaledXf = xf * CTransform4f::Scale(mScale);
+Mtx modelView;
+PSMTXConcat(CGraphics::GetCameraMtx(), scaledXf.GetCStyleMatrix(), modelView);
+fn_8033A28C(plane, modelView, scaledXf.GetCStyleMatrix());
+```
+
+`fn_8033A28C` is declared `extern "C"` with `ConstMtxPtr` matrix parameters, **not** defined: it is
+in an unclaimed `.text` gap (`python3 tools/range_owner.py .text 0x8033A28C 0x8033A41C ->
+UNCLAIMED`) and `powerpc-eabi-nm build/G2ME01/main.elf` already has `8033a28c T fn_8033A28C`, so the
+DOL resolves it from retail's own bytes. Run 2 called that out as the reason not to attempt the
+function; it is only half the story - the DOL side needs no definition, but **the host side does**,
+because `CScriptActor::Render` (`src/MetroidPrime/ScriptObjects/CScriptActor.cpp:267`) calls
+`SetupWorldSpacePortalPlane` whenever a script actor has a portal plane, and a new undefined symbol
+fails `link_check.sh --strict` against the recorded baseline. So two host-side definitions were
+added, both in files that are already listed and already port-only:
+
+* `src/Kyoto/Graphics/CModelPortStub.cpp`: `fn_8033A28C`, a stand-in that prints
+  `port stand-in reached: fn_8033A28C - the real body is not written` once and returns. Retail's
+  body writes four plane floats to a guest global at 0x804176BC, sets a byte latch and inverts a
+  matrix; none of those words exist on a host, and the file's header already establishes the
+  "announce itself, do not look plausible" rule this repo follows.
+* `src/Kyoto/Graphics/CGraphicsHostGlobals.cpp`: `Mtx CGraphics::mCameraMtx = {{0.f}}`. Retail's
+  own value at that `.bss` address before `SetViewPointMatrix` runs is zero, so the zero
+  initialiser is retail's value, not a stand-in. It has to be defined because
+  `src/Kyoto/Graphics/DolphinCGraphics.cpp` - the file that defines it - is excluded from
+  `files.cmake`, and nothing listed referenced it until now.
+
+## `GetIsLoop` - the earlier note is confirmed, and this is the measured spelling
+
+Run 2 recorded that `uchar mLoop : 1` -> `bool mLoop : 1` in
+`include/MetroidPrime/CAnimData.hpp:225` takes `CModelData::GetIsLoop` to 100% and costs five
+functions in four units. **Re-measured on this tree, and the cost is worse than "leaves 100%":**
+
+```
+  +100%  main/MetroidPrime/CModelData :: GetIsLoop__10CModelDataCFv      62.50 -> 100.00
+  WORSE  main/MetroidPrime/CAnimData   :: __ct__9CAnimDataF...            87.45 -> 84.78
+  WORSE  main/MetroidPrime/Weapons/CGunWeapon :: PlayAnim                100.00 -> 96.86
+  WORSE  .../GunController/CGSComboFire :: Update                        98.88 -> 92.18
+  WORSE  .../GunController/CGSFreeLook  :: Update                        100.00 -> 92.70
+  WORSE  .../GunController/CGunMotion  :: PlayPasAnim                    100.00 -> 99.53
+  matched 12378 -> 12376   (+1 at 100%, but net -2)
+```
+
+So the change is **net -2 matched functions**, not a trade. The cause is visible in one of them:
+`CGunWeapon::PlayAnim` reads the flag byte and does `rlwimi r4,r5,6,25,25 / stb r4,off(r10)` when
+`mLoop` is a `uchar` bitfield (a read-modify-write of the shared byte) and builds a whole fresh byte
+when it is `bool`. Both forms are right; retail has the first, and retail's `GetIsLoop` is the only
+place that wants the second. One shared declaration cannot give both. **The header was reverted.**
+
+The `neg r0,r3 / or r0,r0,r3 / srwi r3,r0,31` tail in retail's 32-byte `GetIsLoop` is `uchar:1` ->
+`bool` normalisation that mwcceppc elides only when the source type is already `bool`, which is why
+nothing about `CModelData::GetIsLoop`'s own body can be respelled around it.
+
+WALL: GetIsLoop 100.00% - the only spelling that reaches it (`bool mLoop : 1`) measures net -2 matched functions (measured this run: 5 functions worse in 4 units), so it needs the five re-matched, not re-applied
+
+## Not attempted this run, with what was measured, so the next run does not re-derive it
+
+* **`MultipassDrawCallback` (2.22%, 180 bytes)** - run 2's reading still holds and this run did not
+  re-measure it: `SModelDataMultipassContext` needs `mPlanes`/`mColors` swapped, `IRenderer`'s
+  virtual at retail's vtable word 71 (this header's word 69, `SetGXRegister1Color`) has to take a
+  `const CPlane&` rather than a `const CColor&`, with `CCubeRenderer` and `PortCCubeRenderer`
+  following, and `fn_8033A41C` (0x30 bytes, also unclaimed) has to be declared. Now known: the
+  `fn_8033A28C` stand-in added above is the same shape of work and cost two port-side definitions,
+  so the remaining shared-surface part is the three `IRenderer`/`CCubeRenderer` declarations.
+* **`RenderModelMultipleTimesWithFlags` (1.02%, 392 bytes)** - the largest remaining function and a
+  separate reading; untouched.
+* **`AdvanceAnimation(float, CRandom16&, bool)` (33.89%, 212 retail bytes)** - **run 2's blocker is
+  stale on this tree.** `include/MetroidPrime/CAnimData.hpp:85` now reads
+  `Advance(float dt, float minParticleWeight, const CVector3f& scale, CStateManager* mgr,
+  CRandom16& random, TAreaId areaId, bool advanceTree)` - seven parameters, and
+  `nm` confirms `Advance__9CAnimDataFffRC9CVector3fP13CStateManagerR9CRandom167TAreaIdb` - so the
+  register assignment the note called "shifted by one" no longer explains the 43-byte residual. What
+  is left, from `tools/bytescmp.py`: retail passes a **stack copy** of `mScale` (`lfs f0,0(r4)` /
+  `4(r4)` / `8(r4)` into `r1+12`) where we pass `&mScale` directly, and retail's `mr r7,r5` /
+  `mr r9,r6` sit **after** the function-static `TAreaId` initialisation (the
+  `lbz/extsb./bne/li 1/stb/stw/lwz` guard at 0x800E5B00..0x800E5B1C, which our code also emits)
+  where mwcceppc hoists ours into the prologue. That is two independent orderings to fix at once
+  and it was not attempted.
+* **`AdvanceAnimation(float, CStateManager&, TAreaId, bool, float)` (79.81%)** - still the
+  `return skNullAdvance;` stub (64 bytes against retail's 212). Its `CStateManager&` parameter is
+  not the same call as the one above.
+* **`GetIsLoop`** - see the `WALL:` above.
+* **`Render` (98.43%, 572 B) and `Touch()` (98.21%, 168 B)** - unchanged walls from
+  `docs/goal-notes/progress-prime1-cmodeldata.md` (30 and 11 spellings). **Not re-measured this
+  run, and no `WALL:` is written for either.**
+* **`CModelData(const CAnimRes&)` (29.03%, 464 B)** - still the TODO stub: it needs
+  `CCharacterFactoryBuilder`, and four symbols are missing. Not re-measured.
+
+## NEW: items
+
+None. Three functions across two units are matched and kept, the gate is green and the judge passed
+the item as partial progress. The two remaining TODO stubs that could still be read off retail
+(`MultipassDrawCallback` needs the three shared `IRenderer` declarations; 
+`RenderModelMultipleTimesWithFlags` is a 392-byte reading) are each a `NEW:`-sized job on their own,
+and the item's target is what the judge scores, so filing them would spend a lane's hour outside
+this unit.
+
+## For the next run: the flip blocker is unchanged and still not this change
+
+`./tools/flip_test.sh MetroidPrime/CModelData.cpp` fails with the same pre-existing
+`### mwldeppc.exe Linker Error: #   undefined: 'CModel::GetAABB() const'` that runs 1 and 2 recorded.
+**This change adds no second undefined symbol to that link**: `fn_800295BC` is defined in
+`CAnimData.cpp`, which is listed and compiled, and `fn_8033A28C` resolves from retail's bytes in
+the DOL. The unit needs all 49 functions matched before the flip can mean anything, and **8 are
+not**.
+
+## Review rejected run 33 (2026-10-02 05:37:43Z, reviewer worker)
+
+The judge passed this attempt; the reviewer rejected it:
+
+The decomp work is correct and byte-exact, but `src/Kyoto/Graphics/CGraphicsHostGlobals.cpp:190` gives `CGraphics::mCameraMtx` its own storage while `lbl_80417330` (line 168) is the same retail word at 0x80417330, so the host ends up with two camera matrices and the new read in `CModelData::SetupWorldSpacePortalPlane` (`src/MetroidPrime/CModelData.cpp:716`) is fed a permanently-zero one — the live writer is `CGraphics::SetViewPointMatrix` (`Carve802C2534.cpp:119`) and the live reader is `fn_802C2614` (`Carve802C2614.c:106,109`), both of which use the `lbl_` spelling. This is the exact failure `src/MetroidPrime/PortGlobals.cpp:455-466` documents for the sibling matrix at 0x80416F44 and solves with a GCC alias, and the new comment at `CGraphicsHostGlobals.cpp:177-183` records the defect as if it were correct, so it would stop the next lane from fixing it. An acceptable change keeps everything else and replaces the second definition with an alias in the same file — `Mtx CGraphics::mCameraMtx = { { 0.f } };` followed by `extern "C" Mtx lbl_80417330 __attribute__((alias("_ZN9CGraphics11mCameraMtxE")));` — so the carve's writer and the C++ reader reach one object, as retail does; the port-only stand-in and the two decompiled bodies can land unchanged.
+
+Rejected diff: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/review/progress-prime1-cmodeldata-l9-L5-33.patch
+Review transcript: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/agent/progress-prime1-cmodeldata-l9-L5-33-review2-20261002T053236.jsonl
+
+## Fix round 1 (2026-10-02, lane 5)
+
+Applied the reviewer's one correction to `src/Kyoto/Graphics/CGraphicsHostGlobals.cpp` and
+nothing else. `lbl_80417330` is no longer a second definition in the `extern "C"` block; it is now
+a GCC alias of the `CGraphics::mCameraMtx` definition directly above it, the fix
+`src/MetroidPrime/PortGlobals.cpp:455-466` already uses for `mViewMatrix__9CGraphics` at
+0x80416F44:
+
+    Mtx CGraphics::mCameraMtx = { { 0.f } };
+    extern "C" Mtx lbl_80417330 __attribute__((alias("_ZN9CGraphics10mCameraMtxE")));
+
+**One correction to the review's literal snippet: the mangled name is `_ZN9CGraphics10mCameraMtxE`,
+not `_ZN9CGraphics11mCameraMtxE`** - `mCameraMtx` is ten characters, and with the review's `11` the
+build stops with `error: 'lbl_80417330' aliased to undefined symbol
+'_ZN9CGraphics11mCameraMtxE'`. The mechanism the reviewer asked for is what landed.
+
+The comment above the definition was rewritten rather than deleted, because it recorded the defect
+as correct and would have stopped the next lane from fixing it. It now says the two spellings are
+one object, names the live writer (`Carve802C2534.cpp`:119) and reader
+(`Carve802C2614.c`:106,109), and drops the false "nothing writes this on the host yet" claim - the
+carve has been in `files.cmake` since 2026-09-29 and does write it. The `extern "C"` block's own
+comment gained one sentence so it does not claim four definitions where there are now three.
+
+Verified:
+
+- `nm -S` on the rebuilt port object: `lbl_80417330` and `_ZN9CGraphics10mCameraMtxE` are both
+  `B` at the same address, size `0x30` - retail's `size:0x30` at `.bss:0x80417330`, one object.
+- `nm` on `Carve802C2534.cpp.o` and `Carve802C2614.c.o`: both carry `U lbl_80417330`, so the carves'
+  write and read reach the member `CGraphics::GetCameraMtx()` hands `SetupWorldSpacePortalPlane`.
+- Full port link: no `multiple definition`, and no `80417330`/`mCameraMtx` in the undefined list.
+  The link still fails on the project's pre-existing gap (509 `undefined reference`s,
+  `TCastToPtr`/`CTweakPlayerControls`/etc.), which is what the gate's
+  `--unresolved-symbols=ignore-all` mode exists for; unrelated to this change.
+- `python3 tools/check_raw_offsets.py` → `ok: 167 raw-offset site(s) in 71 file(s)`.
+- `tools/goal_check.sh` → **PARTIAL** (exit 3), unchanged from before the fix: `gate.sh` ok,
+  `MetroidPrime/CModelData` 39 → 41 / 49, no asm added, flip still blocked on
+  `CModel::GetAABB() const` being undefined. The judge was already PARTIAL; this did not regress it.
+
+The DOL build is untouched by this fix: `CGraphicsHostGlobals.cpp` is not in `configure.py`, so
+`gate.sh`'s DOL sha1 and the 86 REL `cmp`s cannot move.
