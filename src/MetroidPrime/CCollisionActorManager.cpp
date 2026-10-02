@@ -216,17 +216,20 @@ CCollisionActorManager::CCollisionActorManager(
 // `rstl::vector<CJointCollisionDescription>::~vector` (0x80136318, 132 bytes, 100% before this
 // and after) is the only caller: it computes the two ends, copies them into its own frame at
 // +0xc and +0x10 (0x80136350-0x80136360) and then `bl fn_8013639C` **with their addresses** in
-// r3 and r4 (0x8013633C / 0x80136344). So `fn_8013639C`'s own parameters are lvalue references,
-// and it re-copies both into its frame before forwarding - which is why it is 56 bytes and not
-// the 32 a plain forwarder would be.
+// r3 and r4 (0x8013633C / 0x80136344). Because `CJointDescriptionIterator` is a class type (a
+// `pointer_iterator` - a pointer wrapped in a class), mwcceppc passes it by value **as an address**
+// under the SGI ABI, so a by-value parameter and an lvalue reference receive the same thing in
+// r3/r4 and the call does not tell you which the callee was declared with. `fn_8013639C` is
+// written with both parameters by value, which is what makes it re-copy both into its own frame
+// before forwarding - which is why it is 56 bytes and not the 32 a plain forwarder would be.
 //
 // Retail's two functions, in retail's order (mwcceppc emits descending source order, so
 // `fn_8013639C` is the one defined second here):
 //
-//   fn_8013639C (0x8013639C, 0x38)  `destroy<It>(It& begin, It& end)` - the forwarder
+//   fn_8013639C (0x8013639C, 0x38)  `destroy<It>(It begin, It end)` - the forwarder
 //     lwz r5,0(r4) ; stw r0,0x14(r1) ; addi r4,r1,0x8 ; lwz r0,0(r3) ; addi r3,r1,0xc ;
 //     stw r5,0x8(r1) ; stw r0,0xc(r1) ; bl fn_801363D4
-//   fn_801363D4 (0x801363D4, 0x60)  `destroy_impl<It>(It begin, It& end)` - the loop
+//   fn_801363D4 (0x801363D4, 0x60)  `destroy_impl<It>(It begin, It end)` - the loop
 //     lwz r31,0(r3) ; mr r30,r4 ; b loop
 //     loop: lwz r0,0(r30) ; cmplw r31,r0 ; bne body        <- the end is RE-READ every pass
 //     body: cmplwi r31,0 ; beq next ; addic. r0,r31,0x2c ; beq next ;
@@ -237,14 +240,40 @@ CCollisionActorManager::CCollisionActorManager(
 // the end iterator in the callee-saved r30 and re-reads `0(r30)` on every iteration, because the
 // loop body calls `internal_dereference` and mwcceppc will not keep a load hoisted out of a loop
 // whose body can write through a non-const reference. Spelled `const It&` - the more natural
-// reading, and what the previous run's notes settled on - mwcceppc hoists `*end` into r31 before
+// reading, and what an earlier run's notes settled on - mwcceppc hoists `*end` into r31 before
 // the loop, the test compares two registers, and the function comes out 92 bytes carrying 22 of
-// retail's 24 instructions. A **non-const** `It&` for the end is what reproduces all 96 bytes,
-// which is why the `e` parameter below is not `const`. `const It&` for `begin`, or `begin` by
-// value, both work; `begin` as a non-const reference puts its `lwz r31,0(r3)` one instruction
-// later than retail has it and loses two. `fn_8013639C` takes both of its parameters by
-// `const&` because it only reads them; it copies `end` into a local because its callee wants a
-// modifiable lvalue.
+// retail's 24 instructions. `It&` (non-const) for the end is what reproduces all 96 bytes, and
+// so is **`It` by value**, which mwcceppc passes by address like a reference here - both spellings
+// give D4 100.00%.
+//
+// **Both parameters by value is what makes `fn_8013639C` match too**, and this is the part an
+// earlier run got backwards. It concluded from `~vector` passing the two ends' *addresses* in r3
+// and r4 (0x8013633C / 0x80136344) that 9C's parameters must be `const&`, and it copied `end`
+// into a local `ee` to have a modifiable lvalue for the callee. That spelling reaches 99.71%:
+// 13 of 14 instructions, and the only difference is which of the two frame slots holds `end`
+// (ours +0xc against retail's +8) - the two `addi`/`stw` pairs, everything else identical.
+// About seventy spellings all put `end` at the higher offset, and ~fifty of those were tried
+// against this one frame slot.
+//
+// The fix is not a different local, it is **no local at all**: with *both* parameters of both
+// functions by value, mwcceppc materialises the two by-value arguments as its own frame slots
+// (`It` is a class type here, so by-value and by-reference are passed identically, as an
+// address), and it lays them out in argument order - `end` at +8, `begin` at +0xc - which is
+// retail's layout. `fn_8013639C` becomes a pure forwarder that copies its two by-value
+// parameters into the call frame:
+//
+//   fn_8013639C (0x8013639C, 0x38)
+//     lwz r5,0(r4) ; stw r0,0x14(r1) ; addi r4,r1,8 ; lwz r0,0(r3) ;
+//     addi r3,r1,0xc ; stw r5,8(r1) ; stw r0,0xc(r1) ; bl fn_801363D4
+//
+// **100.00%, byte-identical.** Both functions are now exact, and the unit is 27/30. What does
+// *not* work, measured: keeping 9C's `const&` parameters and adding any second local (`It bb(b)`)
+// puts `bb` in the extra slot and costs a frame slot, dropping 9C to 87-93%; `const&` on either
+// parameter of either function gives 91.67% for D4 and 70-92% for 9C; `It&` (non-const) for 9C's
+// `begin` gives 70.86%. The `ee`-local spelling is not wrong code, only two bytes of frame-slot
+// assignment away, so it is worth recording that it is *correct* rather than a trap - unlike the
+// 99.86% `destroy_pair(e, b)` shape an earlier run measured and rejected, which reaches that
+// score by handing the two iterators to D4 the wrong way round.
 //
 // Neither of these is called from our own `~vector`: the header's `rstl::destroy` still outlines
 // its own local copy (`destroy<pointer_iterator<...>>__4rstl...`, 100 bytes) right after
@@ -257,17 +286,15 @@ CCollisionActorManager::CCollisionActorManager(
 
 typedef rstl::vector< CJointCollisionDescription >::iterator CJointDescriptionIterator;
 
-extern "C" void fn_801363D4(CJointDescriptionIterator b, CJointDescriptionIterator& e) {
+extern "C" void fn_801363D4(CJointDescriptionIterator b, CJointDescriptionIterator e) {
   CJointDescriptionIterator cur = b;
   for (; cur != e; ++cur) {
     rstl::destroy(&*cur);
   }
 }
 
-extern "C" void fn_8013639C(const CJointDescriptionIterator& b,
-                            const CJointDescriptionIterator& e) {
-  CJointDescriptionIterator ee(e);
-  fn_801363D4(b, ee);
+extern "C" void fn_8013639C(CJointDescriptionIterator b, CJointDescriptionIterator e) {
+  fn_801363D4(b, e);
 }
 
 CCollisionActorManager::~CCollisionActorManager() {}
