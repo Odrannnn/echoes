@@ -1145,6 +1145,9 @@ MetroidPrime/ScriptLoader/SpacePirate.cpp:
 	.text       start:0x80200E10 end:0x80200E3C
 	.sbss       start:0x80419358 end:0x80419360
 
+MetroidPrime/ScriptLoader/Carve80200E3C.c:
+	.text       start:0x80200E3C end:0x80200E44
+
 MetroidPrime/ScriptLoader/Kralee.cpp:
 	.text       start:0x80200E44 end:0x80200E70
 	.sbss       start:0x80419360 end:0x80419368
