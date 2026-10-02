@@ -9,8 +9,11 @@
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   162 functions, 4 data objects (counted 2026-10-02, after `fn_80044DD4` was
- *   added by hand below for `Carve80044D48.c`; before that 161, after `fn_80045014` was
+ *   162 functions, 4 data objects (counted 2026-10-02, an exchange: `fn_80045014`'s stub was
+ *   retired below because `Carve80045014.c` now defines that symbol for the port's link as well,
+ *   and `fn_8004509C`'s was added in its place for the same unit, so the total did not move;
+ *   before that, 162 after `fn_80044DD4` was added by hand below for `Carve80044D48.c`; before
+ *   that 161, after `fn_80045014` was
  *   added by hand below for `Carve80044F88.c`; before that 160, after `fn_801FEC64` and `fn_801FDAA4` were
  *   added by hand below for `Carve801FF8A0.cpp`; before that 158, after `fn_801FE7E8` was added by
  *   hand below for `Carve801FFA20.cpp`; before that 157, after `fn_801B9C68` was added by hand
@@ -27,7 +30,10 @@
  *   154 for the 151-function file, which its own breakdown already contradicted by one).
  *
  * Breakdown: 86 REL loader, 46 game method, 30 unmangled fn_/lbl_, 1 CodeWarrior-mangled
- * `rstl::rmemory_allocator::allocate`, 4 vtable/typeinfo. (counted 2026-10-02, after `fn_80044DD4`
+ * `rstl::rmemory_allocator::allocate`, 4 vtable/typeinfo. (counted 2026-10-02, an exchange:
+ *   `fn_80045014`'s stub was retired below because `Carve80045014.c` now defines that symbol for
+ *   the port's link as well, and `fn_8004509C`'s was added in its place for the same unit, so the
+ *   30 did not move; before that, 30 after `fn_80044DD4`
  *   was added by hand below for `Carve80044D48.c`; before that 28, after `fn_80045014`
  *   was added by hand below for `Carve80044F88.c`; before that 27, after `fn_801FEC64`
  *   and `fn_801FDAA4` were added by hand below for `Carve801FF8A0.cpp`; before that 25, after
@@ -934,25 +940,24 @@ extern "C" void stub_189() {}
 extern "C" void stub_190() asm("fn_801FDAA4");
 extern "C" void stub_190() {}
 
-// fn_80045014 - retail 0x80045014, 0x68 = 104 bytes (`config/G2ME01/symbols.txt:1275`), the
-// elementwise copy `uninitialized_copy_n` for the 0x2C-byte element `Carve80044F88.c`'s
-// `fn_80044FD0` copy-constructs. Asked for by the port because that unit (Matching,
-// 0x80044F88..0x80045014) reproduces its three functions byte for byte, and `fn_80044FD0`'s
-// `bl fn_80045014` at 0x80044FF8 is in retail's bytes, so the carve cannot drop the call. For the
-// DOL nothing is needed: dtk's own auto object for the unclaimed range that holds it defines it
-// (this run `auto_03_80045014_text.o`, 0x80045014..0x80045CD4), and this file is not in
+// fn_8004509C - retail 0x8004509C, 0x28 = 40 bytes (`config/G2ME01/symbols.txt:1277`), the
+// per-element copy `Carve80045014.c`'s `fn_8004507C` calls at 0x80045088. Asked for by the port
+// because that unit (Matching, 0x80045014..0x8004509C) reproduces its two functions byte for byte,
+// and `fn_8004507C`'s `bl fn_8004509C` is in retail's bytes, so the carve cannot drop the call. For
+// the DOL nothing is needed: dtk's own auto object for the unclaimed range that holds it defines it
+// (this run `auto_03_8004509C_text.o`, 0x8004509C..0x80045CD4), and this file is not in
 // `configure.py`, so the stub cannot reach main.dol. The port link does not carry that object,
 // which is why its gap would grow by this symbol: measured in this tree without this block,
 // `python3 tools/link_gap.py --rebuild` prints `286 MISSING` and names
-// `gap grew: fn_80045014 is not in port_link_gap_list.md`; with the block in place the same command
+// `gap grew: fn_8004509C is not in port_link_gap_list.md`; with the block in place the same command
 // prints `285 MISSING`, all accounted for.
 //
 // This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
-// claim that fn_80045014 is decompiled - it is not. Matching its 0x68 bytes is a spelling job of its
-// own, which is why `Carve80044F88.c`'s claim stops at 0x80045014. The same trade `stub_186` above
+// claim that fn_8004509C is decompiled - it is not. Matching its 0x28 bytes is a spelling job of its
+// own, which is why `Carve80045014.c`'s claim stops at 0x8004509C. The same trade `stub_186` above
 // makes for the neighbouring `Carve80004010.c`.
-extern "C" void stub_191() asm("fn_80045014");
-extern "C" void stub_191() {}
+extern "C" void stub_193() asm("fn_8004509C");
+extern "C" void stub_193() {}
 
 // fn_80044DD4 - retail 0x80044DD4, 0x70 = 112 bytes (`config/G2ME01/symbols.txt:1267`), the
 // elementwise copy `uninitialized_copy_n` for the 0x20-byte element `Carve80044D48.c`'s
@@ -969,8 +974,8 @@ extern "C" void stub_191() {}
 //
 // This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
 // claim that fn_80044DD4 is decompiled - it is not. Matching its 0x70 bytes is a spelling job of its
-// own, which is why `Carve80044D48.c`'s claim stops at 0x80044DD4. The same trade `stub_191` above
-// makes for the neighbouring `Carve80044F88.c`.
+// own, which is why `Carve80044D48.c`'s claim stops at 0x80044DD4. The same trade `stub_193` above
+// makes for the neighbouring `Carve80045014.c`.
 extern "C" void stub_192() asm("fn_80044DD4");
 extern "C" void stub_192() {}
 
