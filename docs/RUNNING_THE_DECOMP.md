@@ -1673,6 +1673,19 @@ does not rediscover it.
   decompilation - see `docs/research/raw_offsets.md`)
 - `python3 tools/check_decl_order.py` agrees with `docs/research/decl_order.md` (a permuted unit
   compiles, links, scores 100% and breaks the hash on a few bytes - see "Declare in reverse")
+**`tools/rel_class_map.py <Module>` names a module's virtuals from its vtables (2026-10-02).** The
+modules carry no typeinfo (a REL vtable is two zero words, then relocated slots), so class names
+cannot be read as `vtable_of.py` reads them in the DOL. The base class is instead the DOL `__vt__`
+object agreeing with the most inherited slots, and a slot the module defines overrides the base's
+virtual at the same index, which gives that `fn_` its real name and signature. `--summary` measured:
+135 vtables in the 86 modules; 1746 of the 9942 unmatched `fn_` functions in modules are vtable
+slots, and 938 of those override a named DOL virtual. The other 808 sit mostly in the large enemy
+vtables (DarkSamus: 235 slots, best DOL fit `CScriptDoor` on 11 slots), whose real base, CPatterned,
+has no `__vt__` symbol in `config/G2ME01/symbols.txt` - naming that vtable from Prime 1's CAi/
+CPatterned declaration order is the untried next step. The base is a best fit, not a proof.
+Not found this way: the 8196 unmatched module functions that are in no vtable. No item has used
+the map yet.
+
 **README.md's progress table is refreshed by the loop since 2026-10-02.** `run_goal.sh` runs
 `tools/update_readme_progress.py` in the lane's worktree at each fast-forward of master (every
 `MP_GOAL_FF_EVERY` landed items) and commits the result as `docs: README progress at <head>`.
