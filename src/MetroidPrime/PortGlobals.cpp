@@ -80,6 +80,8 @@
 #include "MetroidPrime/CPhysicsActor.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrTweakPlayer.hpp"
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
+#include "MetroidPrime/Cameras/CBallCamera.hpp"
+#include "MetroidPrime/CCollisionActor.hpp"
 #include "MetroidPrime/Enemies/CAi.hpp"
 #include "MetroidPrime/Enemies/CPatterned.hpp"
 #include "MetroidPrime/Enemies/CSwarmBasics.hpp"
@@ -810,6 +812,13 @@ PORT_CAST_TO_PTR(CScriptCamera, kET_ScriptCamera)
 PORT_CAST_TO_PTR(CScriptWater, kET_ScriptWater)
 PORT_CAST_TO_PTR(CScriptWaypoint, kET_ScriptWaypoint)
 PORT_CAST_TO_PTR(CScriptTrigger, kET_ScriptTrigger)
+//   TCastToPtr<CCollisionActor> 0x8009A498 li r4,18
+//
+// CCollisionActor's is here for `CBallCamera::TeleportCamera(const CVector3f&, CStateManager&)`
+// (0x801A7F10), which the newly written `CBallCamera::UpdateTransitionToBallCamera` (0x801A8B78)
+// calls; the cast sits in that body and `src/MetroidPrime/CCollisionActor.cpp` is a
+// `NonMatching` unit the port does not list, so nothing else defines this specialization.
+PORT_CAST_TO_PTR(CCollisionActor, kET_CollisionActor)
 // Type 85 is `CUnknown85` in src/MetroidPrime/TypesMatch.cpp, which is deliberately out of the port
 // build; `CCameraManager::SetSurfaceCamera` needs the cast. See include/MetroidPrime/CUnknown85.hpp.
 PORT_CAST_TO_PTR(CUnknown85, 85)
@@ -1596,6 +1605,45 @@ void CHintManager::Update(float dt) { ReportedCameraManagerStandIn("CHintManager
 // this line and that file are what have to go.
 CCameraManager& CGameCamera::GetCameraManager(const CStateManager& mgr) const {
   return *const_cast< CCameraManager* >(mgr.GetCameraManager(mControllerIdx));
+}
+
+// `CGameCamera::Player(CStateManager&) const` and `CBallCamera::TeleportCamera(const CVector3f&,
+// CStateManager&)`, opened the same way. Writing
+// `CBallCamera::UpdateTransitionToBallCamera(CStateManager&)` (retail 0x801A8B78, 772 bytes) in
+// `CBallCameraTransitions.cpp` - a unit `files.cmake` *does* list - put calls to both into that
+// object, and both bodies live in `NonMatching` units the port does not list
+// (`CGameCamera.cpp:256` and `CBallCamera.cpp:151`), so the port's undefined count rose and
+// `tools/link_gap.py` reported two new names.
+//
+// These are the same bodies, not stand-ins. `Player` is `mgr.GetPlayer(mControllerIdx)` - the
+// inline array read the class's own copy performs, so a caller gets the player for its own
+// controller. `TeleportCamera` moves the camera, reteleports the three collider groups and
+// teleports the tracked collision actor, which is what its name says. Like the line above, both
+// duplicate their `NonMatching` unit's copy; when those units are listed, these go.
+CPlayer& CGameCamera::Player(CStateManager& mgr) const { return *mgr.GetPlayer(mControllerIdx); }
+
+void CBallCamera::TeleportCamera(const CVector3f& position, CStateManager& mgr) {
+  mDampedPos = position;
+  mSmallColliders.TeleportColliders(position);
+  mMediumColliders.TeleportColliders(position);
+  mLargeColliders.TeleportColliders(position);
+  if (CCollisionActor* actor = TCastToPtr< CCollisionActor >(mgr.ObjectById(mCollisionActorId))) {
+    actor->SetTranslation(position);
+  }
+}
+
+// `CCameraColliderGroup::TeleportColliders(CVector3f)`, retail 0x801F94DC, 0x78 bytes: a loop over
+// the group's colliders that writes the new position into three of each collider's four vectors.
+// The three are the ones at +0x14, +0x20 and +0x2C within a 0x40-byte `CCameraCollider`, read
+// through three separate reloads of the vector's data pointer, and the loop counter advances by
+// 0x40 to match. There is no `NonMatching` unit in this tree that owns it, so it has to be here
+// for the call above; it is the same body as retail, and the loop is what moves the group.
+void CCameraColliderGroup::TeleportColliders(CVector3f position) {
+  for (CCameraCollider& collider : mColliders) {
+    collider.SetDesiredPosition(position);
+    collider.SetLookAtPosition(position);
+    collider.SetRealPosition(position);
+  }
 }
 
 // `CHintManager::RemoveHint` (retail 0x801B94B8, 0xAC bytes) sits in an unclaimed gap of the DOL -

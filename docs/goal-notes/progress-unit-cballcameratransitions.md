@@ -148,3 +148,146 @@ Per-function diff against `build/goal/judge/report.base.json`: **0 worse, 2 bett
 
 NEW: none. The two walls above are on functions whose success raises the count, but both need either
 the `.bss` claim or a multi-item budget, so they belong to the same item rather than a new one.
+---
+
+# Run 2 (2026-10-02, lane 5)
+
+`UpdateTransitionToBallCamera__11CBallCameraFR13CStateManager` (retail 0x801A8B78, 772 bytes) is
+**now at 100.00%** (`build/report.json`). The unit goes **2/8 -> 3/8** matched and stays
+`NonMatching`. Nothing anywhere got worse and the diff adds no `asm`. The previous run's
+`WALL:` on `fn_801AA3EC` still stands - I did not re-attack it and it is still 0.00%.
+
+## What the function is
+
+Reads nothing from the player's transform; it is a *camera-side* routine that has to be written
+from the disassembly, not inferred from the name:
+
+```
+mLookAtBall = false;                       // bitfield byte 517, bit 2 (0x205:2) - rlwimi 5,26,26
+const CPlayer& player = Player(mgr);
+CVector3f dir = player.GetTransform().GetForward();   // DEAD, but its 3 stores are in retail
+dir = mLookPos - GetTranslation();                    // 0x250 minus 0x54
+const CVector3f pos = GetTranslation();
+if (dir.IsMagnitudeSafe()) {                          // the 0.65%-scoring stub skipped this entirely
+  dir.Normalize();
+  CVector3f up = GetTransform().GetForward();
+  up.SetZ(0.f);
+  up.Normalize();
+  const float absProjection = CMath::AbsF(CMath::Limit(CVector3f::Dot(up, dir), 1.f));
+  if (absProjection < 0.99999f) {
+    const float progress = 0.f == player.GetMorphDuration()
+                             ? 0.f
+                             : CMath::Clamp(0.f, player.GetMorphTime() / player.GetMorphDuration(), 1.f);
+    const float fraction = 1.5f * progress;
+    const float angle = CMath::Limit(fraction, 1.f);
+    const CRelAngle step = CRelAngle::FromRadians(angle * acosf(absProjection));
+    const CQuaternion rotation = CQuaternion::LookAt(CUnitVector3f(up), CUnitVector3f(dir), step);
+    SetTransform(rotation.BuildTransform4f() * CTransform4f::LookAt(pos, pos + up, CVector3f::Up()));
+  } else {
+    SetTransform(CTransform4f::LookAt(pos, pos + dir, CVector3f::Up()));
+  }
+}
+SetTranslation(pos);
+TeleportCamera(pos, mgr);
+return false;
+```
+
+## The four things that took the whole budget
+
+Every one of these is a *source shape* fact, not a codegen fact. `tools/g2try.sh`'s byte
+percentage hid all four, because each one is worth 99.x% -> 100.00%.
+
+1. **`acosf` takes the absolute value, and the same absolute value is what the branch tests.**
+   `0.801A8C74` computes `|dot|`, `0.801A8C9C` compares it to `0.99999f`, and `0.801A8D10` calls
+   `acos` - on `f1`, which still holds **that absolute value**, not the signed dot. One `const
+   float absProjection = CMath::AbsF(CMath::Limit(...))` used by both the test and the call takes
+   the function from 97.64% to 99.43%. Written as `Limit(dot,1)` + `AbsF(projection)` for the
+   test + `acosf(projection)`, it sticks at 97.64% forever: two spellings, one number.
+
+2. **`0.99999f`, not `0.999999f`.** The `.sdata2` word at 0x8041CCE4 is `3f7fff58` =
+   0.99998998...f, which is `0.99999f`. `0.999999f` is `3f7fffef`, one ulp away, and looks
+   identical on screen. Measured, not guessed - `CMath::Limit`'s `0.999999f` in
+   `CInterpolationCamera.cpp:100` is a *different* constant from this function's.
+
+3. **`1.5f * progress` has to be its own named `const float fraction`.** Retail
+   `fmuls f3,f2,f3` puts the product in the *same* register the Clamp result occupied; inline,
+   the product lands in `f31` and everything below shifts. Naming the temp reproduces the
+   register. Same for the dead first `dir` assignment: retail builds a `CVector3f` from the
+   player's transform forward, stores it at 116(r1), and then overwrites the same slot - so the
+   declaration *and* the reassignment both have to stay.
+
+4. **The zero-duration test is written `0.f == dur ? 0.f : Clamp(...)`, not `!=`.** This is the
+   last 0.57%. Retail branches *around* the ratio computation with `fcmpu cr0,f3,f2 / bne / b`;
+   the `!=` spelling emits `beq` straight to the join and drops an instruction. **The ternary's
+   arms are not interchangeable in MWCC codegen** - swapping them is the whole difference between
+   99.43% and 100.00%, with identical C++ semantics.
+
+Spellings measured, all reaching the same 99.43% ceiling unless noted (each is a real
+distinction, none is a guess): `progress` via `if`/`else` vs ternary (29-41 differing lines vs 5
+for the winning ternary); `duration` hoisted into a local or re-read at each use (23-46);
+`Clamp(0.f, ratio, 1.f)` vs two hand-written compares (18-45); `Limit(progress * 1.5f, 1.f)` vs
+`Limit(1.5f * progress, 1.f)` (both stuck); `progress *= 1.5f` in place (41). The winning shape is
+the **only** one tried that both names `fraction` and writes the test as `0.f == dur`. ~40
+variants swept mechanically; `.tmp/opencode/norm.py` is the differ (it resolves SDA2 float
+relocations to their values on the object side so a relocated constant does not read as a
+difference) and the per-variant sweeps are `sweep*.py` beside it. **Do not re-sweep these: the
+answer is the shape above, verbatim.**
+
+## The link gate, and what it cost
+
+`goal_check.sh` failed its first run on `link-gap`, not on the count: the two new calls
+(`CGameCamera::Player`, `CBallCamera::TeleportCamera`) put two undefined names into
+`CBallCameraTransitions.o`, which `files.cmake` *does* list, and both bodies live in
+`NonMatching` units the port does not (`CGameCamera.cpp:256`, `CBallCamera.cpp:151`). Same trap
+the previous run documented for `GetCameraManager`, and the same fix: the bodies go in
+`src/MetroidPrime/PortGlobals.cpp` beside the `GetCameraManager` one, each with the reason.
+
+`TeleportCamera` is not free - it is a net *zero*, not a net win:
+
+- it calls `CCameraColliderGroup::TeleportColliders` (retail 0x801F94DC, 0x78 bytes), which no
+  unit in this tree owns, and
+- it calls `TCastToPtr<CCollisionActor>` (retail 0x8009A498, `li r4,18` = `kET_CollisionActor`),
+  whose only would-be definer is `CCollisionActor.cpp` - also excluded.
+
+So the change carries **three** extra bodies, not one: `CGameCamera::Player`,
+`CCameraColliderGroup::TeleportColliders` and the `PORT_CAST_TO_PTR(CCollisionActor, ...)` line
+(the existing macro and the six `TCastToPtr` cases above it are the precedent, and the type id
+was read out of retail's `li r4`, not from the enum). Measured after: **283 MISSING, unchanged,
+`all accounted for`**. Adding only `Player` and `TeleportCamera` left 285 with two names the gap
+list had never seen - a failure, not a pass, which is why the count alone is not the test.
+
+## Still not done, and the walls
+
+- `fn_801AA3EC` 0.00%, 216 bytes. **Unchanged from run 1 and still walled**; I did not re-attack
+  it. The previous run's six spellings and its analysis (our `__sinit_` is 192 bytes because
+  `CMaterialList`'s ctor spills each partial `1<<id` to `.bss` where retail keeps the
+  accumulation in r30:r31) all still stand. It also cannot be *paired* by objdiff under the name
+  `__sinit_CBallCameraTransitions_cpp` - retail's unit object has no such symbol - so reaching
+  216 bytes is necessary but not sufficient.
+- `TransitionFromMorphBallState` 860 B (0.65%), `UpdateTransitionFromBallCamera` 1360 B (0.41%),
+  `TransitionToMorphBallState` 908 B (0.62%), `UpdateTransitionToBallCamera(float, CStateManager&)`
+  2088 B (0.27%) - all still `return false;` stubs, untouched. This run's budget went entirely
+  into the one function above; the other four are each a separate item's work, and the 2088-byte
+  one is the largest single item in the queue.
+- **`.bss` 0x803DB4A0..0x803DB4B8 is still unclaimed** and `__sinit_CBallCameraTransitions_cpp`
+  is still an extra 192-byte symbol. Unchanged, and still the thing that stops a *flip* rather
+  than a match.
+
+## Gates
+
+```
+sha1sum build/G2ME01/main.dol           6ef9b491d0cc08bc81a124fdedb8bfaec34d0010  (unchanged)
+./tools/probe_sources.sh                752 files, 0 failed; LINKED, 288 undefined, 0 duplicates
+python3 tools/check_symbol_names.py     0 missing names
+python3 tools/check_files_cmake.py      every configured DOL object listed or excluded
+tools/link_gap.py --rebuild             283 MISSING, all accounted for (was 283)
+./tools/decomp_build.sh                 All: 12349/28465 (was 12348), DOL 10801/16726
+./tools/goal_check.sh build/goal/item.json   PASS
+```
+
+Per-function diff against `build/goal/judge/report.base.json`: **0 worse, 1 better, 0 gone**, and
+the better one is the intended function at 100.00%. `docs/HANDOFF.md` was updated by
+`tools/check_docs_claims.py`'s own sync (12348 -> 12349, DOL 10800 -> 10801); I did not edit it.
+
+NEW: none. The one function this item wanted is done; the four remaining are large multi-item
+jobs and `fn_801AA3EC` is the same wall run 1 measured.
