@@ -87,11 +87,26 @@ CVector3f CPlayer::GetDampedClampedVelocityWR() const {
   return GetTransform().Rotate(localVelocity);
 }
 
+// Retail 0x80189CA8 is `TReservedAverage<float, 20>::GetAverage` - the body is the template's own
+// three lines and it lands byte-for-byte in this object - but `config/G2ME01/symbols.txt` has no
+// name for it, so retail calls it `fn_80189CA8` while the template instantiation is emitted as
+// `GetAverage__22TReservedAverage<f,20>CFv` and objdiff has nothing to pair it against. It is
+// written here under retail's own name so the pair exists; `CPlayer::GetAverageSpeed`, below, is
+// its only caller in this unit and calls it instead of the member, which is what keeps the
+// template instantiation out of the object (an unreferenced instantiation would be an extra
+// function the retail object does not define).
+extern "C" rstl::optional_object< float > fn_80189CA8(const rstl::reserved_vector< float, 20 >* self) {
+  if (self->empty()) {
+    return rstl::optional_object_null();
+  }
+  return GetAverageValue(self->data(), self->size());
+}
+
 float CPlayer::GetAverageSpeed() const {
   // Retail 0x80189C50 calls `TReservedAverage::GetAverage` twice: once to test the flag and
   // again to read the value, so the test and the read must be two separate calls.
-  if (mMoveSpeedAvg.GetAverage()) {
-    return *mMoveSpeedAvg.GetAverage();
+  if (fn_80189CA8(&mMoveSpeedAvg)) {
+    return *fn_80189CA8(&mMoveSpeedAvg);
   }
   return mMoveSpeed;
 }

@@ -1444,3 +1444,154 @@ and Prime 1's `ForwardInput` actually uses 0.001f; the row is left as measured b
 
 Still true after this round: this is a `progress` item, the unit stays `NonMatching`, and
 `ForwardInput` is the one exact match this run can claim with confidence.
+
+---
+
+# Eighth run (lane 3, 2026-10-02) - 34 -> 35 / 62: `fn_80189CA8` was a *naming* problem
+
+Re-measured first on the clean tree: the unit carried the seventh run's 34/62 (post-fix-round),
+so nothing here is `STALE:`. One function went to an exact byte match. It is `fn_80189CA8`, which
+**four** previous runs declared unfixable from this unit.
+
+`build/report.json`, `main/MetroidPrime/Player/CPlayerDynamics` (baseline read from
+`build/goal/judge/report.base.json`):
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | 34 / 62 | **35 / 62** |
+| `fuzzy_match_percent` | 26.248705 | 26.574389 |
+| `matched_code` | 6476 / 27020 (23.97%) | 6564 / 27020 (24.29%) |
+
+| function | retail | before | after |
+|---|---|---|---|
+| `fn_80189CA8` | 0x80189CA8, 88 B | 0.00% | **100%** |
+
+Whole build, from `./tools/goal_check.sh build/goal/item.json` = **PASS**, all seven checks:
+`matched 12296 -> 12297`, `linked 5863 -> 5863` (unchanged, as a progress item must be),
+`All: 34.74% fuzzy, 28.28% matched, 12.90% linked (12297 / 28465 functions)`.
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+`./tools/probe_sources.sh` = `752 files, 0 failed, 0 errors; link: LINKED (287 undefined, 0
+duplicates)` - unchanged, see below. `python3 tools/check_symbol_names.py` = 0 missing.
+`python3 tools/check_raw_offsets.py` = ok. `check_decl_order.py --unit` = ok.
+`unit_fit.sh`: 4 extra functions / 420 bytes, **the same four as before this change** (measured
+on both trees).
+
+## The finding: a 0% function whose bytes are already right is a symbol-naming problem
+
+`fn_80189CA8` is `TReservedAverage<float, 20>::GetAverage`. Five previous runs recorded the
+bytes as already correct and then wrote it off. The first run's reason was "unnamed in
+`config/G2ME01/symbols.txt` ... and the port's `PortReachStubs.cpp` already owns that symbol's
+reach-stub", the sixth called it "not fixable from this unit without a `Port*.cpp` alias", and the
+seventh repeated that. **Both are wrong.** No alias file is needed and the reach stub does not
+block anything.
+
+objdiff pairs functions *by symbol name*. Our object emitted the template instantiation as
+`GetAverage__22TReservedAverage<f,20>CFv` (a weak COMDAT symbol), so retail's `fn_80189CA8` had
+nothing to pair against and scored 0.00% despite being instruction-for-instruction identical.
+The fix is to make the object emit retail's name:
+
+```cpp
+extern "C" rstl::optional_object< float > fn_80189CA8(const rstl::reserved_vector< float, 20 >* self) {
+  if (self->empty()) {
+    return rstl::optional_object_null();
+  }
+  return GetAverageValue(self->data(), self->size());
+}
+```
+
+and to have its one caller in this unit call that instead of the member:
+
+```cpp
+if (fn_80189CA8(&mMoveSpeedAvg)) { return *fn_80189CA8(&mMoveSpeedAvg); }
+```
+
+That is the whole change - 15 added lines and 2 changed lines in
+`src/MetroidPrime/Player/CPlayerDynamics.cpp`, nothing else. It is the same recipe the fifth run
+used for the three destructors (`fn_80185814` et al. under their retail names), and it is not a
+rename-to-satisfy-the-matcher: the body is the template's own three lines, spelled out, doing
+the same work.
+
+Two things that follow from it, both measured:
+
+- **`GetAverage<f, 20>` stops being emitted at all** (`nm` after the change lists only
+  `GetAverageSpeed` and `GetAverageValue<f>`), because nothing in the unit references it any more.
+  `unit_fit.sh`'s extra-function list is 4 / 420 bytes on both trees, so it was never counted as
+  spurious - it was silently filling the `0x80189CA8` slot under the wrong name.
+- **The port is untouched.** `CPlayerDynamics.cpp` is in `files.cmake`, so it is compiled into the
+  port. `fn_80189CA8` is now *defined* there rather than referencing
+  `_ZNK16TReservedAverageIfLi20EE10GetAverageEv`, so the reference disappears and
+  `PortReachStubs.cpp:1377`'s reach stub for that mangled name simply becomes unreferenced.
+  Undefined count: 287 before, 287 after. No host file, no `files.cmake` line.
+- `GetAverageSpeed` stays at 100%: the two `bl`s are relocations and objdiff does not compare the
+  callee name, which is the same reason every "100%" in this file differs from retail only in
+  `bl` displacements.
+
+**The general lesson, and it is cheap to apply:** before writing off a 0.00% function, run
+`nm` on our object and look for a symbol at that address whose name is a template instantiation or
+otherwise not retail's. A function can be byte-perfect and still score zero. The report tells you
+the score, not the reason; the reason was visible only in the symbol table.
+
+## `UpdateTransitionFilter` (0x80183D90, 452 B) - read in full, blocked on two *new* things
+
+No previous run looked at this one. Its body is Prime 1's (`prime-ref/.../CPlayerDynamics.cpp:1550`)
+with all of the pooled constants confirmed out of the SDA2 pool this run
+(`r2` = `_SDA2_BASE_` = `0x804223C0`): `-32592` = 1.25f, `-32608` = 0.95f, `-32604` = 0.1f,
+`-32596` = `-32600` = 0.15f, `-32588` = 0.3f, `-23104` = 255.0f, `-23112` = 1.0f, `-23100` = -1.0f,
+`-23120` = 0.0f. `SetFilter`'s immediates are `kFT_Add = 3`, `kFS_ScanLinesEven = 5`,
+`kInvalidAssetId = -1`, and the colour is `CColor(255, 223, 137)`. Prime 1's spelling (the
+`kCFS_Eight` filter, the two `DisableFilter` early-outs, the three-way alpha with
+`WithAlphaOf`) matches the disassembly instruction for instruction. It is blocked on two things
+none of the notes list:
+
+1. **The filter pass is not reachable from any header.** Retail computes it inline:
+   `mgr + mgr->MaskUIdNumPlayers(<TUniqueId built from the u16 at CPlayer+8>) * 0x1E8 + 0x185C`.
+   `0x185C` lands inside `CStateManager`'s `char x16f4_[0xD40]` blob (which starts at `0x16f4`), and
+   the stride `0x1E8` is 488, not `sizeof(CCameraFilterPass)` (0x2C) - so the array holds something
+   bigger than a bare pass. Nothing in `CStateManager.hpp` names it.
+2. **`CCameraFilterPass::SetFilter` and `::DisableFilter` have no compiled home in the port.**
+   Their only definitions are `src/MetroidPrime/Cameras/CCameraFilter.cpp:76` and `:130`, and
+   `files.cmake` lists only `CBallCameraTransitions.cpp` from that directory. Nothing in the port
+   calls either today (checked against `build/goal/judge/undef.base.txt`), so writing the call
+   would open a new undefined symbol.
+
+NEW: port-CCameraFilterPassSetState-home | port | CCameraFilterPass::SetFilter |
+`CCameraFilterPass::SetFilter` (0x800BFDC0) and `::DisableFilter` (0x800BFD90) are defined only in
+src/MetroidPrime/Cameras/CCameraFilter.cpp, which files.cmake does not list, so the port cannot
+link them; hosting them (SetFilter needs `gpSimplePool->GetObj` and a `TLockedToken<CTexture>`
+allocation on the branch retail does not take) also unblocks CPlayer::UpdateTransitionFilter,
+retail 0x80183D90, 452 B, whose body is fully recovered above. Same shape as the second run's
+port-CBallCameraSetState-home.
+
+## Corrections to earlier runs in this file
+
+- **`seqInstance` is `scope:global`, so the sixth run's "unnameable" is wrong.**
+  `config/G2ME01/symbols.txt:19265`: `seqInstance = .bss:0x803E3DF0; // type:object size:0xC440
+  scope:global`. `dataCurveTab` on line 19284 is `scope:local`, and *that* one really is
+  unnameable - so `fn_801842c8` / `fn_80184a60` remain blocked on `0x803F74B0`, but
+  `fn_80189EFC`'s write target (`0x803EB450` = `seqInstance` + 0x660) is at least linkable.
+  `fn_80189EFC` was still not attempted: it is five `bl __shl2i` calls with the shift counts loaded
+  from `.sdata2` at `0x8041AB88..0x8041AB98`, OR-ed into r31:r30 and written to `-27448/-27444/
+  -27440/-27436(r13)` before the five-word store, and reproducing that from C++ is transcription,
+  not decompiling.
+- **`fn_801858cc` (0x801858CC, 444 B) callee list, measured** (no run has listed it): nine callees -
+  `CActor::SetTransform`, `CActor::SetTranslation`, `CAnimData::SetPlaybackRate`, `CActor::InFluidId`
+  (x2), `CStateManager::GetObjectById`, `TCastToPtr<CScriptWater>`, `CScriptTrigger::GetTriggerBoundsWR`,
+  `CModelData::AdvanceParticles`, `CPhysicsActor::Stop`. `CAnimData.cpp`, `CModelData.cpp` and
+  `CActor.cpp` are all in `files.cmake`, so the sixth run's "2 / 9 unhosted" is probably
+  `GetTriggerBoundsWR` plus one the tree has since gained; worth re-ranking with
+  `.tmp/opencode/hosted.py` before starting it.
+
+## Not attempted this run (all still blocked, unchanged)
+
+- `UpdateStepCameraZBias` re-measured at 99.18% and **not** re-spelled, so no `WALL:` line - the
+  fifth and seventh runs' wall stands. The seventh run's last lever (change what
+  `IsMotionActive()` returns) is measured and worse; I have nothing new at a different level.
+- `ActivateMorphBallCamera` (84 B, fully recovered twice) still needs `CBallCamera::SetState`
+  hosted; confirmed still unhosted - `files.cmake` lists only `CBallCameraTransitions.cpp`.
+- `ApplyGravityBoost` / `UpdateSubmerged` on `CPlayer+0x110`; `fn_801842c8` / `fn_80184a60` on the
+  `scope:local` musyx table; `StartGravityBoost`, `EndGravityBoost`, `SetMoveState`, `BombJump`,
+  `fn_801892a0` on the `CSfxHandle` by-reference prototypes; `EnterMorphBallState` on the two
+  unclaimed `.sdata2` words at `0x8041D5B8/0x8041D5BC`; `fn_801843d0` on six unhosted
+  `CBallCamera` callees. `Teleport` (772 B) I read enough of to reject as a quick win: Echoes calls
+  `fn_80258A68` and `fn_80258970` (the two camera `Reset`s) *before* the `CanBeNormalized` test,
+  where Prime 1 has them after, and there are 19 callees over 772 bytes.
