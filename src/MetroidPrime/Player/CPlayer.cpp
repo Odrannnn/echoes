@@ -234,7 +234,7 @@ CPlayer::CPlayer(TUniqueId uid, const CTransform4f& xf, const CAABox& aabb, CAss
 , x126a_31_(false)
 , x126b_24_(true)
 , x126b_25_(false)
-, x126b_26_(false)
+, mInLava(false)
 , x126b_27_(true)
 , x126b_28_(false)
 , mDeathFadeEnabled(false)

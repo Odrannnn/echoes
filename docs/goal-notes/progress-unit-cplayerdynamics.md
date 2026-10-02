@@ -591,3 +591,196 @@ widening the parameter: the mangling is the witness, and it says the header is a
   `ComputeMovement` / `JumpInput` / `SetMoveState` band. No `NEW:` line is filed: everything still
   open is inside this item's own unit, and a blocker whose target is the item's target is a
   restatement of the item.
+
+---
+
+# Twelfth run (lane 3, 2026-10-02) - 38 -> 39 / 62: `UpdateSubmerged`, plus `fn_801842c8` to 98.48%
+
+Re-measured first on this tree: HEAD is `b6f9d7e1 progress: progress-unit-cplayerdynamics`, so the
+unit carried the eleventh run's 38/62 and nothing here was `STALE:`. **One function is now an exact
+byte match, `UpdateSubmerged`** (232 B, 1.72% -> 100%), and `fn_801842c8` went 1.52% -> **98.48%**
+on its first spelling.
+
+`build/report.json`, `main/MetroidPrime/Player/CPlayerDynamics`:
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | 38 / 62 | **39 / 62** |
+| `fuzzy_match_percent` | 37.74774 | 39.53901 |
+| `matched_code` | 7616 / 27020 (28.19%) | 7848 / 27020 (29.05%) |
+
+Whole build, from `./tools/goal_check.sh build/goal/item.json` = **PASS**, all seven checks:
+`matched 12377 -> 12378`, `linked 5863 -> 5863` (unchanged, as a progress item must be),
+`All: 34.98% fuzzy, 28.64% matched, 12.90% linked (12378 / 28465 functions)`.
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (retail).
+`check_symbol_names.py` = 0 missing over 525 units; `check_raw_offsets.py` = ok, 167 sites;
+`check_decl_order.py --unit MetroidPrime/Player/CPlayerDynamics` = ok; `check_files_cmake.py` = ok;
+`gate.sh` clean, which includes the per-function report diff.
+`./tools/probe_sources.sh` = `752 files, 0 failed, 0 errors; LINKED (290 undefined, 0 duplicates)`
+- 289 -> 290 is this run's one new callee, documented below.
+`unit_fit.sh`: the same 4 extra functions / 420 bytes the ninth, tenth and eleventh runs measured.
+Per-function diff against `build/goal/judge/report.base.json`: **nothing got worse**, nothing
+appeared or disappeared, two rose.
+
+| function | retail | before | after | spellings tried |
+|---|---|---|---|---|
+| `UpdateSubmerged` | 0x801863B8, 232 B | 1.72% | **100%** | 1 |
+| `fn_801842c8` | 0x801842C8, 264 B | 1.52% | 98.48% | 1 |
+
+Files touched:
+- `src/MetroidPrime/Player/CPlayerDynamics.cpp` - two bodies, two `#include`s.
+- `include/MetroidPrime/Player/CPlayer.hpp` - `x126b_26_` renamed `mInLava` (**same bit, no layout
+  change**), with the measurement that names it.
+- `include/MetroidPrime/Player/CPlayerKnockBackMgr.hpp` - one method declaration (5 lines,
+  **no layout change**).
+- `src/MetroidPrime/Player/CPlayer.cpp` - one line, the ctor initializer for that bit.
+- `docs/research/port_link_gap.md` + `docs/research/port_link_gap_list.md` - one new missing
+  symbol (see below). `docs/research/port_link_baseline.txt` untouched.
+- `docs/HANDOFF.md` is the **judge's** own rewrite of the derived counts (`goal_check.sh` did it),
+  not an edit of mine.
+
+## EVERY "N/M unhosted callees" blocker in the ninth run's table was stale
+
+The ninth run ranked the remaining functions by how many of their `bl` targets the port cannot
+resolve, and left a table of blockers headed by `ApplyGravityBoost 0/6`, `EnterMorphBallState 0/12`,
+`StartGravityBoost 0/12` - all three of which the eleventh run then found were false. **The whole
+table is false.** Re-measured with the method the eleventh run established (check the demangled
+name against `build/goal/judge/undef.base.txt`, the port's own undefined list, rather than mapping
+retail `bl` targets through `report.json`'s `source_path`), **all 24 remaining functions have 0
+unhosted callees** - including the whole `ComputeMovement` (99 callees) / `JumpInput` (71) /
+`fn_801843d0` (43) band. Scratch: `.tmp/opencode/rank.py`; it prints the table.
+
+**Method worth keeping, one level up from the eleventh run's: a blocker of the form "the port
+cannot link what this function calls" is answered by the *port's* undefined list, and nothing else.
+Three runs in a row inherited a table built from the wrong question.**
+
+## `UpdateSubmerged` is 58 instructions and three of them decide the spelling
+
+Echoes' body is not Prime 1's (Prime 1: `src/MetroidPrime/Player/CPlayerDynamics.cpp:985`), and the
+differences are all visible in the 58 instructions:
+
+1. **`CScriptWater::GetWRSurfacePlane()` replaces Prime 1's `GetTriggerBoundsWR().GetMaxPoint().GetZ()`**
+   (0x80186434, into the caller's frame at 16(r1)). The plane is 0x10 bytes - normal at 0/4/8,
+   constant at 0xC - so `CPlane`'s `CHECK_SIZEOF(0x10)` is confirmed by the call site.
+2. **The height is negated.** Retail computes `n.y*pos.y` first, folds `n.x*pos.x` in with
+   `fmadds`, then `n.z*pos.z` with another `fmadds`, subtracts the constant and `fneg`s. That is
+   `-(CPlane::GetHeight(pos))`, i.e. Prime 1's leading `-` survives but over Echoes' plane, and the
+   operand order is `CPlane`'s documented "normal must be the FIRST Dot operand" case
+   (`include/Kyoto/Math/CPlane.hpp:38`) - which is why this spells `GetHeight(pos)` and not
+   `CMath`-flipped arithmetic.
+3. **`mInLava` is a single `== 2`, not `kFT_Lava || kFT_ThickLava`.** `subfic r3,r3,2` /
+   `cntlzw` is `fluidType == 2` (`CFluidPlane::GetFluidType() == 2`, and `GetFluidType` is an
+   inline `lwz` of `mFluidType`, so no call). The enum is still unnamed in
+   `include/MetroidPrime/CFluidPlane.hpp:40`, so the value is written out with a comment.
+   **And Echoes drops Prime 1's trailing `CheckSubmerged()` call** - the last thing the function
+   does is store the lava flag.
+
+**`CPlayer+0x126B` bit 2 is `mInLava` - the eleventh run's unnamed flag is now named.** Three
+readers/writers agree, all measured:
+- `UpdateSubmerged` clears it up front (`rlwimi r0,r3,5,26,26`) and sets it from `fluidType == 2`.
+- `GetGravity` (0x80189B38) branches on it: set -> ask for kIT_LightSuit; clear -> ask for
+  kIT_GravityBoost **and** `CheckSubmerged()`. Being in lava is exactly that choice.
+- MWCC `offsetof`-probe (`.tmp/opencode/probe_us.cpp`, `setb` compiled and read out of `.text`)
+  emits `rlwimi r0,r4,5,26,26` for `x126b_26_` - retail's exact mask - and the byte is 4715 = 0x126B.
+
+The header's own comment on `GetGravity` said "the bit's own name is still unknown"; that is now
+false, so it was corrected in the same commit.
+
+**The knock-back call is `CPlayerKnockBackMgr::fn_801C0124`, and the class's unnamed members are
+what identify it.** `addi r3,r30,3804` is `&mKnockBackManager` (0xEDC, MWCC probe) and retail's
+0x801C0124 is three instructions writing `+0x64`, `+0x68` (`lfs f0,-21572(r2)` = 0.f) and `+0x6C`
+(`lhz r0,-27740(r13)` = **`kInvalidUniqueId`**, a named symbol in `symbols.txt`). `CPlayerKnockBackMgr`
+declares exactly `float x64_; float x68_; TUniqueId x6c_;` - three unnamed members at three named
+offsets. The method is declared in the header and not implemented here: it lives in the **unclaimed**
+`auto_03_801BEDD0_text` range, so the DOL linker resolves it out of the retail-derived bytes and the
+decomp build is untouched. The port link cannot see a definition, which is the one new
+`port_link_gap_list.md` entry; the reasoning is written up in `docs/research/port_link_gap.md`
+alongside the `CBallCamera::SetState` entry it parallels.
+
+## `fn_801842c8`: nine calls, one store, one spelling
+
+`./tools/dis.sh 0x801842C8 0x108` in full is nine calls, a three-float store and a conditional
+branch, so Prime 1's donor was not needed. The two offsets that had to be measured:
+
+- **`stfs` at 0x1C0/0x1C4/0x1C8 is `SetMomentumWR(CVector3f::Zero())`.** `lis r3,-32703` +
+  `lfsu f0,29872(r3)` is 0x804174B0 = `sZeroVector__9CVector3f` in `config/G2ME01/symbols.txt`, and
+  0x1C0 is `CPhysicsActor::mMomentum` (MWCC `offsetof`). `CVector3f::Zero()` is this header's
+  `static const CVector3f& Zero()`, so the three loads are `lfsu`/`lfs 4`/`lfs 8` off one register -
+  exactly retail's shape.
+- **`SetCameraState` gets the literal 4** = `kCS_Spawned`, and only when `fn_801843d0` returned
+  false.
+
+The remaining 4 instructions are one thing: **retail passes `dt` in f1 to `fn_801843d0`** (`fmr
+f1,f31` at 0x8018431C) and this header declares `bool fn_801843d0(CStateManager&, EPlayerMorphBallState)`
+with no float parameter, so MWCC has nothing to load. `fn_801843d0`'s retail body reads f1 102 times
+in 0x690 bytes, so the parameter is real; adding it would change the mangled name away from
+`symbols.txt`'s `fn_801843d0__7CPlayerFR13CStateManagerQ27CPlayer21EPlayerMorphBallState`, which is
+how objdiff pairs it. Not changed - that is the `fn_801843d0` spelling question, not this item's.
+
+## Method: MWCC `offsetof` probes, in one line
+
+Every offset above came from compiling `&(((T*)0x10000)->member) - 0x10000` with the exact
+`mwcc_sjis` cflags and reading the emitted `.data` (`.tmp/opencode/pc.sh`, reused from the tenth
+run). Six offsets, one compile, 90 seconds:
+
+```
+CPlayer::mKnockBackManager   0xEDC   CScriptWater::mFluidPlane  0x1C8
+CFluidPlane::mFluidType      0x44    CPlayer::mDistanceUnderWater  0x1248
+CPhysicsActor::mMomentum     0x1C0   CPhysicsActor::mAngularVelocity 0x1B4
+CMorphBall::mBallState       0xC80   CPlayer::mFreeLookYawAngle  0x5FC
+```
+
+MWCC **rejects** `&bitfield` (`illegal operand`) and rejects a `protected`/`private` member unless
+the `#define private public` comes **before every** include that reaches the class - not just the
+one that declares it. Both cost a compile each time.
+
+## `LeaveMorphBallState` (452 B) - written, measured, then reverted; here is what blocks it
+
+I wrote the full body from 0x80183F54 and it compiles, but **two of its accesses cannot be written
+without inventing something**, so I reverted it rather than ship a body whose meaning is a guess:
+
+1. **`CModelData`'s second pointer member.** The tail is
+   `if (!mgr.IsMultiplayer()) { lwz r3,96(r30); lwz r3,16(r3); addi r3,r3,376; bl DestroyAllActiveParticles; }`
+   - `CActor::mModelData` (0x60), then **+0x10** on the `CModelData`, then **+0x178** on whatever
+   that points at. The MWCC probe puts this header's `mAnimData` at **0xC**, so 0x10 is *inside* it
+   in our layout - which means the member retail reads at 0x10 is **not** this header's, and
+   `CModelData` has no such accessor to write through. Reaching it needs a raw-offset cast, and
+   `tools/check_raw_offsets.py` plus `docs/research/raw_offsets.md` are the mechanism for those -
+   a bigger decision than this item should make.
+2. **`CFirstPersonCamera`'s vtable slot 5 and `mMorphBall`'s state setter.** The `bctrl` at
+   0x801840BC loads vtable offset 20 and is called as `(0.f, mgr)`, which fits `Think(float,
+   CStateManager&)`; and `stw r0,3200(r3)` after `LeaveMorphBallState` is `mBallState = 0`, but
+   `CMorphBall` has `GetBallState()` and no setter. Both are one-line header additions **once the
+   offsets are confirmed**; the `mBallState` one is settled (`CMorphBall::SetAsProjectile` at
+   0x800C1200 stores 7 = `kBS_Projectile` to the same 0xC80).
+
+NEW: cmodeldata-member-at-10-unnamed | port | MetroidPrime/CModelData |
+  `LeaveMorphBallState` (0x80183F54) reads `CActor::mModelData`+0x10 then +0x178 on it and calls
+  `CParticleDatabase::DestroyAllActiveParticles`; this header's `CModelData` has `mAnimData` at 0xC
+  (MWCC `offsetof`), so the member retail reads at 0x10 is unmodelled and there is no accessor for
+  it, which blocks writing the function.
+
+## Still open, measured this run
+
+- `fn_80189EFC` (216 B static constructor) reads **five `.sdata` words** at 0x80418548..0x80418558 =
+  **59, 20, 32, 33, 21**, and five `__shl2i(0, 1, n)` calls turn them into the 64-bit mask
+  `(1<<59)|(1<<20)|(1<<32)|(1<<33)|(1<<21)`, stored into `.sbss` 0x80419248..0x80419254 and copied
+  into the 0x18-byte object at 0x803DB450. The **shift counts are nameable literals in the source**
+  (the function is `1ULL << n`), so this is a spelling problem, not a naming one - but the
+  destination `.bss`/`.sbss` words are unnamed globals and it is a file-scope constructor, so it
+  needs a `.ctors` order question answered first. Not attempted.
+- `EnterMorphBallState` (296 B) needs **two more unnamed globals**: `lwz r0,-32640(r2)` = 0x8041A440,
+  an `.sdata2` word that is **0** in retail and is compared against 2 by `ValidateOrbitTargetId`
+  (0x80122DD4) and against 0 here, so it is an always-zero game-mode flag no unit writes; and the
+  two-int table at `-23128/-23124(r2)` = 0x8041C968/0x8041C96C = **{70, 255}**, which are not values
+  of `CMorphBall::EBallState` in this header (0..7). Both are outside any unit's claim, so they
+  cannot be named without inventing them. **This is the `.sdata2` pair the ninth run recorded; it is
+  genuinely unnameable, not merely unhosted.**
+- `UpdateStepCameraZBias` 99.18% and `ComputeDash` 98.11% were **not re-spelled** this run, so no
+  new `WALL:` line for either; the fifth/seventh and tenth runs' walls stand.
+- `StartGravityBoost` 97.91% / `EndGravityBoost` 98.84% untouched; the eleventh run's `clrlwi`
+  argument (widening `CSfxManager::SfxStart`'s first parameter changes its mangled name) stands.
+- `fn_801842c8` and `fn_801843d0` are the two halves of one `NEW:`-free question: **retail's
+  `fn_801843d0` takes a leading `float`** and this header's declaration does not, so the caller at
+  0x801842C8 is one instruction (`fmr f1,f31`) short of 100%. Fixing it means changing the
+  declaration, which changes the mangled name objdiff pairs on.

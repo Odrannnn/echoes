@@ -736,7 +736,11 @@ private:
   bool x126a_31_ : 1;
   bool x126b_24_ : 1;
   bool x126b_25_ : 1;
-  bool x126b_26_ : 1;
+  // Measured, not guessed: `CPlayer::UpdateSubmerged` (0x801863B8) clears bit 26 of this byte up
+  // front (`rlwimi r0,r3,5,26,26`) and then sets it from `CFluidPlane::GetFluidType() == 2`, and
+  // `CPlayer::GetGravity` (0x80189B38) branches on it to ask for kIT_LightSuit instead of
+  // kIT_GravityBoost - which is what being in lava does.
+  bool mInLava : 1;
   bool x126b_27_ : 1;
   bool x126b_28_ : 1;
   bool mDeathFadeEnabled : 1;

@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (212)
+## other game methods (213)
 
 - `_Z10TCastToPtrI11CScriptDockEPT_P7CEntity`
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
@@ -120,6 +120,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN19CInGameTweakManager33GetIdentifierForWorldDefaultMusicEj`
 - `_ZN19CInGameTweakManagerD1Ev`
 - `_ZN19CPathFindNavigationC1Ev`
+- `_ZN19CPlayerKnockBackMgr11fn_801C0124Ev`
 - `_ZN19CPlayerKnockBackMgrC1Ev`
 - `_ZN19CPlayerKnockBackMgrD1Ev`
 - `_ZN19CWaypointNavigation6PatrolER13CStateManager9EStateMsgfR10CPatterned`

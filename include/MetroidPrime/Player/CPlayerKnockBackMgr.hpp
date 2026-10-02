@@ -21,6 +21,11 @@ public:
   bool HasAnimReaction(const CActor& actor, EAnimReaction reaction) const override;
   void DoKnockBackAnimation(const CVector3f& direction, CStateManager& mgr, CActor& actor,
                             float magnitude) override;
+  // Retail 0x801C0124, three instructions with no `this` beyond r3: `x64_` and `x68_` become
+  // `lfs f0,-21572(r2)` and `x6c_` becomes `kInvalidUniqueId`. `CPlayer::UpdateSubmerged`
+  // (0x801863FC) is one of its five callers; the other four are unnamed functions in the same
+  // unclaimed `auto_03_801BEDD0_text` range, so no unit in this repo implements it.
+  void fn_801C0124();
   void ApplyFollowUp(CActor& actor, CStateManager& mgr, TUniqueId source, TUniqueId owner) override;
   void ApplyKnockBackEffects(CActor& actor, CStateManager& mgr,
                              const CKnockBackInfo& info) override;

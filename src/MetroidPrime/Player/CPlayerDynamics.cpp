@@ -3,6 +3,7 @@
 #include "Collision/CCollidableSphere.hpp"
 #include "Kyoto/Math/CRelAngle.hpp"
 #include "MetroidPrime/CCameraManager.hpp"
+#include "MetroidPrime/CFluidPlaneCPU.hpp"
 #include "MetroidPrime/Cameras/CBallCamera.hpp"
 #include "MetroidPrime/Cameras/CFirstPersonCamera.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
@@ -10,6 +11,7 @@
 #include "MetroidPrime/Player/CPlayerGun.hpp"
 #include "MetroidPrime/Player/CMorphBall.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptPlatform.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 #include "MetroidPrime/Tweaks/CTweakBall.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
@@ -136,10 +138,11 @@ float CPlayer::GetGravity() const {
   // Retail 0x80189B38 splits on one bit of the byte at 0x126B: set, it asks only for
   // kIT_LightSuit; clear, it asks for kIT_GravityBoost *and* CheckSubmerged(). Both power-up
   // tests are the same shape - the `rstl::rc_ptr` temporary out-param is released before the
-  // result is tested. The branch is on bit 4 of the byte at 0x126B, which is `x126b_26_`:
-  // measured by compiling this body against all eight of that byte's 1-bit fields, and only
-  // `x126b_26_` emits retail's `rlwinm. r0,r0,27,31,31`. The bit's own name is still unknown.
-  if (x126b_26_) {
+  // result is tested. The branch is on bit 4 of the byte at 0x126B, which is `mInLava`:
+  // measured by compiling this body against all eight of that byte's 1-bit fields, and only that
+  // field emits retail's `rlwinm. r0,r0,27,31,31`. `UpdateSubmerged` (0x801863B8) is what named
+  // it - the same bit, written from `CFluidPlane::GetFluidType() == 2`.
+  if (mInLava) {
     if (!gpGameState->GetPlayerState()->HasPowerUp(CPlayerState::kIT_LightSuit)) {
       return GetTweakPlayer()->GetFluidGravAccel();
     }
@@ -723,7 +726,34 @@ bool CPlayer::CheckSubmerged() const {
 }
 
 void CPlayer::UpdateSubmerged(const CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  // Retail 0x801863B8. Echoes drops Prime 1's `GetTriggerBoundsWR().GetMaxPoint().GetZ()` plane
+  // and its `kFT_Lava || kFT_ThickLava` test in favour of `CScriptWater::GetWRSurfacePlane()`
+  // plus a single `fluidType == 2` compare, and it drops the trailing `CheckSubmerged()` call
+  // entirely - `mDistanceUnderWater` is the only thing this leaves behind.
+  //
+  // `mKnockBackManager.fn_801C0124()` is retail's own call at 0x801863FC: `addi r3,r30,3804` is
+  // `&mKnockBackManager` (0xEDC, MWCC `offsetof`) and the callee writes three of its fields
+  // (0x801C0124: `+0x64`, `+0x68` = `lfs f0,-21572(r2)`, `+0x6C` = `kInvalidUniqueId`). The
+  // class's private members `x64_`/`x68_`/`x6c_` line up with that exactly, so the call goes
+  // through the class; its implementation lives in the unclaimed `auto_03_801BEDD0_text` range,
+  // which is why the port link now reports it missing (`docs/research/port_link_gap_list.md`).
+  mInLava = false;
+  mDistanceUnderWater = 0.f;
+  if (!IsInFluid()) {
+    return;
+  }
+  mKnockBackManager.fn_801C0124();
+  const CScriptWater* water =
+      TCastToConstPtr< CScriptWater >(mgr.GetObjectById(InFluidId()));
+  if (water != nullptr) {
+    // `-GetHeight`: retail computes `n.y*pos.y`, folds `n.x*pos.x` and then `n.z*pos.z` into it
+    // with `fmadds`, subtracts the constant and negates the result - i.e. the *negative* of
+    // `CPlane::GetHeight`, which is this header's spelling. Depth below the surface.
+    mDistanceUnderWater = -water->GetWRSurfacePlane().GetHeight(GetTranslation());
+    // `subfic r3,r3,2` / `cntlzw` is `== 2`, and 2 is `CFluidPlane`'s lava fluid type (the enum
+    // itself is still unnamed in `CFluidPlane.hpp`, so the value is written out).
+    mInLava = water->GetFluidPlane()->GetFluidType() == 2;
+  }
 }
 
 float CPlayer::GetStepDownHeight() const {
@@ -894,7 +924,32 @@ bool CPlayer::fn_801843d0(CStateManager& mgr, EPlayerMorphBallState state) {
 }
 
 void CPlayer::fn_801842c8(float dt, CStateManager& mgr, EPlayerMorphBallState state) {
-  // TODO: Recover the remaining target behavior.
+  // Retail 0x801842C8: nine calls and one three-float store, in this order.
+  //  - `SetMorphBallState` gets the literal 3 = `kMS_Unmorphing` in r4 and the caller's `state`
+  //    in r5, so it is the two-argument overload (`EPlayerMorphBallState spawnedState`).
+  //  - `fn_801843d0` returns the bool that decides the trailing `SetCameraState`, and it is kept
+  //    in r31 across the four calls in between, so it is read into a local.
+  //  - `ClearForcesAndTorques` then `SetAngularVelocityWR(CAxisAngle::Identity())`: the
+  //    `Identity()` result is passed straight through r4 without a store, so the call is written
+  //    as the inline-returning reference this header declares.
+  //  - the three `stfs` at 0x1C0/0x1C4/0x1C8 copy `CVector3f::Zero()`: `lis r3,-32703` +
+  //    `lfsu f0,29872(r3)` is 0x804174B0, which is `sZeroVector__9CVector3f` in
+  //    `config/G2ME01/symbols.txt`, and 0x1C0 is `CPhysicsActor::mMomentum` (MWCC `offsetof`), so
+  //    this is `SetMomentumWR(CVector3f::Zero())`.
+  //  - the final `SetCameraState` runs only when `fn_801843d0` returned false (`bne` skips it).
+  SetMorphBallState(kMS_Unmorphing, state);
+  TransitionFromMorphBallState(dt, mgr);
+  mMorphBall->LeaveMorphBallState(mgr);
+  const bool transitionDone = fn_801843d0(mgr, state);
+  ForceGunOrientation(GetTransform(), mgr);
+  mGun->DrawGun(mgr);
+  ClearForcesAndTorques();
+  SetAngularVelocityWR(CAxisAngle::Identity());
+  AddMaterial(kMT_GroundCollider, mgr);
+  SetMomentumWR(CVector3f::Zero());
+  if (!transitionDone) {
+    SetCameraState(kCS_Spawned, mgr);
+  }
 }
 
 void CPlayer::fn_80184294(EPlayerMorphBallState state) {
