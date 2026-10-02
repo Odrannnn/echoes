@@ -3167,7 +3167,7 @@ DragSlaves__15CScriptPlatformFR13CStateManagerRQ24rstl24reserved_vector<Us,1024>
 DragSlave__15CScriptPlatformFR13CStateManagerRQ24rstl24reserved_vector<Us,1024>RC7SRiders = .text:0x800A2654; // type:function size:0x2E0
 BuildSlaveList__15CScriptPlatformFR13CStateManager = .text:0x800A2934; // type:function size:0x1D4
 PreThink__15CScriptPlatformFfR13CStateManager = .text:0x800A2B08; // type:function size:0x698 align:4
-fn_800A31A0 = .text:0x800A31A0; // type:function size:0x84
+__dt__Q24rstl43vector<7SRiders,Q24rstl17rmemory_allocator>Fv = .text:0x800A31A0; // type:function size:0x84
 MoveRiders__15CScriptPlatformFR13CStateManagerbRQ24rstl43vector<7SRiders,Q24rstl17rmemory_allocator>RQ24rstl43vector<7SRiders,Q24rstl17rmemory_allocator>RCQ24rstl32reserved_vector<9TUniqueId,1024>RC12CTransform4fRC12CTransform4fRC9CVector3fRC11CQuaternion = .text:0x800A3224; // type:function size:0x378 align:4
 fn_800A359C = .text:0x800A359C; // type:function size:0xE4
 DecayRiders__15CScriptPlatformFRQ24rstl43vector<7SRiders,Q24rstl17rmemory_allocator>fR13CStateManager = .text:0x800A3680; // type:function size:0x12C align:4

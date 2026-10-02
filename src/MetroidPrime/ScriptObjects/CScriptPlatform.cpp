@@ -3,6 +3,8 @@
 #include "MetroidPrime/CActorParameters.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/TCastTo.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptCamera.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptCameraHint.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptTrigger.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptWaypoint.hpp"
 
@@ -201,14 +203,6 @@ fn_800A4038(rstl::single_ptr< CGameSplineDesc >* self, int flag) {
 
 extern "C" void fn_800A1148(SRiders* const* first, SRiders* const* last);
 
-// `rstl::destroy`'s two-iterator forward. Retail's `fn_800A31A0` inlines the `destroy` call and
-// calls the out-of-line `destroy_impl` (`fn_800A1148`) with the two by-value parameters *by
-// address*, which is what leaves four stores in the frame rather than two. `static` so the
-// compiler inlines it and the object gains no symbol retail's does not have.
-static void fn_800A31A0_destroy(SRiders* const* first, SRiders* const* last) {
-  fn_800A1148(first, last);
-}
-
 
 CScriptPlatform::~CScriptPlatform() {
   // TODO: delete the spline controller and waypoint tracker once their interfaces are recovered.
@@ -386,37 +380,17 @@ void CScriptPlatform::MoveRiders(CStateManager& mgr, bool active, rstl::vector< 
   // TODO: collision-tested rider displacement and rotation.
 }
 
-// `rstl::vector<SRiders>::~vector(int)`, out of line: `PreThink` (0x800A2C14, 0x800A2C84,
-// 0x800A2CC8, 0x800A3170) and `__dt__` (0x800A3F84, 0x800A3F90, 0x800A3F9C - one per
-// mDynamicSlaves / mStaticSlaves / mRiders) all call this one copy, so it is this unit's own
-// symbol and retail's name for it is only its address. Our object already emits the identical body
-// as the weak `__dt__Q24rstl43vector<7SRiders,...>Fv` instantiation, which cannot carry retail's
-// name, so the body is written out here. Three details are measurements, and each is the same one
-// `src/MetroidPrime/Player/CGameStateBlockDtor.cpp` records for the same shape: the flag parameter
-// is a **`short`** (an `int` gives `cmpwi r31,0` where retail has `extsh. r0,r31`), the return
-// type is a **pointer** (a `void` leaf loses the trailing `mr r3,r30`), and the element count is
-// read from `mCount` *before* `mItems` so the multiply lands on the count register.
-extern "C" rstl::vector< SRiders >* fn_800A31A0(rstl::vector< SRiders >* self, int flag) {
-  if (self != nullptr) {
-    // Both ends are named and passed **by value** through `destroy` and then by address to
-    // `fn_800A1148`, which is the shape that produces retail's four frame stores (r1+8 and r1+16
-    // hold the by-value copies, r1+12 and r1+20 the addresses) and its r3 = r1+20 / r4 = r1+12.
-    // Handing `fn_800A1148` two `SRiders*` locals directly stores two, not four. The *count* is
-    // also read before the *items* pointer: retail's 0x2fc0/0x2fc8 load 0x4(r30) then 0xc(r30) and
-    // set up r3/r4 before the `mulli`, and the end is `items + count` on an `SRiders*`
-    // (`mulli r0,r0,0x3c`), not `&items + count` on an `SRiders**` (`slwi r0,r0,2`).
-    // `last` is declared first: retail's `last` pair sits at r1+8/r1+12 with its address in r4,
-    // and `first`'s pair above it at r1+16/r1+20 with its address in r3.
-    SRiders* lastItems = self->mItems + self->mCount;
-    SRiders* firstItems = self->mItems;
-    fn_800A31A0_destroy(&firstItems, &lastItems);
-    CMemory::Free(self->mItems);
-    if (static_cast< short >(flag) > 0) {
-      CMemory::Free(self);
-    }
-  }
-  return self;
-}
+// Retail's out-of-line `rstl::vector<SRiders>::~vector(int)` at 0x800A31A0 - called by `PreThink`
+// (0x800A2C14, 0x800A2C84, 0x800A2CC8, 0x800A3170) and `__dt__` (0x800A3F84, 0x800A3F90,
+// 0x800A3F9C - one per mDynamicSlaves / mStaticSlaves / mRiders) - is **not** written out here.
+// It is `include/rstl/vector.hpp`'s own `~vector()` body, which this unit already instantiates as
+// the weak `__dt__Q24rstl43vector<7SRiders,Q24rstl17rmemory_allocator>Fv`, so the object carries
+// a byte-identical copy under that mangled name. Retail's DOL carries no symbol there, so dtk named
+// it after its address; `config/G2ME01/symbols.txt` renames the `fn_800A31A0` line to the mangled
+// name instead, which is this tree's documented pairing mechanism (891 other `__dt__`/`__as__`
+// lines do the same) and needs no second copy of the body in the source. The hand-written
+// `extern "C"` duplicate that used to sit here scored 93.45% and put 132 unpairable bytes over the
+// unit's retail range.
 
 
 void CScriptPlatform::PreThink(float dt, CStateManager& mgr) {
@@ -449,8 +423,71 @@ void CScriptPlatform::DragSlave(CStateManager& mgr, TMovedList& moved, const SRi
   // TODO: apply the motion flags and recursively move platform slaves.
 }
 
+// `fn_800B8038` (0x800B8038, 96 B) is the rotation twin of `CScriptCameraHint::SetPathCameraPosition`
+// for the three cases above: retail passes `this`, `&mRotationDelta`, `&GetTranslation()` and
+// `mgr`. It lives in `main/auto_03_800B7928_text`, which the DOL link already pulls in, so the
+// name resolves; retail's DOL carries no symbol for it, so this file declares it under the name
+// dtk gave it.
+extern "C" void fn_800B8038(CScriptCameraHint* hint, const CQuaternion& rotation,
+                            const CVector3f& pivot, CStateManager& mgr);
+
+// Retail's loop at 0x800A2270. Four things are not what the source reads like.
+// (1) The `if (mMotionFlags & ...)` tests are single-bit masks, and mwcceppc compiles
+// `x & (1 << k)` on this `uint` member into `rlwinm. rA,rX,0,31-k,31-k` rather than `andi` -
+// the one data point is `fn_800a1df8`, which tests `mMotionFlags & 8` and matches retail at
+// `rlwinm. ...,28,28`. Retail tests bit 21 here and bit 26, so the masks are `1 << 10` and
+// `1 << 5`, not `1 << 21` and `1 << 26`.
+// (2) The three `ObjectById` casts are a plain `if / else if / else if` chain: retail branches to
+// the *next* cast on a null (`beq` to the camera block at 0x800A22E8 and to the hint block at
+// 0x800A2330) and to `DragSlave` at 0x800A2380 when the hint cast fails.
+// (3) `DragSlave` at 0x800A2380 is reached from *both* that failure and the flag test being
+// clear, and each of the three arms jumps over it with `b` - one block, two predecessors.
+// Writing the call twice (as `if (...) {...} DragSlave(...);` and as `if (...) {...} else
+// DragSlave(...);`) leaves one `b` missing, or emits the block twice, depending on which. The
+// `goto` is what makes mwcceppc emit the single merged block retail has.
+// (4) The two passes are over `mStaticSlaves` (0x400) and `mDynamicSlaves` (0x408), not
+// `mRiders`, which `__dt__` shows is the third vector at 0x3EC.
 void CScriptPlatform::DragSlaves(CStateManager& mgr, TMovedList& moved) {
-  // TODO: propagate motion to static/dynamic slaves and special actor types.
+  for (rstl::vector< SRiders >::iterator it = mStaticSlaves.begin(); it != mStaticSlaves.end();
+       ++it) {
+    if (mMotionFlags & (1u << 10)) {
+      if (CScriptPlatform* platform = TCastToPtr< CScriptPlatform >(mgr.ObjectById(it->mUid))) {
+        platform->TranslateMotion(mDragDelta);
+        if (mMotionFlags & (1u << 5)) {
+          platform->RotateMotion(mRotationDelta, GetTranslation());
+        }
+      } else if (CScriptCamera* camera = TCastToPtr< CScriptCamera >(mgr.ObjectById(it->mUid))) {
+        camera->TranslateSplines(mDragDelta);
+        if (mMotionFlags & (1u << 5)) {
+          camera->RotateSplines(mRotationDelta, GetTranslation());
+        }
+      } else if (CScriptCameraHint* hint =
+                     TCastToPtr< CScriptCameraHint >(mgr.ObjectById(it->mUid))) {
+        hint->SetPathCameraPosition(mDragDelta, mgr);
+        if (mMotionFlags & (1u << 5)) {
+          fn_800B8038(hint, mRotationDelta, GetTranslation(), mgr);
+        }
+      } else {
+        goto drag;
+      }
+    } else {
+    drag:
+      DragSlave(mgr, moved, (*it));
+    }
+  }
+  // The dynamic-slave pass is the other way round: a rider that is *not* a live `CActor` is
+  // erased, and the cursor is whatever `erase` returns (0x800A2404), which is why it lives in
+  // memory at `r1+32` across the call rather than in a register. Retail also re-reads
+  // `mDynamicSlaves.mCount`/`.mItems` at the bottom of every iteration (0x800A2418) instead of
+  // hoisting `end()`, which is what the `it != mDynamicSlaves.end()` spelling gives.
+  for (rstl::vector< SRiders >::iterator it = mDynamicSlaves.begin(); it != mDynamicSlaves.end();) {
+    if (TCastToPtr< CActor >(mgr.ObjectById(it->mUid)) != nullptr) {
+      DragSlave(mgr, moved, (*it));
+      ++it;
+    } else {
+      it = fn_800A1004(mDynamicSlaves, it);
+    }
+  }
 }
 
 void CScriptPlatform::Think(float dt, CStateManager& mgr) {
