@@ -65,25 +65,42 @@ extern "C" void fn_801467C0(uchar* begin, uchar* end);
 
 // The move half of `fn_801466F4`'s grow: it copy-constructs each 36-byte element from the old
 // range into the new buffer and returns the new end. `begin` and `end` arrive by address -
-// `fn_801466F4` builds both as locals of four words each (0x80146734-0x80146758).
+// `fn_801466F4` materialises both as a pair of two-word argument temporaries on its own stack
+// (8(r1)/12(r1) for `end`, 16(r1)/20(r1) for `begin`, 0x80146734-0x80146758).
 //
-// **The loop bound is re-read from `end` on every iteration, and both the spelling that makes
-// that happen and the order the two cursors are declared in are load-bearing.** Retail's guard
-// is `lwz r0,0(r29)` / `cmplw r31,r0` (0x80146848-0x8014684C) with `r29` the `end` *pointer*
-// kept live across the loop, so the `fn_80142718` call is taken to be able to write through
-// `*end`. That is only true if `end` is a `void**`: written `void* const*` (both parameters
-// const, the previous spelling here) mwcceppc hoists the load above the loop and emits
-// `cmplw r29,r31` against a register, which is 100 bytes against retail's 104 and 92.69%.
+// **The parameters are a one-word class, and that is what makes the temporaries and the order
+// the two argument addresses are formed in come out as retail's.** `SStateIter` stands in for
+// the vector iterator these two arguments really are: this tree's own
+// `rstl::vector<T>::reserve` (`include/rstl/vector.hpp`, `uninitialized_copy(begin(), end(),
+// newData)`, both iterators passed by value) builds the same 8(r1)/12(r1) and 16(r1)/20(r1)
+// pairs - measured on the 100% `reserve__...vector<pair<TEditorId,bool>>` instantiation in
+// `main/MetroidPrime/CMapWorldInfo`. mwcceppc evaluates the arguments right to left and gives
+// each one a pair of words, and the two `addi`s land in retail's order (0x80146734
+// `addi r3,r1,20` for `begin` first, 0x80146740 `addi r4,r1,12` for `end` last). With the
+// previous spelling, `void* range[4]` and `fn_8014680C(&range[3], &range[1], buffer)`, the
+// same two addresses are formed in the opposite order and the function measures 90.56% at the
+// same 172 bytes.
+//
+// **The loop bound is re-read from `end` on every iteration:** retail's guard is `lwz r0,0(r29)`
+// / `cmplw r31,r0` (0x80146848-0x8014684C) with `r29` the address of the `end` parameter kept
+// live across the loop. This spelling reloads it (104 bytes, byte-identical to retail); the
+// earlier `void* const* begin, void* const* end` spelling hoisted the load above the loop and
+// emitted `cmplw r29,r31` against a register, 100 bytes and 92.69%.
 //
 // The two cursors are declared input-first for the same reason: `in` is defined before `out`, and
 // mwcceppc then reserves r31 for `in` and r30 for `out` and can place the `lwz r31,0(r3)` right
 // after the `stw r31,28(r1)` prologue spill, which is retail's order. `out` first gives the
 // same 104 bytes with the five prologue instructions rotated (88.46%), and a `while` loop or an
 // index-based range loses the reload entirely.
-extern "C" void* fn_8014680C(void* const* begin, void** end, void* dst) {
-  uchar* in = static_cast< uchar* >( *begin );
+struct SStateIter {
+  void* mCur;
+  SStateIter(void* cur) : mCur(cur) {}
+};
+
+extern "C" void* fn_8014680C(SStateIter begin, SStateIter end, void* dst) {
+  uchar* in = static_cast< uchar* >(begin.mCur);
   uchar* out = static_cast< uchar* >(dst);
-  for (; in != static_cast< uchar* >( *end ); in += 36, out += 36) {
+  for (; in != static_cast< uchar* >(end.mCur); in += 36, out += 36) {
     fn_80142718(out, in);
   }
   return out;
@@ -98,11 +115,15 @@ extern "C" void fn_801467C0(uchar* begin, uchar* end) {
 extern "C" void fn_801467A0(uchar* begin, uchar* end) { fn_801467C0(begin, end); }
 
 // The 36-byte block's `reserve` (retail 0x801466F4). The new buffer is filled by the
-// `fn_8014680C` above from the four-word range this function builds on its own stack
-// (0x80146734-0x80146758: the old end stored twice, the old begin stored twice, with
-// `&range[3]` and `&range[1]` as the first two arguments), the old elements are then destroyed
-// with `fn_801467A0` and the old block handed back to `CMemory::Free`. The guard is a **signed**
-// `cmpw` - `n <= x08_cap` skips the grow entirely, with no allocation.
+// `fn_8014680C` above from the two `SStateIter` arguments this function materialises on its own
+// stack (0x80146734-0x80146758: the old end twice at 8(r1)/12(r1), the old begin twice at
+// 16(r1)/20(r1)), the old elements are then destroyed with `fn_801467A0` and the old block
+// handed back to `CMemory::Free`. The guard is a **signed** `cmpw` - `n <= x08_cap` skips the
+// grow entirely, with no allocation.
+//
+// Both ends are re-read from `self` after the copy and again for the destroy rather than kept in
+// locals across the `fn_8014680C` call: holding them costs a fifth live register, `stmw r27,28(r1)`
+// and a 144-byte frame (66.63%).
 extern "C" void fn_801466F4(SGameStateBlock* self, int capacity) {
   if (capacity <= static_cast< int >(self->x08_cap)) {
     return;
@@ -110,15 +131,10 @@ extern "C" void fn_801466F4(SGameStateBlock* self, int capacity) {
 
   uchar* const buffer =
       static_cast< uchar* >(rstl::rmemory_allocator::allocate(capacity * 36));
-  uchar* const oldBegin = static_cast< uchar* >(self->x0c_data);
-  uchar* const oldEnd = oldBegin + self->x04_count * 36;
-  void* range[4];
-  range[1] = oldEnd;
-  range[0] = oldEnd;
-  range[2] = oldBegin;
-  range[3] = oldBegin;
-  fn_8014680C(&range[3], &range[1], buffer);
-  fn_801467A0(oldBegin, oldEnd);
+  fn_8014680C(SStateIter(self->x0c_data),
+              SStateIter(static_cast< uchar* >(self->x0c_data) + self->x04_count * 36), buffer);
+  fn_801467A0(static_cast< uchar* >(self->x0c_data),
+              static_cast< uchar* >(self->x0c_data) + self->x04_count * 36);
   CMemory::Free(self->x0c_data);
   self->x0c_data = buffer;
   self->x08_cap = static_cast< u32 >(capacity);
