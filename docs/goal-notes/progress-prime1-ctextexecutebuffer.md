@@ -514,3 +514,117 @@ one. Not filed as `NEW:` for that reason, and because the target would be this s
 
 NEW: none. Both leads above are measured walls inside this same unit, which is what this notes
 file is for.
+
+---
+
+# Run of 2026-10-02 (lane 6), on top of the 44/46 head
+
+One file changed: `src/Kyoto/Text/CTextExecuteBuffer.cpp` (+10 / -4), inside
+`WrapOneLTR` only. No `configure.py`, no `config/`, no `splits.txt`, no
+`files.cmake`, no `tools/`, no `build/goal/` except this notes file, no asm.
+
+## Result, measured
+
+| | before (`build/goal/judge/report.base.json`) | after |
+|---|---|---|
+| unit `matched_functions` | **44 / 46** | **45 / 46** |
+| unit fuzzy | 99.562% | **99.949%** |
+| unit matched code | 85.993% | **94.371%** |
+| project `matched_functions` | 12495 | **12496** |
+| project linked | 5871 | 5871 (unchanged, correct for a `progress` item) |
+
+`./tools/decomp_build.sh` -> `All: 35.32% fuzzy, 29.15% matched, 12.91% linked (12496 / 28465 functions)`.
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`python3 tools/check_symbol_names.py` = `checked 525 units; 0 declared names are missing from their object`;
+`python3 tools/check_decl_order.py --unit Kyoto/Text/CTextExecuteBuffer` = `ok`.
+`./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`**, every step `ok`, including
+`target rose: main/Kyoto/Text/CTextExecuteBuffer: 44 -> 45 / 46 functions` and `no asm added`.
+
+Per function, before% -> after%, all measured on this tree:
+
+| function | size | before | after |
+|---|---|---|---|
+| `WrapOneLTR` | 756 | 95.38 | **100.00** |
+| `AddImage` | 508 | 99.09 | 99.09 (unchanged - see the wall) |
+
+Nothing else in the unit moved and `goal_check` reported no regression.
+
+## `WrapOneLTR` 95.38% -> 100.00%: hoist the two widths, but *not* into the test
+
+The third run's note read "retail keeps the line width in r24 and the block width in r28 across
+the `MoveWordLTR()` call and reuses them for the estimate; we reload through r5/r4", and measured
+hoisting `const int lineWidth` / `const int blockWidth` as **worse** (95.44%, "renumbers r24 to
+`this`"). That experiment hoisted them **into all three places** - the first word-wrap test, the
+second test, and the loop condition. The right shape hoists them into **one** place only:
+
+```cpp
+const int lineWidth = mCurrentLine->GetWidth();
+const int blockWidth = mCurrentBlock->GetOutputWidth();
+if (width + mCurrentLine->GetWidth() > blockWidth && len > 1) {
+  rem = rstl::min_val(len, (blockWidth - lineWidth) / mState.GetFont()->GetMonoWidth() * 2);
+```
+
+i.e. the **declarations** are named but the second `if`'s condition keeps reading
+`mCurrentLine->GetWidth()` inline. This is exactly retail's instruction order and it is the only
+one of the shapes that reaches it:
+
+Retail (0x802B76D0-0x802B7704) loads `lwz r24,8(r4)` / `lwz r28,12(r3)` into callee-saved
+registers *inside* the second test, then reuses them at `subf r4,r24,r28` for the estimate, and
+re-loads them again in the `while` condition at 0x802B77C4. That is what the source above
+produces; written with both widths inline in the test, MWCC keeps them in volatile registers and
+emits four extra loads for the estimate (ours was 772 bytes against retail's 756). The hoist is
+worth exactly those 16 bytes and nothing else - the sizes now match at 756/756.
+
+Measured on this tree with `tools/try_batch.py` (differing instructions against retail's
+disassembly, branch targets and relocation operands normalised; 0 = identical):
+
+| spelling of the second test / the estimate | differing instrs |
+|---|---|
+| both widths inline (the previous run's source) | 11 |
+| `const int lineWidth; const int blockWidth;` used in **all** of test + estimate + loop | 5 |
+| declaration order reversed (`blockWidth` first) | 6 |
+| `int` instead of `const int` | 5 |
+| `const int blockWidth` first, both used | 5 |
+| `volatile` locals | worse |
+| reversed comparison `blockWidth < width + lineWidth` | 6 |
+| extra `const int avail = blockWidth - lineWidth;` | 5 |
+| extra `const int monoWidth` local | 7 |
+| `const int perChar = (blockWidth - lineWidth) / GetMonoWidth();` then `min_val(len, perChar*2)` | 13 |
+| extra `const int w = width;` | 5 |
+| **hoist both, condition keeps `mCurrentLine->GetWidth()` inline (shipped)** | **0** |
+| only `lineWidth` hoisted / only `blockWidth` hoisted | 10 / 11 |
+
+## `AddImage` is still 99.09%, and this is now a measured wall
+
+12 of 508 bytes, register numbering only, and the shape is otherwise identical to retail.
+Retail: `li r28,0 / mr r29,r28` then the widths in `r27` (block) / `r26` (line). Ours:
+`li r27,0 / li r26,0` then the widths in `r28` / `r29`. Six of the seven callee-saved registers
+and every live range are the same; only the allocation differs, and retail does not constant-fold
+`bool tooWide = wrap;` into a second `li` while ours does.
+
+~25 spellings measured this run, **all 12 differing instructions or worse**: named `lineWidth` /
+`blockWidth` locals (16-20), `int` / `unsigned int` bools (12), a single reused `bool` (15), a
+ternary or `const bool` initialiser for `tooWide` (12), `static_cast<bool>(wrap)` (12),
+declare-uninitialised-then-assign (12), `wrap |= ...` (15), `wrap = wordCount > 0` (15),
+nested `if`s in every arrangement (15-17), `wordCount` hoisted to a local (21),
+`IsWordWrapping()` hoisted to a local (12), the operands of the sum reversed (12),
+`blockWidth < lineWidth + image.GetWidth()` (13), `!(a <= b)` (12), `GetWordCount() != 0` (13),
+`image.GetWidth()` hoisted (33), `const int total = lineWidth + imageWidth` (30).
+The `WrapOneLTR` fix does **not** transfer: naming the widths in `AddImage` makes the loads
+unconditional and hoists them above the `IsWordWrapping()` branch, which retail does not do.
+
+WALL: AddImage__18CTextExecuteBufferFRC13CFontImageDef 99.09% - retail allocates the two bools to
+r28/r29 and the two widths to r27/r26 and does not fold `bool tooWide = wrap;`; ours allocates
+r26/r27 and r28/r29 and emits a second `li`, and ~25 source spellings this run (listed above,
+plus the earlier runs' lists) all measure 12 differing instructions or worse. The remaining
+difference is register allocation inside a function this run measured.
+
+## Also confirmed this run (no code change needed)
+
+- The unit's other 44 functions are unchanged and matched; `create_node`, `do_insert_before`,
+  `Add` and `StartNewLine` from the earlier runs are all still at 100%.
+- `tools/unit_fit.sh` was not re-run: the unit cannot flip with 1 of 46 functions short of 100%,
+  and this is a `progress` item.
+
+NEW: none. The remaining gap in this unit is register allocation inside `AddImage`, which is a
+measured wall, not a queue entry.

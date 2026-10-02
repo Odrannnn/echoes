@@ -315,12 +315,18 @@ int CTextExecuteBuffer::WrapOneLTR(const wchar_t* str, int len) {
           mCurrentLine->GetWordCount() > 1 && mCurrentX + width < mCurrentBlock->GetOutputWidth()) {
         MoveWordLTR();
       }
-      if (width + mCurrentLine->GetWidth() > mCurrentBlock->GetOutputWidth() && len > 1) {
+      // Retail keeps the block's output width and the line's width in callee-saved registers
+      // from this second word-wrap test down to the `rem` estimate below, and re-evaluates them
+      // inside the loop. Naming `lineWidth`/`blockWidth` here is what reproduces that: written
+      // inline, the compiler re-loads all four words for the estimate (16 bytes more than
+      // retail). The first word-wrap test above must keep reading the members inline - it is
+      // the shape retail emits there - and so must the loop condition.
+      const int lineWidth = mCurrentLine->GetWidth();
+      const int blockWidth = mCurrentBlock->GetOutputWidth();
+      if (width + mCurrentLine->GetWidth() > blockWidth && len > 1) {
         // Retail starts the search at an estimate of how many characters still fit in the
         // remaining space rather than at `len`, so a long string does not measure glyph by glyph.
-        rem = rstl::min_val(
-            len, (mCurrentBlock->GetOutputWidth() - mCurrentLine->GetWidth()) /
-                     mState.GetFont()->GetMonoWidth() * 2);
+        rem = rstl::min_val(len, (blockWidth - lineWidth) / mState.GetFont()->GetMonoWidth() * 2);
         rem = rstl::max_val(1, rem);
         int rank = 5;
         do {
