@@ -18,6 +18,12 @@ modules:
     hash: 949b8c21caf1112b10d07748dbe8c32d3bd7efac
     splits: config/G2ME01/rels/AIMannedTurret/splits.txt
     symbols: config/G2ME01/rels/AIMannedTurret/symbols.txt
+    # fn_1_48C0, the module's 0x5C deleting destructor: nothing in the module references it, and
+    # mwldeppc drops a Matching unit's `.text` when it is not in this list - measured, the module
+    # came out 0x5C bytes short (`.text` 0x52EC against retail's 0x5348) with every function at
+    # 100%. Same arrangement as SandBoss and Tweaks below.
+    force_active:
+      - fn_1_48C0
   # Module ID 2
   - object: files/RelProd/AtomicAlpha.rel
     hash: ade8972eb74648c3c5c99caa022ff457ff2b27fd

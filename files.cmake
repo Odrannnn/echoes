@@ -1193,6 +1193,13 @@ list(APPEND MP_GAME_SOURCES
     # unchanged.
     src/MetroidPrime/ScriptObjects/DigitalGuardianContact.cpp
     src/MetroidPrime/ScriptObjects/DigitalGuardianMemberPtr.cpp
+    # Module 1's .text 0x48C0..0x491C - one function, the module's 0x5C deleting destructor, the
+    # REL twin of the DOL's __dt__21CArchMsgParmUserInputFv. Listed for the same reason as the
+    # entries above: it defines neither RELMain nor RELExit, so check_files_cmake.py's MODULE_ENTRY
+    # exemption is not needed, and its three relocations - `lbl_1_data_1E0` and `lbl_1_data_1EC`
+    # (the module's own .data, which a host link has no definition for) and `Free__7CMemoryFPCv` -
+    # are all inside the `#ifdef __MWERKS__` guard, so the port's undefined count is unchanged.
+    src/MetroidPrime/ScriptObjects/AIMannedTurretDtor.cpp
     src/MetroidPrime/ScriptObjects/AtomicBetaAccessors.cpp
     src/MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp
     # Module 50's cross product, .text 0xD80..0xDC0 - one function. Listed for the same reason as

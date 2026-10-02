@@ -1486,6 +1486,9 @@ config.libs = [
         "AIMannedTurret",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptAIMannedTurret.cpp"),
+            # fn_1_48C0, .text 0x48C0..0x491C: the module's 0x5C deleting destructor, the twin of
+            # the DOL's __dt__21CArchMsgParmUserInputFv. Everything around it stays unclaimed.
+            Object(Matching, "MetroidPrime/ScriptObjects/AIMannedTurretDtor.cpp"),
         ],
     ),
     Rel(

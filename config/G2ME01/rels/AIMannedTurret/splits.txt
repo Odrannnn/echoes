@@ -9,6 +9,9 @@ Sections:
 MetroidPrime/ScriptObjects/CScriptAIMannedTurret.cpp:
 	.text       start:0x00000000 end:0x00000018
 
+MetroidPrime/ScriptObjects/AIMannedTurretDtor.cpp:
+	.text       start:0x000048C0 end:0x0000491C
+
 REL/global_destructor_chain.c:
 	.text       start:0x00005130 end:0x000051A4
 	.dtors      start:0x00000000 end:0x00000004 rename:.dtors$10
