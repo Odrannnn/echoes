@@ -153,3 +153,195 @@ by the brief's definition.
 `docs/HANDOFF.md` shows a diff in this worktree; that is `tools/check_docs_claims.py --write`, run by
 `gate.sh` under the judge's `MP_GATE_DOCS_WRITE=1`, not an edit of mine. The brief says the driver
 discards edits to that file before judging.
+---
+
+# Run 2 (lane `L2`, 2026-10-02): 506 -> 508 / 511
+
+Two functions reached 100%. One of them is the one the previous run called "the cheapest remaining
+item and it is not done"; the other is the one it called "a bigger job than this item" - the bigger
+job is two `#include`s. The previous run's other two remain walls, and one of them is now proved
+impossible in C++ rather than merely hard.
+
+Files touched: `src/MetroidPrime/TypesMatch.cpp`, `include/MetroidPrime/CCollisionActor.hpp`.
+The unit stays `NonMatching`; `flip_test` was not run. `docs/HANDOFF.md` shows a diff in this
+worktree: that is `tools/check_docs_claims.py --write` under the judge's `MP_GATE_DOCS_WRITE=1`,
+not an edit of mine.
+
+**Verified: `./tools/goal_check.sh build/goal/item.json` -> `PASS`**, run three times (after
+`fn_80097520`, after the header change, and again after the header comment was added).
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12266 -> 12268   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    All:  34.66% fuzzy, 28.02% matched, 12.90% linked (12268 / 28465 functions)
+  ok    target rose: main/MetroidPrime/TypesMatch: 506 -> 508 / 511 functions
+  ok    no asm added
+goal_check: PASS progress-unit-typesmatch
+```
+
+| | base (report.base.json) | now |
+|---|---|---|
+| unit matched / total | 506 / 511 | **508 / 511** |
+| unit fuzzy % | 98.97833 | **99.33014** |
+| unit matched-code % | 95.855576 | **97.03297** |
+| DOL matched functions | 12266 | **12268** |
+
+Independently: `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`,
+`python3 tools/check_symbol_names.py` = `checked 525 units; 0 declared names are missing from their
+object`, `./tools/probe_sources.sh` = `752 files, 0 failed, 0 errors; link: LINKED (287 undefined,
+0 duplicates)`. The DOL hash is untouched because `TypesMatch.cpp` is `Object(NonMatching, ...)`,
+so `mwldeppc` links the original retail object (`tools/project.py:1138`, `link_built_obj =
+obj.completed`) - which is also why the undefined reference added below is inert.
+
+## 1. `fn_80097520`: 0.00% (unpaired) -> 100.00%, 32 bytes
+
+The previous run measured it and stopped: *"Nothing in the DOL calls `fn_80097520`; its only
+caller-side anchor is that it exists. It is not in `CGameProjectile.cpp`'s object today, so whoever
+takes it should first establish which class's member destructor this is."* The class does not have
+to be established to write it, because the whole of retail's 32 bytes is the frame and the forward:
+
+```
+stwu r1,-16(r1) / mflr r0 / stw r0,20(r1) / bl 0x80032D88
+lwz r0,20(r1) / mtlr r0 / addi r1,r1,16 / blr
+```
+
+No vtable store and no `extsh`/deleting tail, so the class is not polymorphic and the destructor is
+the entire object; r4 is never written, so the deleting flag goes straight through. Spelled
+`extern "C" void fn_80097520(void* self, int deletingFlag) { fn_80032D88(self, deletingFlag); }`
+(`src/MetroidPrime/TypesMatch.cpp:485-494`) that is byte-identical, all eight instructions.
+
+**The class name is still unknown and that is a real gap.** `fn_80032D88` (0x80032D88) is
+`if (self) { if (self[0xC] != 0) self[0xC]->CToken::~CToken(); }` - a `destroy<T>` - and
+`docs/goal-notes/progress-cgp-doorbranch.md` already identifies 0x80032D88 as
+`destroy<CImpactVisorEffect::SParticleEffect>` and 0x80032D68 as `construct<...>`, so this is very
+likely another template instantiation whose symbol the retail map does not name, in a class this
+tree does not have. Because `mwcceppc` mangles destructors and template instantiations, **no
+spelling of it can carry the symbol `fn_80097520` except a hand-written forwarder**, which is what
+this is. Placed after `TYPES_MATCH_IMPL(CBeamProjectile, ...)` (retail 0x800974C0, its immediate
+lower neighbour) rather than in descending-address position: the file is already permuted, and
+`python3 tools/check_decl_order.py --unit main/MetroidPrime/TypesMatch` still prints
+`would break on a flip`, so the unit cannot flip on this run whatever the order. It pairs because
+objdiff pairs by name, and a `progress` item is judged on `report.json`, not on the flip.
+
+The added `extern "C" void fn_80032D88(void*, int);` declaration (`:191-196`) is an undefined reference
+in `TypesMatch.o` (`nm -u` confirms `U fn_80032D88`). That is safe here and only here: the unit is
+`NonMatching`, so its object never reaches the link - the port's undefined count, the DOL sha1 and
+all 86 RELs are all unchanged, which the gate measured.
+
+## 2. `__dt__15CCollisionActorFv`: 78.49% -> 100.00%, 268 bytes
+
+The previous run called this "a bigger job than this item" and was wrong about the size of the job.
+Its diagnosis was exactly right: retail destroys `mSpherePrimitive` (+0x2FC) and
+`mObbTreeGroupPrimitive` (+0x2F4) through the **vtable** and mwcceppc emitted a direct `bl` because
+those two classes were forward declarations at the point the members are declared. Two includes fix
+it, and nothing else:
+
+```cpp
+#include "Collision/CCollidableSphere.hpp"          // +0x2FC
+#include "WorldFormat/CCollidableOBBTreeGroup.hpp"  // +0x2F4, and COBBTreeGroup for +0x2F0
+```
+
+`include/MetroidPrime/CCollisionActor.hpp:4,10`, with a comment saying why they must stay (removing
+them moves the function straight back to 78.49%). Notes on what each one buys, measured on the
+object:
+
+- `CCollidableAABox` (+0x2F8) already arrived complete - `MetroidPrime/CPhysicsActor.hpp:15`
+  includes `Collision/CCollidableAABox.hpp` - which is why exactly one of the four members was
+  already correct and the previous run could see it.
+- `Collision/CCollidableSphere.hpp` alone gets +0x2FC onto the vtable.
+- `WorldFormat/CCollidableOBBTreeGroup.hpp` gets **two** members: +0x2F4 onto the vtable, and
+  +0x2F0 from `addic./beq/lwz/bl` (4 instructions, `single_ptr<COBBTreeGroup>` with `COBBTreeGroup`
+  incomplete) onto retail's `addi r3,r30,752 / li r4,-1 / bl __dt__13SUnknownOuterFv` (3). That is
+  because it is the header that pulls `WorldFormat/COBBTreeGroup.hpp` in.
+- The four forward declarations at `:21-24` are now redundant but were left alone: they are
+  harmless, and deleting them would widen the diff for no measured gain.
+
+The five translation units that include this header (`TypesMatch.cpp`, `CCollisionActor.cpp`,
+`CCollisionActorManager.cpp`, `CBallCamera.cpp`, `CScriptTrigger.cpp`) all rebuilt and the report
+diff shows no function anywhere worse - `goal_check`'s `counts:` and `gate.sh`'s report diff both
+say so, and `All:` fuzzy/matched percentages are unchanged at 34.66% / 28.02%.
+
+## 3. `fn_8009D3D8` cannot be renamed: mwcceppc has no C-linkage destructor
+
+The previous run's cheapest remaining item was "rename it to C linkage". Measured this run: **there
+is no way to give a destructor the symbol `fn_8009D3D8`**, and it is not a source-shape problem.
+
+```
+extern "C" ~CUnknownItemList();      -> Error: illegal storage class
+extern "C" class CA { ~CA(); };      -> emits __dt__2CAFv   (C linkage ignored)
+class CB {...} inside extern "C" {}  -> emits __dt__2CBFv   (C linkage ignored)
+extern "C" void f(uchar*& p)         -> *p is parsed as uchar, i.e. the & is dropped
+```
+
+The last one matters as the general rule: **mwcceppc does not support a reference to a pointer**, so
+the one construct that would have produced retail's four stores at `fn_8009D3D8` (a `T*&` parameter
+forces the caller to materialise a reference slot per argument) cannot be spelled at all.
+
+The alternative - keeping `~CUnknownItemList` and adding a second `extern "C"` forwarder - emits a
+function retail's object does not define, which `tools/unit_fit.sh` exists to prevent, so it was
+not done. `fn_8009D3D8` stays unpaired at 0.00%. Its caller-side shape is right except for the two
+missing stores; see the wall below.
+
+## 4. What is left, and why (3 functions, measured)
+
+1. **`fn_8009D3D8`, 132 B, unpaired (0.00%)** - see above; the name is unreachable and the body is
+   a wall. Two independent blockers, either of which alone stops it.
+2. **`fn_8009D45C`, 108 B, 84.93%** and **`fn_8009D3D8`'s body** are the same wall - see below.
+3. **`__dt__17CPlasmaProjectileFv`, 516 B, 95.66%** - unchanged and not retried: the previous run
+   measured `#pragma noinline` above `~CBeamProjectile` and it changed **zero** of the 2071 units
+   (it is defined inline in the class body), so one attempt is not several and there is no new
+   spelling in this run to try.
+
+WALL: fn_8009D3D8 and fn_8009D45C - retail emits a home *and* an outgoing-argument copy for each of
+the two bounds (4 stores: 12(SP), 8(SP), 16(SP), 20(SP) in the caller; 8(SP), 12(SP) in the callee)
+and every spelling measured in this run collapses them to 2.
+
+WALL: fn_80097520's class name is unknown (see 1), so the function is right but unlabelled - a later
+run that identifies the class can give it a real C++ spelling, though the `fn_80097520` symbol will
+then have to move to a fresh forwarder or the pairing has to be given up.
+
+## The dead-store wall, spelled out so the next run does not repeat it
+
+Retail `fn_8009D3D8` (0x8009D3D8) versus ours, word for word, ignoring relocated fields:
+
+| retail | ours | note |
+|---|---|---|
+| `addi r3,r1,20` / `addi r4,r1,12` | `addi r3,r1,8` / `addi r4,r1,12` | arg1's slot |
+| `add r5,r5,r0` | `add r0,r5,r0` | which register the bound lands in |
+| `stw r5,12(r1)` | `stw r0,12(r1)` | follows from the row above |
+| `stw r5,8(r1)` | `stw r0,8(r1)` | follows |
+| `stw r0,16(r1)`, `stw r0,20(r1)` | **absent** | the two extra copies |
+| `lwz r3,12(r30)` for the free | was `lwz r3,8(r1)` | **fixed this run** |
+
+Retail frees the *member* (`lwz r3,12(r30)`), not the local, so `CMemory::Free(xC_items)` is right and
+`CMemory::Free(first)` is wrong; that one row is settled. The other five are not: **14 spellings**
+(all measured with the unit's own compile line through wibo + mwcceppc, scored word-by-word against
+`tools/dis.sh 0x8009D3D8 0x84`) produce a 31-word function every single time, against retail's 33.
+`uchar**` vs `uchar* const*` vs `SUnknownItem**` vs `void**` parameters; `uchar*` vs
+`SUnknownItem*` locals and members; `const` and `volatile` locals; `last`/`first` and
+`first`/`last`/`end` declaration order; the bounds in an inner scope; an extra `uchar* last = end;`
+(the only one that changed the length, to 30 words); `Free(first)` vs `Free(xC_items)`;
+`reinterpret_cast<void**>(&first)` at the call. Best score 21/33 words different, and no spelling
+produced a single one of the two missing stores. The remaining difference is register allocation
+(`add r5` vs `add r0`) plus two dead stores, which is the brief's definition of a wall.
+
+The general rule worth keeping: **MWCC passes the address of a local straight to the callee and
+never makes an outgoing-argument copy of it**, so retail's four stores in this shape are not
+reachable by spelling the two arguments as `&local`. Anything that would normally force the copy -
+a reference parameter, a conversion needing a temporary - is either dropped by the parser
+(`T*&`) or compiled away, as measured.
+
+## NEW:
+
+None filed. All three remaining functions are inside this item's own target
+(`main/MetroidPrime/TypesMatch`), so they belong to a requeue of `progress-unit-typesmatch` and not
+to new queue entries. `fn_80097520`'s class identity and `fn_80032D88`'s definition both live in
+`MetroidPrime/Weapons/CGameProjectile`, whose unpaired functions `docs/goal-notes/
+progress-cgp-doorbranch.md` already enumerates; that unit, not this one, is where the ladder
+belongs.
+
+No `STALE:`. No new `WALL:` line for `fn_8009D45C` is claimed separately from the one above: the
+two functions fail on the identical construct, and this run measured the caller's spelling, which is
+where the construct lives.

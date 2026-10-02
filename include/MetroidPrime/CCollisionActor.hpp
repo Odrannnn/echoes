@@ -1,11 +1,22 @@
 #ifndef _CCOLLISIONACTOR
 #define _CCOLLISIONACTOR
 
+// `CCollidableSphere` and `CCollidableOBBTreeGroup` must be complete here, not forward-declared:
+// retail destroys mSpherePrimitive (+0x2FC) and mObbTreeGroupPrimitive (+0x2F4) through the
+// *vtable* (`lwz r12,24(r12) ; mtctr ; bctrl`, the deleting destructor at slot 6), which only
+// happens when mwcceppc can see the virtual `~CCollidableSphere() override` /
+// `~CCollidableOBBTreeGroup() override`. With the forward declarations it emits a direct `bl` and
+// `__dt__15CCollisionActorFv` is 78.49%; with them it is byte-identical (268 B, 100%). Dropping
+// these two includes moves the function back. `CCollidableAABox` already arrives complete through
+// CPhysicsActor.hpp, and the +0x2F0 member needs `WorldFormat/CCollidableOBBTreeGroup.hpp` because
+// that is what pulls COBBTreeGroup in.
+#include "Collision/CCollidableSphere.hpp"
 #include "MetroidPrime/CDamageVulnerability.hpp"
 #include "MetroidPrime/CHealthInfo.hpp"
 #include "MetroidPrime/CPhysicsActor.hpp"
 #include "rstl/rc_ptr.hpp"
 #include "rstl/single_ptr.hpp"
+#include "WorldFormat/CCollidableOBBTreeGroup.hpp"
 
 class COBBTreeGroup;
 class CCollidableOBBTreeGroup;

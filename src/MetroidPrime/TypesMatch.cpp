@@ -188,6 +188,13 @@ void FreeUnknownItem(void* item, bool b);
 // definition below spells retail's own symbol name rather than a mangled one.
 extern "C" void fn_8009D45C(uchar** first, uchar** last);
 
+// Retail fn_80032D88, in MetroidPrime/Weapons/CGameProjectile's object: 0x80032D88 is
+// `if (self != nullptr) { if (self->xC_valid != 0) self->xC_token.CToken::~CToken(); }`, the
+// `destroy<T>` helper a class whose only member is that optional token tears itself down with.
+// Nothing in this tree defines it yet (docs/goal-notes/progress-cgp-doorbranch.md has the ladder);
+// the unit is NonMatching, so this reference never reaches the link.
+extern "C" void fn_80032D88(void* self, int deletingFlag);
+
 class CUnknownItemList {
 public:
   ~CUnknownItemList();
@@ -474,6 +481,17 @@ TYPES_MATCH_IMPL(CDigitalGuardian, CPatterned, kET_DigitalGuardian)
 TYPES_MATCH_IMPL(CDarkSamus, CPatterned, kET_DarkSamus)
 TYPES_MATCH_IMPL(CPlasmaProjectile, CBeamProjectile, kET_PlasmaProjectile)
 TYPES_MATCH_IMPL(CBeamProjectile, CGameProjectile, kET_BeamProjectile)
+
+// Retail 0x80097520, between ~CBeamProjectile (0x800974C0) and TCastToPtr<CAi> (0x80097540).
+// All eight instructions of it are the frame and the forward: `stwu / mflr / stw / bl 0x80032D88 /
+// lwz / mtlr / addi / blr`, 32 bytes, no vtable store and no deleting tail, so the class it belongs
+// to is not polymorphic and its destructor is the whole of the object. r4 is never written, so the
+// deleting flag is passed straight through to fn_80032D88. Retail's map gives the class no name,
+// and the map name is also the reason this is a free function: a C++ destructor would mangle to
+// __dt__<len><class>Fv and objdiff would never pair the two. Nothing in the DOL calls it.
+extern "C" void fn_80097520(void* self, int deletingFlag) {
+  fn_80032D88(self, deletingFlag);
+}
 TYPES_MATCH_IMPL(CPlantScarabSwarm, CSwarmBasics, kET_PlantScarabSwarm)
 TYPES_MATCH_IMPL(CIngBlobSwarm, CSwarmBasics, kET_IngBlobSwarm)
 TYPES_MATCH_IMPL(CMetareeSwarm, CSwarmBasics, kET_MetareeSwarm)
