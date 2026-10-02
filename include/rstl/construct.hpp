@@ -28,6 +28,16 @@ struct is_trivially_destructible {
   enum { value = false };
 };
 
+// `unsigned long long` has no destructor, and retail's bytes agree: `rstl::vector<u64>`'s
+// destructor, called by `COBBTree::SIndexData::~SIndexData` (retail 0x8024E7B4) with r3 = `this`,
+// is the 0x54-byte `fn_8024E860` at 0x8024E860 - the same 21 instructions as the instantiations
+// that *are* declared trivially destructible. The primary template above says false, so
+// `destroy_impl(begin, end)`'s loop survives into the instantiation and costs 48 bytes.
+template <>
+struct is_trivially_destructible< unsigned long long > {
+  enum { value = true };
+};
+
 template < typename T >
 struct is_trivially_destructible< T* > {
   enum { value = true };

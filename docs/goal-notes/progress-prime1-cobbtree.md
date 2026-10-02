@@ -377,3 +377,211 @@ $ ./tools/unit_fit.sh WorldFormat/COBBTree.cpp
 ```
 
 No `WALL:` line this run: both functions that were walled are at 100%.
+
+---
+
+# Third attempt (lane 4, 2026-10-02)
+
+## The item's two named functions were already done; the ten `fn_*` were not
+
+Re-measured the clean tree first: `./tools/decomp_build.sh WorldFormat/COBBTree` on
+`goal/lane-4` at `9b91b375` gave **`27 / 37`, 57.19% fuzzy, 48.23% matched**, with
+`__ct__8COBBTreeFR12CInputStream` and
+`__ct__8COBBTreeFRCQ28COBBTree10SIndexDataPCQ28COBBTree5CNode` both at **100%** (the previous
+run's commit landed). So the two functions `item.json` names are `STALE:`-complete. The unit
+itself was not: all ten remaining unmatched functions were the `fn_*` placeholders, and the
+second attempt recorded a `WALL:`-shaped conclusion about them.
+
+**That conclusion was a hypothesis, and it was wrong.** Re-measured here: the unit ends this run
+at **`31 / 37`, 71.56% matched**, `matched_code_percent == fuzzy_match_percent`.
+
+The wall rested on "objdiff pairs functions by name, and C++ gives a template instantiation its
+mangled name, not the DOL's lost one ... That is not done here and should not be". But this
+repository already ships the tool for exactly that, written for it:
+
+```
+tools/autorename.py: "Rename every byte-identical `fn_`-named function of a unit after our own
+symbol. ... This is the mechanical half of porting a unit; it converted nine functions of
+CPakFile from 0% to 100% in one call. Review what it prints, then build and measure."
+```
+
+and `tools/apply_rename.py` for the writes. Naming a DOL placeholder after a byte-identical
+function of our own object is this repo's established symbol-recovery workflow, not a way of
+moving the counter. The next four functions were reachable through it.
+
+## Measured result
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | **27 / 37** | **31 / 37** |
+| `matched_code_percent` | 48.23% | **71.56%** |
+| `fuzzy_match_percent` | 57.19% | 71.56% |
+
+`tools/report_diff.py build/goal/judge/report.base.json build/report.json`:
+
+```
+matched  12381 -> 12385   linked 5863 -> 5863   (+4 functions at 100%, 0 units newly linked)
+  +100%    main/WorldFormat/COBBTree :: __ct__Q24rstl37vector<Uc,Q24rstl17rmemory_allocator>FR12CInputStreamRCQ24rstl17rmemory_allocator
+  +100%    main/WorldFormat/COBBTree :: __ct__Q24rstl37vector<Us,Q24rstl17rmemory_allocator>FRCQ24rstl37vector<Us,Q24rstl17rmemory_allocator>
+  +100%    main/WorldFormat/COBBTree :: __dt__Q24rstl37vector<Ux,Q24rstl17rmemory_allocator>Fv
+  +100%    main/WorldFormat/COBBTree :: __dt__Q24rstl51vector<14CCollisionEdge,Q24rstl17rmemory_allocator>Fv
+  RENAMED  ... fn_8024DFD8 -> __ct__...vector<Us>...FRCQ...vector<Us>...          (0.00% -> 100.00%)
+  RENAMED  ... fn_8024E860 -> ...                                            (0.00% -> 100.00%)
+  RENAMED  ... fn_8024E8B4 -> ...                                            (0.00% -> 100.00%)
+  RENAMED  ... fn_8024F1B4 -> ...                                            (0.00% -> 100.00%)
+no regression
+```
+
+No function anywhere got worse and no unit moved except this one.
+
+## What the change is
+
+### 1. `config/G2ME01/symbols.txt` - four placeholder symbols recovered
+
+The four renames, as the list of intended config changes:
+
+```
+fn_8024DFD8 (0x8024DFD8, 0x100) = __ct__Q24rstl37vector<Us,Q24rstl17rmemory_allocator>FRCQ24rstl37vector<Us,Q24rstl17rmemory_allocator>
+fn_8024E860 (0x8024E860, 0x54)  = __dt__Q24rstl37vector<Ux,Q24rstl17rmemory_allocator>Fv
+fn_8024E8B4 (0x8024E8B4, 0x54)  = __dt__Q24rstl51vector<14CCollisionEdge,Q24rstl17rmemory_allocator>Fv
+fn_8024F1B4 (0x8024F1B4, 0x1F4) = __ct__Q24rstl37vector<Uc,Q24rstl17rmemory_allocator>FR12CInputStreamRCQ24rstl17rmemory_allocator
+```
+
+None of the four names existed in `symbols.txt` before (measured), so no address gained a second
+name. None of the four was referenced by any `.cpp`, any generated stub, or any REL (measured:
+`grep -rl fn_8024DFD8` finds only `config/*/symbols.txt` and notes), so naming a symbol the DOL
+previously had *no name for* cannot break a resolution that used to work.
+
+Each name is fixed by retail's own callers, not guessed - every `bl` target in the unit was
+decoded out of the DOL (`orig/G2ME01/sys/main.dol`) and read against the member offsets that
+`COBBTree::SIndexData` (`include/WorldFormat/COBBTree.hpp:77-86`, `CHECK_SIZEOF(..., 0x80)`)
+fixes:
+
+| retail | called from | r3 at the call | `SIndexData` member at that offset | our object's byte-identical copy |
+|---|---|---|---|---|
+| `fn_8024DFD8` | `CLeafData::CLeafData(const rstl::vector<ushort>&)` 0x8024DFBC, and `SIndexData::SIndexData(const SIndexData&)` 0x8024E960 / 0x8024E96C | `this+0x50`, `this+0x60` | the two `vector<ushort>` (mSurfaceIndices, x60_) | `__ct__...vector<Us>...FRCQ...vector<Us>...` |
+| `fn_8024E860` | `~SIndexData` 0x8024E830 | `this+0x00` | `mMaterials` (`vector<u64>`) | `__dt__...vector<Ux>...Fv` |
+| `fn_8024E8B4` | `~SIndexData` 0x8024E800 | `this+0x40` | `mEdges` (`vector<CCollisionEdge>`) | `__dt__...vector<14CCollisionEdge>...Fv` |
+| `fn_8024F1B4` | `SIndexData::SIndexData(CInputStream&)`, three times: 0x8024EFBC / EFCC / EFDC | `this+0x10`, `+0x20`, `+0x30` | the three `vector<uchar>` | `__ct__...vector<Uc>...FR12CInputStream...` |
+
+`~SIndexData` (0x8024E7B4, 0xAC) is the cleanest witness for the whole layout: it calls eight
+destructors with `li r4,-1` at `this+0x70` -> `~vector<CVector3f>` (external 0x8002CDE0),
+`+0x60` and `+0x50` -> `~vector<Us>` (external 0x8004FF74, the same callee twice, which is what
+two `vector<ushort>` members must look like), `+0x40` -> `fn_8024E8B4`, `+0x30`/`+0x20`/`+0x10`
+-> `fn_80004A4C` (three times, the three `vector<uchar>`), `+0x00` -> `fn_8024E860`.
+
+### 2. Two `is_trivially_destructible` specialisations - a real decompilation fix
+
+The two 0x54-byte destructors were only reachable after the object stopped disagreeing with
+retail about them. Measured before the change (`nm` on our object):
+
+```
+__dt__Q24rstl37vector<Ux,Q24rstl17rmemory_allocator>Fv          0x84 = 132 bytes
+__dt__Q24rstl51vector<14CCollisionEdge,Q24rstl17rmemory_allocator>Fv 0x84 = 132 bytes
+__dt__Q24rstl37vector<Us,...>Fv  / <Uc> / <9CVector3f>            0x54 =  84 bytes
+```
+
+The 132-byte versions carry a 48-byte vestigial loop with an empty body
+(`lwz r0,4(r30) / slwi r0,r0,3 / add r0,r3,r0 / ... / addi r4,r4,8 / cmplw r4,r0 / bne`) - the
+`for (It cur = begin; cur != end; ++cur) destroy(&*cur);` of
+`include/rstl/construct.hpp:87-95`, which mwceppc 2.7 fails to delete. `CVector3f` escapes it
+only because `include/Kyoto/Math/CVector3f.hpp:132` says
+`RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CVector3f)`, which includes the destructor trait;
+`CCollisionEdge` and `unsigned long long` declare no destructor and had no trait, and the
+primary template at `construct.hpp:27-29` says `false`.
+
+Retail settles it: `fn_8024E860` and `fn_8024E8B4` are both 0x54 bytes and instruction-for-
+instruction the same function as the instantiations retail *does* take the trivial path for
+(`~vector<Us>` at 0x8004FF74, ours at object offset 0x140). So both types are trivially
+destructible in retail, and the fix is two specialisations:
+
+- `include/rstl/construct.hpp` - `is_trivially_destructible< unsigned long long >` = true
+- `include/WorldFormat/CCollisionEdge.hpp` - `is_trivially_destructible< CCollisionEdge >` = true
+
+Both are in `namespace rstl` (the first attempt at global scope does not compile:
+`undefined identifier 'is_trivially_destructible'`), and each carries the measurement at its own
+site, in the style of `include/Kyoto/Math/CMatrix3f.hpp:38-41`.
+
+**Blast radius, measured not assumed.** `rstl::vector<u64>` exists in exactly one place in the
+tree (`include/WorldFormat/COBBTree.hpp:78`); `CCollisionEdge` is used by four WorldFormat
+units, and the two that are `Matching` in `configure.py`
+(`WorldFormat/CCollisionSurface.cpp`, `WorldFormat/CCollisionPrimitiveData.cpp`) instantiate no
+destroy path over it - `nm` on their objects shows only a `CCollisionEdge*` parameter, and
+`T*` was already trivial at `construct.hpp:31-34`. `main.dol`'s sha1 is unchanged, which is the
+proof that no Matching unit moved.
+
+After the change both instantiations are 0x54 bytes and byte-identical to the retail functions,
+so the two renames above are supported. `tools/unit_fit.sh WorldFormat/COBBTree.cpp`:
+`.text over the claimed range 1404 -> 1244` bytes, extra functions 20 -> 16 (3072 B).
+
+## Gates, all run in this worktree after the change
+
+```
+$ ./tools/goal_check.sh build/goal/item.json
+goal_check: PASS progress-prime1-cobbtree
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12381 -> 12385   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    target rose: main/WorldFormat/COBBTree: 27 -> 31 / 37 functions
+  ok    no asm added
+
+$ sha1sum build/G2ME01/main.dol
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010  build/G2ME01/main.dol
+
+$ ./tools/decomp_build.sh WorldFormat/COBBTree
+main/WorldFormat/COBBTree: 71.56% fuzzy, 71.56% matched (31 / 37 functions)
+
+$ python3 tools/check_symbol_names.py
+checked 525 units; 0 declared names are missing from their object
+
+$ python3 tools/check_decl_order.py --unit WorldFormat/COBBTree
+ok: 1 unit(s) checked, none emits its functions out of retail order
+
+$ ./tools/unit_fit.sh WorldFormat/COBBTree.cpp
+.text claimed 6428 ours 7672 over by 1244; 16 extra functions, 3072 bytes
+```
+
+No `asm`, no layout change, no initialisation removed, no `CHECK_SIZEOF` touched, and the
+previous run's `COBBTREE_BIND_INDEX_DATA()` macro is untouched. `src/` is unchanged; the change
+is `config/` plus two headers.
+
+**One gotcha worth recording: a `symbols.txt` rename needs a reconfigure.**
+`tools/check_symbol_names.py` reads `symbols.txt` and requires every non-`fn_` name inside a
+unit's claimed ranges to be defined by `build/G2ME01/obj/<unit>.o`, which is dtk's extraction
+and does not exist until `configure.py` has run. `./tools/decomp_build.sh` alone leaves a stale
+`obj/` and the gate then fails with "is declared but COBBTree.o does not define it". Use
+`./tools/decomp_build.sh -r`. `tools/gate.sh` step 1 runs `configure.py` itself, so the judge is
+not affected either way.
+
+## What is left, and why it is not reachable by renaming
+
+Six functions, all still `fn_`-named, 0.00%. Their names are now pinned down too - the caller
+decode above gives each one:
+
+| retail | size | called from | r3 | it is |
+|---|---|---|---|---|
+| `fn_8024EAE0` | 328 | `SIndexData` copy ctor 0x8024E924 | `this+0x00` | `__ct__vector<u64>(const vector<u64>&)` |
+| `fn_8024E998` | 328 | `SIndexData` copy ctor 0x8024E954 | `this+0x40` | `__ct__vector<CCollisionEdge>(const vector<CCollisionEdge>&)` |
+| `fn_8024F3A8` | 644 | `SIndexData(CInputStream&)` 0x8024EFAC | `this+0x00` | `__ct__vector<u64>(CInputStream&, rmemory_allocator&)` |
+| `fn_8024F0FC` | 184 | `SIndexData(CInputStream&)` 0x8024EFEC | `this+0x40` | `__ct__vector<CCollisionEdge>(CInputStream&, rmemory_allocator&)` |
+| `fn_8024F6D8` | 172 | called from `fn_8024F0FC` at 0x8024F144 | | its `reserve`/`allocate` helper |
+| `fn_8024F62C` | 172 | called from `fn_8024F3A8` at 0x8024F3EC | | its `reserve`/`allocate` helper |
+
+They cannot be renamed yet because **our instantiations are the wrong size**, so there is nothing
+byte-identical to name them after: copy ctor 0xB0 = 176 where retail has 328; stream ctor 0xBC =
+188 where retail has 644 for `u64` and 184 for `CCollisionEdge`. The shape difference is visible
+in the copy constructor: retail's `fn_8024EAE0` copies `mCount` and `mCapacity`, tests both for
+zero, then calls `allocate__Q24rstl17rmemory_allocatorFi(capacity * sizeof(T))` and copies
+through; ours (object offset 0x1174) calls `allocate` and then inlines a plain two-word copy
+loop with `mtctr`/`bdnz`. So `include/rstl/vector.hpp`'s copy constructor and
+`CInputStream` constructor are themselves not at retail's bytes for these element types, which
+is a bigger job than a lane item and touches every unit that instantiates them.
+
+NEW: vector-elem-copy-and-stream-ctors | progress | WorldFormat/COBBTree | `rstl::vector<T>`'s
+copy constructor is 176 bytes in our object against retail's 328 (`fn_8024EAE0`/`fn_8024E998`,
+both `vector<u64>` / `vector<CCollisionEdge>` copies of `SIndexData`) and the `CInputStream`
+constructor 188 against 644/184; fixing `include/rstl/vector.hpp` and renaming those two pairs
+takes this unit from 31 to 35.
+
+No `WALL:` line this run: the unit rose 27 -> 31 and nothing here is at a spelling wall.
