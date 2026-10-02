@@ -31,9 +31,12 @@
 // through a `bl` that in our object is written against a `rstl::vector< CAnimPOIData >`.
 //
 // The same is true of a data relocation, which is why `fn_8028EC7C` reaches 100.00% while
-// naming mwceppc's `@stringBase0` against retail's `lbl_803AED58`. Neither name is reachable from
-// C++ - `lbl_803B9240`, the vtable `fn_8028E8C4` needs, is not reachable either - so no spelling
-// of that one function can be written; the note on it says what was tried.
+// naming mwceppc's `@stringBase0` against retail's `lbl_803AED58`. That is also why the one function
+// whose *name* has no C++ spelling at all, `fn_8028E8C4`, could be written anyway: the vtable it
+// stores is named `lbl_803B9240` in retail and `__vt__45TObjOwnerDerivedFromIObj<17CAnimCharacterSet>`
+// by mwceppc, and neither name is reachable from C++ - but both spell the same three instruction
+// words, so the table is declared under retail's name and the function is written out by hand. Its
+// note below has the two details that took the search.
 //
 // **Definitions are in descending retail offset**, which is what mwcceppc needs in order to emit
 // them in ascending order (see "Declare in reverse" in `docs/RUNNING_THE_DECOMP.md`, and
@@ -318,24 +321,79 @@ extern "C" void* fn_8028E954(void* self, int flag) {
   return self;
 }
 
-// `fn_8028E8C4` - retail `.text:0x8028E8C4`, 0x90 = 144 bytes, unnamed - is **not** written out here,
-// and is the one function of retail's four this file cannot name. It is the *deleting* destructor
-// of `TObjOwnerDerivedFromIObj< CAnimCharacterSet >`, and the whole of the difference between its
-// bytes and any hand-written body is three vptr stores mwceppc emits only inside a real
-// destructor: the class's own table (`lbl_803B9240`) on entry, then `CObjOwnerDerivedFromIObjUntyped`
-// and `IObj` on exit. Measured, in this tree:
+// `fn_8028E8C4` - retail `.text:0x8028E8C4`, 0x90 = 144 bytes, unnamed - is the *deleting*
+// destructor of `TObjOwnerDerivedFromIObj< CAnimCharacterSet >`. Written out by hand under
+// `extern "C"` because no C++ declaration can rename a template instantiation's destructor: mwceppc
+// emits the very same 144 bytes under `__dt__45TObjOwnerDerivedFromIObj<17CAnimCharacterSet>Fv`,
+// at the very same offset in `.text`, word for word, and objdiff scores that **0.00%** purely
+// because it pairs functions by symbol name.
 //
-//   - `static_cast<...>(self)->~TObjOwnerDerivedFromIObj()` and the fully qualified
-//     `->TObjOwner::~TObjOwner()` both reach **58.31%**: mwceppc inlines the body and drops all
-//     three stores, because a direct destructor call needs no vptr fixups.
-//   - `delete static_cast<...>(self)` reaches **53.19%**: mwceppc keeps the delete virtual
-//     (`lwz r12,0(r3) / lwz r12,8(r12) / mtctr / bctrl`) where retail calls `fn_8028E954`
-//     directly on `m_objPtr`.
+//     108  stwu  r1,-16(r1) / mflr r0 / stw r0,20(r1) / stw r31,12(r1)
+//     118  mr    r31,r4 / stw r30,8(r1) / mr. r30,r3 / beq 17c      ; if (!self) goto epilogue
+//     128  lis   r3,lbl_803B9240@ha / addi r0,r3,..@l / stw r0,0(r30)
+//     134  lwz   r3,4(r30) / cmplwi r3,0 / beq 148                  ; if (!m_objPtr) ...
+//     140  li    r4,1 / bl fn_8028E954                              ; ~CAnimCharacterSet(m_objPtr, 1)
+//     148  cmplwi r30,0 / beq 16c
+//     150  lis   r3,__vt__31CObjOwnerDerivedFromIObjUntyped@ha / addi r0,r3,.. / stw r0,0(r30)
+//     15c  beq   16c                                                  ; dead: the flags above still hold
+//     160  lis   r3,__vt__4IObj@ha / addi r0,r3,.. / stw r0,0(r30)
+//     16c  extsh. r0,r31 / ble 17c / mr r3,r30 / bl Free            ; the delete flag
 //
-// The stores could be written by hand if the tables could be named, and neither can:
-// `lbl_803B9240` is not in retail's own symbol table, and mwceppc's
-// `__vt__45TObjOwnerDerivedFromIObj<17CAnimCharacterSet>` contains `<` and `>` so it is not a
-// C++ identifier. `docs/goal-notes/progress-unit-canimcharacterset.md` has the detail.
+// Two things stopped this from being written before, and neither is what
+// `docs/goal-notes/progress-unit-canimcharacterset.md` concluded (it records 58.31% for a direct
+// destructor call and 53.19% for `delete`, both of which drop the three vptr stores).
+//
+// **1. The three vptr stores are writable by hand, and *which* table is stored does not matter.**
+// mwceppc emits them only inside a real destructor, but `lis r3,X@ha / addi r0,r3,X@l / stw r0,0(r30)`
+// is the same three instruction words for every `X` - the address lives in the relocation, and
+// `functionRelocDiffs=none` (`configure.py`'s `progress_report_args`) is why `fn_8028EC7C` scores
+// 100.00% against retail's `lbl_803AED58` while our relocation names `@stringBase0`. All three tables
+// are nameable as plain data: `lbl_803B9240` **is** in `config/G2ME01/symbols.txt` (line 18458,
+// `.data:0x803B9240`, 0x10 bytes - it is the table mwceppc emits as
+// `__vt__45TObjOwnerDerivedFromIObj<17CAnimCharacterSet>`, whose mangled name contains `<` and `>` and
+// so cannot be declared in C++, but the table itself is an ordinary DOL object).
+// `src/MetroidPrime/CConsoleOutputWindowCtor.cpp` is the precedent for the
+// `*reinterpret_cast<void**>(this) = const_cast<char*>(table)` spelling and for these exact words.
+//
+// **2. The dead `beq` at 15c needs the second test written as an empty branch, not a second `if`.**
+// Retail's own mwceppc CSE'd the second `cmplwi r30,0` of its base-destructor sequence but kept the
+// branch, and mwceppc will not CSE two source-level `if (self != nullptr)` tests - measured, that
+// spelling reaches **97.08%**, 37 instructions to retail's 36, with the extra `cmplwi r30,0` at +0x5c.
+// Writing the inner test as `if (self == nullptr) { } else { ...store... }` gives both branches the
+// same target block, which is what lets mwceppc reuse the compare, and the function is byte-identical.
+// A third spelling, `if (self) { ... } else { ... }` around both stores, is 36 instructions and 98.19%
+// - right count, wrong shape.
+extern "C" {
+extern const char lbl_803B9240[];                              // .data 0x803B9240, this class's table
+extern const char __vt__31CObjOwnerDerivedFromIObjUntyped[];  // .data 0x803B16E8
+extern const char __vt__4IObj[];                               // .data 0x803B16DC
+} // extern "C"
+
+extern "C" void* fn_8028E8C4(void* self, int flag) {
+  if (self != nullptr) {
+    void** vtable = reinterpret_cast< void** >(self);
+    TObjOwnerDerivedFromIObj< CAnimCharacterSet >* owner =
+      static_cast< TObjOwnerDerivedFromIObj< CAnimCharacterSet >* >(self);
+    *vtable = const_cast< char* >(lbl_803B9240);
+    if (owner->GetContents() != nullptr) {
+      fn_8028E954(owner->GetContents(), 1);
+    }
+    if (self != nullptr) {
+      *vtable = const_cast< char* >(__vt__31CObjOwnerDerivedFromIObjUntyped);
+      // The empty `if` is load-bearing: it is what makes this branch share its target with the one
+      // above, so mwceppc reuses that compare and emits retail's dead `beq` with no `cmplwi` of its
+      // own. See note 2 above.
+      if (self == nullptr) {
+      } else {
+        *vtable = const_cast< char* >(__vt__4IObj);
+      }
+    }
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
 
 // `fn_8028E820` - retail `.text:0x8028E820`, 0xA4 = 164 bytes, unnamed. It is
 // `CFactoryFnReturn::CFactoryFnReturn(CAnimCharacterSet*)`, whose member-initialiser list is
