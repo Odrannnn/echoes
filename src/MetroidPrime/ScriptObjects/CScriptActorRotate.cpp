@@ -4,6 +4,7 @@
 #include "Kyoto/Math/CRelAngle.hpp"
 #include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptEffect.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptPlatform.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
@@ -159,13 +160,24 @@ void CScriptActorRotate::UpdateTargetRotation(CStateManager& mgr) {
   // the `FastFmod` shape at 0x8010A75C-0x8010A7A4 (`fmuls / fctiwz / stfd / xoris 32768 / lfd /
   // fsubs / fnmsubs / fcmpo / bge / fadds`), which is a modulo into [0, 2pi) and then one
   // conditional add, not the bare `fmuls` a degrees-to-radians conversion emits.
-  const CTransform4f rotation =
-      CTransform4f::RotateZ(CRelAngle::FromRadians(
-          CMath::ClampRadians(mZRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f)))) *
-      CTransform4f::RotateY(CRelAngle::FromRadians(
-          CMath::ClampRadians(mYRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f)))) *
-      CTransform4f::RotateX(CRelAngle::FromRadians(
-          CMath::ClampRadians(mXRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f))));
+  //
+  // The three clamped angles are named `float` locals in X, Y, Z order, and `CRelAngle` is built
+  // from them only inside the composition. That is what reproduces retail's frame exactly, and the
+  // reason is what each spelling asks the register allocator to do. All three values are live
+  // across the three `EvaluateAt` calls, and the first two are dead only after the third, so
+  // retail keeps the first two in the callee-saved `f31`/`f30` (0x8010A71C: `xsmsubadp` /
+  // `xxsel`, spilled in the prologue) and the third in the volatile `f2`, for a 400-byte frame.
+  // `CRelAngle` locals (address taken by `RotateX/Y/Z`) force all three into memory and give
+  // 368 bytes and one register; spelled as one nested expression they are re-created per operand,
+  // so the store order and the call order come out Z, Y, X (30 differing instructions). A `float`
+  // local's address is never taken, so it stays in a register and the three stores are sunk to
+  // the block of calls where retail has them.
+  const float xr = CMath::ClampRadians(mXRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f));
+  const float yr = CMath::ClampRadians(mYRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f));
+  const float zr = CMath::ClampRadians(mZRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f));
+  const CTransform4f rotation = CTransform4f::RotateZ(CRelAngle::FromRadians(zr)) *
+                                 CTransform4f::RotateY(CRelAngle::FromRadians(yr)) *
+                                 CTransform4f::RotateX(CRelAngle::FromRadians(xr));
   target->SetActorTransforms(rotation);
 }
 
@@ -178,8 +190,118 @@ void CScriptActorRotate::SetActorTransforms(const CTransform4f& rotation) {
 
 void CScriptActorRotate::UpdateActorRotations(float dt, CStateManager& mgr) {
   CheckEnd(mgr);
-  // TODO: apply the sampled rotation and scale splines to each connected actor. The
-  // transform composition and platform-specific path still need target verification.
+
+  // Same three `ClampRadians` samples as `UpdateTargetRotation`, before the `kF_RateScale` overwrite.
+  float xr = CMath::ClampRadians(mXRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f));
+  float yr = CMath::ClampRadians(mYRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f));
+  float zr = CMath::ClampRadians(mZRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f));
+  if ((mFlags & kF_RateScale) != 0) {
+    // Retail does not reuse the clamped samples here: it samples each spline again and multiplies
+    // the raw degree value by `dt` without clamping (0x8010AAC4-0x8010AB08 has no `FastFmod` block).
+    xr = mXRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f) * dt;
+    yr = mYRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f) * dt;
+    zr = mZRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f) * dt;
+  }
+
+  const CTransform4f rotation = CTransform4f::RotateZ(CRelAngle::FromRadians(zr)) *
+                                 CTransform4f::RotateY(CRelAngle::FromRadians(yr)) *
+                                 CTransform4f::RotateX(CRelAngle::FromRadians(xr));
+
+  for (rstl::vector< rstl::pair< TUniqueId, CTransform4f > >::iterator it = mActors.begin();
+       it != mActors.end(); ++it) {
+    // Retail looks the id up twice: once for the actor and once for the platform (0x8010AB80 and
+    // 0x8010ABA0), and skips only when neither resolves.
+    CActor* act = TCastToPtr< CActor >(mgr.ObjectById(it->first));
+    if (act == nullptr) {
+      continue;
+    }
+
+    if (CScriptPlatform* plat = TCastToPtr< CScriptPlatform >(mgr.ObjectById(it->first))) {
+      // Retail has four separate blocks here (0x8010ABC4, 0x8010ABF8, 0x8010AC34, 0x8010AC68), each
+      // with its own product temporary, so the two flags are nested tests rather than a select.
+      if ((mFlags & kF_RateScale) != 0) {
+        if ((mFlags & kF_FlipOrder) != 0) {
+          CTransform4f xf = plat->GetTransform() * rotation;
+          xf.Orthonormalize();
+          plat->SetTransformExplicitly(xf);
+        } else {
+          CTransform4f xf = rotation * plat->GetTransform();
+          xf.Orthonormalize();
+          plat->SetTransformExplicitly(xf);
+        }
+      } else {
+        if ((mFlags & kF_FlipOrder) != 0) {
+          CTransform4f xf = it->second * rotation;
+          xf.Orthonormalize();
+          plat->SetTransformExplicitly(xf);
+        } else {
+          CTransform4f xf = rotation * it->second;
+          xf.Orthonormalize();
+          plat->SetTransformExplicitly(xf);
+        }
+      }
+    } else {
+      if (!mPlaying) {
+        mCurrentTransform = rotation;
+      }
+      if ((mFlags & kF_RateScale) != 0) {
+        if ((mFlags & kF_FlipOrder) != 0) {
+          CTransform4f xf = act->GetTransform() * mCurrentTransform;
+          xf.Orthonormalize();
+          xf.SetTranslation(act->GetTranslation());
+          act->SetTransform(xf);
+        } else {
+          CTransform4f xf = mCurrentTransform * act->GetTransform();
+          xf.Orthonormalize();
+          xf.SetTranslation(act->GetTranslation());
+          act->SetTransform(xf);
+        }
+      } else {
+        if ((mFlags & kF_FlipOrder) != 0) {
+          CTransform4f xf = it->second * mCurrentTransform;
+          xf.Orthonormalize();
+          xf.SetTranslation(act->GetTranslation());
+          act->SetTransform(xf);
+        } else {
+          CTransform4f xf = mCurrentTransform * it->second;
+          xf.Orthonormalize();
+          xf.SetTranslation(act->GetTranslation());
+          act->SetTransform(xf);
+        }
+      }
+    }
+
+    // The scale follows the same two-way dispatch, but the sampled scale splines override it
+    // component-wise when they have knots (retail's three `GetKnots()` count tests at
+    // 0x8010AE9C/0x8010AEC0/0x8010AEE4).
+    CScriptEffect* effect = TCastToPtr< CScriptEffect >(act);
+    CVector3f scale(1.f, 1.f, 1.f);
+    if (act->HasModelData()) {
+      scale = act->ModelData()->GetScale();
+    } else if (effect != nullptr) {
+      scale = effect->GetGlobalScale();
+    }
+    if (mXScale.GetKnots().size() != 0) {
+      scale.SetX(mXScale.EvaluateAt(mCurrentTime));
+    }
+    if (mYScale.GetKnots().size() != 0) {
+      scale.SetY(mYScale.EvaluateAt(mCurrentTime));
+    }
+    if (mZScale.GetKnots().size() != 0) {
+      scale.SetZ(mZScale.EvaluateAt(mCurrentTime));
+    }
+    if (act->HasModelData()) {
+      act->ModelData()->SetScale(scale);
+    } else if (effect != nullptr) {
+      effect->SetGlobalScale(scale);
+    }
+  }
+
+  if (mPlaying) {
+    mCurrentTransform = rotation;
+  } else {
+    mCurrentTransform = CTransform4f::Identity();
+  }
 }
 
 void CScriptActorRotate::CheckEnd(CStateManager& mgr) {

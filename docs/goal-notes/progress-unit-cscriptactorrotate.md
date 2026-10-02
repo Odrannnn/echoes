@@ -257,3 +257,158 @@ buy a percentage. The `pair.hpp` addition is a redeclaration of `fn_800E88FC` (a
 `Kyoto/Math/CTransform4f.hpp`) plus a two-line body for one pair type that only this unit
 instantiates; no class layout changed, and the DOL sha1 and all 86 REL hashes still hold
 (`gate.sh` inside `goal_check.sh`).
+
+---
+
+# Run 3 (lane 6, 2026-10-02) - `13/16 -> 15/16`
+
+Run 2's work is in HEAD. This run re-measured the clean tree first (`fast_try.sh
+MetroidPrime/ScriptObjects/CScriptActorRotate` -> 13/16, `UpdateTargetRotation` 87.14%,
+`UpdateActorRotations` 1.93%, `LoadActorRotate` absent, overall matched 12324), then took **both**
+functions run 2 left. **`13/16 -> 15/16`**, `12324 -> 12326` matched functions overall, linked
+unchanged at 5863. `./tools/goal_check.sh build/goal/item.json` -> **PASS**, and
+`build/gate-diff.log` says `no regression`.
+
+## Files touched
+
+- `src/MetroidPrime/ScriptObjects/CScriptActorRotate.cpp` (`UpdateTargetRotation`, `UpdateActorRotations`, one `#include`)
+- `include/MetroidPrime/ScriptObjects/CScriptActorRotate.hpp` (two `EFlag` enumerators, 6 lines)
+
+No `asm`, no judge-owned path, no `configure.py`/`config/` change, no class layout change
+(`CHECK_SIZEOF(CScriptActorRotate, 0x20c)` untouched), unit not promoted.
+
+## Per function (before -> after), both re-measured on this tree
+
+| function | before | after | what changed |
+| --- | --- | --- | --- |
+| `UpdateTargetRotation` (500 B) | 87.14% | **100%** | three named `float` locals holding the clamped radians, in X, Y, Z order (below) |
+| `UpdateActorRotations` (1640 B) | 1.93% | **100%** | the whole function, written from retail (below) |
+| `LoadActorRotate` (540 B) | absent | absent | not attempted; still not in our source |
+
+Unit: 57.35% fuzzy / 2508 B matched -> **89.59% / 4548 B**, 13 -> 15 of 16 functions.
+
+## `UpdateTargetRotation`: the one spelling run 2 did not try
+
+Run 2's `WALL:` was seven spellings that all left MWCC choosing the evaluation order. The fix is
+that the angles must be **named `float` locals, in X, Y, Z order**, and `CRelAngle` must be built
+from them only inside the composition:
+
+```cpp
+const float xr = CMath::ClampRadians(mXRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f));
+const float yr = CMath::ClampRadians(mYRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f));
+const float zr = CMath::ClampRadians(mZRotation.EvaluateAt(mCurrentTime) * (M_PIF / 180.f));
+const CTransform4f rotation = CTransform4f::RotateZ(CRelAngle::FromRadians(zr)) *
+                               CTransform4f::RotateY(CRelAngle::FromRadians(yr)) *
+                               CTransform4f::RotateX(CRelAngle::FromRadians(xr));
+```
+
+`*** MATCH ***`, zero differing instructions. Why it is the right shape, and it is the general part:
+
+- **Retail's member order is the X, Y, Z sample order.** The member offsets are fixed by the layout:
+  `mXRotation` at 0x28, `mYRotation` at 0x6C, `mZRotation` at 0xB0, and retail's three
+  `EvaluateAt` calls pass `r3 = r30+40`, `+108`, `+176` in that order, feeding
+  `RotateX`/`RotateY`/`RotateZ` at 0x8010A878/0x8010A884/0x8010A890. Run 2's expression spelled
+  Z, Y, X, which is the *product* order `(Z * Y) * X`, but the *sample* order is X, Y, Z.
+- **`float` locals vs `CRelAngle` locals is the whole wall.** All three values are live across the
+  three `EvaluateAt` calls, and the first two are dead only after the third. Retail keeps them in
+  `f31`, `f30` and `f2` (prologue `xsmsubadp`/`xxsel` at 0x8010A710-0x8010A718) and frames 400
+  bytes. A `CRelAngle` local has its address taken by `RotateX/Y/Z`, which forces it to memory:
+  368 bytes, one register, and the three `stfs` land one per clamp instead of grouped before the
+  call block. A `float` local's address is never taken, so it stays in a register and MWCC sinks
+  the three stores to where retail has them (0x8010A864-0x8010A874). Measured on this run:
+  current body (one nested expression) **30**; three named `CRelAngle` then the expression
+  **39.52%** (run 2, same body class); three named `float` degrees then the expression **39**;
+  **named clamped `float` locals: 0**.
+- Note the *declaration order matters*: `const CRelAngle` locals declared Z, Y, X scored **30**,
+  i.e. the same as no hoisting at all, because the sample order follows the declarations.
+
+## `UpdateActorRotations`: the stub, decoded and matched
+
+1.93% -> 100%. The decode is the useful part for anyone re-reading it.
+
+- **Angles.** Three `ClampRadians` samples, then `kF_RateScale` **overwrites** them: retail re-runs
+  `EvaluateAt` on all three splines inside the flag block and multiplies the *unclamped* degree
+  value by `dt` (`fmuls f31,f30,f0` at 0x8010AAE0, no `FastFmod` block anywhere in
+  0x8010AAC4-0x8010AB08). So `xr *= dt` is wrong; it has to re-sample.
+- **Composition** is the same `RotateZ(z) * RotateY(y) * RotateX(x)` as `UpdateTargetRotation`, and
+  it reaches 100% with the same named-`float`-local shape.
+- **Per entry, retail looks the id up twice** - `TCastToPtr<CActor>(ObjectById)` at 0x8010AB80 and
+  `TCastToPtr<CScriptPlatform>(ObjectById)` at 0x8010ABA0 - and skips only if the *actor* is null.
+- **Two flags pick the composition, as nested tests** (four separate blocks with four separate
+  product temporaries at 0x8010ABC4 / 0x8010ABF8 / 0x8010AC34 / 0x8010AC68, so a ternary folds
+  and cannot work):
+
+  | kF_RateScale | kF_FlipOrder | composed |
+  | --- | --- | --- |
+  | set | set | `entity->GetTransform() * rotation` |
+  | set | clear | `rotation * entity->GetTransform()` |
+  | clear | set | `it->second * rotation` |
+  | clear | clear | `rotation * it->second` |
+
+  where `entity` is `plat->GetTransform()` when the id resolved to a platform and
+  `act->GetTransform()` when it did not, and `rotation` is the sampled rotation for a platform but
+  `mCurrentTransform` for a bare actor. Platforms get `Orthonormalize()` then
+  `SetTransformExplicitly`; a bare actor additionally gets `SetTranslation(act->GetTranslation())`
+  (three `lfs`/`stfs` from CActor+0x54 = `mPosition`, into m03/m13/m23 at +12/+28/+44) then
+  `SetTransform`. A bare actor also does `if (!mPlaying) mCurrentTransform = rotation;` first
+  (0x8010AC9C).
+- **After the loop**: `if (mPlaying) mCurrentTransform = rotation; else mCurrentTransform =
+  CTransform4f::Identity();` (0x8010AF70; the identity is a SDA21 constant address 0x801173D4, not
+  a call).
+- **Scale**, inside the same loop iteration and reached from both arms: `CVector3f scale(1,1,1)`,
+  then `if (act->HasModelData()) scale = act->ModelData()->GetScale(); else if (effect) scale =
+  effect->GetGlobalScale();`, then each of the three scale splines overrides its component **only
+  if it has knots** (`GetKnots()` then `lwz r0,4(ptr)` = the vector's count, 0x8010AE9C/0x8010AEC0/
+  0x8010AEE4), then the same two-way dispatch writes it back. The predicate
+  `md && (md->mAnimData || md->mNormalModel)` is the existing inline `CActor::HasModelData()`, so
+  no new accessor was needed; use the non-const `ModelData()` for both the read and the write.
+
+## The general lesson worth more than this unit: `rlwinm`'s MB/ME count from the MSB
+
+Retail tests the two flags with `rlwinm. r0,r3,0,25,25` (0x8010ABB4) and `rlwinm. r0,r3,0,29,29`
+(0x8010ABBC). Reading MB as a normal bit index gives bits 25 and 29, which is what I wrote first,
+and it left 6 instructions wrong. **MB=ME=n with SH=0 selects normal bit 31-n**, so those are bits
+**6 and 2**, i.e. masks `0x40` and `0x4`.
+
+Measured both ways with this repo's MWCC (`include/rstl/vector.hpp`-style struct member load, the
+same shape as the unit), compiling `.tmp`-scratch probes with `mwcceppc.exe`:
+
+| mask | emitted |
+| --- | --- |
+| `0x4` | `rlwinm. rD,rX,0,29,29` |
+| `0x40` | `rlwinm. rD,rX,0,25,25` |
+| `0x2000000` | `rlwinm. rD,rX,0,6,6` |
+| `0x20000000` | `rlwinm. rD,rX,0,2,2` |
+
+MWCC also has a second normal form, `rlwinm rD,rS,32-n,31,31` (rotate then mask bit 0), which is
+what a bare `unsigned` parameter produces; both forms appear in this tree, so never read the MB
+field of a `rlwinm` as a bit number without checking which form it is. `kF_RateScale`/`kF_FlipOrder`
+are named in the header with the evidence, so nobody "fixes" them back to 0x2000000.
+
+## Still open, with the evidence
+
+- **`LoadActorRotate` (540 B, 0x0%) is not in our source.** Retail 0x80109F88: a 512-byte frame,
+  three `CMayaSpline` constructions, an `SLdrSpline`-shaped property block, and a binary search over
+  property tags (`lwz r3,8(r25) / lhz r30,0(r3)` then `cmpw r4,r31 / beq / bge` against four
+  `lis`/`addi` tag constants) inside a loop. It is the free `SLdrEditorProperties` loader; the
+  report lists it with no `fuzzy_match_percent` because our object does not define it. That is the
+  last of this unit's 16, and it is a genuine port-shaped job rather than a spelling search.
+- **This unit still cannot be flipped, and that is pre-existing** (run 2 measured it on clean HEAD
+  and it is unchanged here): `check_decl_order.py --unit` still reports the same 4 out-of-order
+  function pairs, and `unit_fit.sh` still reports the same 6 functions present in ours but not in
+  the retail unit object. This run added no function and moved no function.
+- `CScriptEffect::GetGlobalScale` is declared with no parameter in this repo while retail's is
+  `GetGlobalScale(float)`. It does not matter here - retail passes nothing in `f1` either, so the
+  argument is dead and both spellings give the same bytes - but it will matter the first time
+  something else calls it with a real value.
+
+## Note for the reviewer
+
+`UpdateActorRotations` grew from a 2-line TODO stub to a full decompilation, so the diff is large
+for a `progress` item; that is the function the item's own `reason` names as one of the three to
+take, and it is measured at 100% (`0` differing instructions, `15/16` functions, `12324 -> 12326`
+matched, gate clean, `no regression`). The eight near-duplicate `CTransform4f xf = ...` blocks are
+not copy-paste sloppiness: retail really has four separate code blocks with four separate product
+temporaries for each of the two dispatch sites, and a ternary or a shared local folds them into
+one. Nothing was deleted to buy a percentage - `dt` is still applied, every spline is still
+sampled, and both dispatch arms still write their result.

@@ -15,6 +15,12 @@ public:
     kF_DurationFromSplines = 8,
     kF_AdvanceTime = 0x10,
     kF_ExternalTime = 0x20,
+    // Guessed names for the two flags `UpdateActorRotations` tests. Retail tests them with
+    // `rlwinm. r0,r3,0,25,25` (0x8010ABB4) and `rlwinm. r0,r3,0,29,29` (0x8010ABBC), and `rlwinm`'s
+    // MB/ME fields count from the MSB, so those are bits 31-25 = 6 and 31-29 = 2 - not 25 and 29.
+    // Confirmed by measurement: a mask of 0x2000000 emits `0,6,6` here, and 0x40 emits `0,25,25`.
+    kF_RateScale = 0x40,   // scale the sampled angles by `dt` and compose from the entity's own transform.
+    kF_FlipOrder = 0x4,    // compose base * rotation instead of rotation * base.
   };
 
   CScriptActorRotate(TUniqueId uid, const rstl::string& name, const CEntityInfo& info, uint flags,
