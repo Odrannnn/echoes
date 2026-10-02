@@ -9,7 +9,9 @@
 #include "Kyoto/CRandom16.hpp"
 #include "Kyoto/Graphics/CModel.hpp"
 #include "Kyoto/Math/CloseEnough.hpp"
+#include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/CModelData.hpp"
+#include "MetroidPrime/CStateManager.hpp"
 #include "rstl/algorithm.hpp"
 
 typedef rstl::reserved_vector< rstl::pair< uint, CAdditiveAnimPlayback >, 8 > TAdditiveAnims;
@@ -310,7 +312,59 @@ void CAnimData::SetInfraModel(const TLockedToken< CModel >& model,
 }
 
 void CAnimData::AdvanceAnim(CCharAnimTime& time, CVector3f& offset, CQuaternion& rotation) {
-  // TODO: Advance/simplify the root and apply the resulting position and rotation deltas.
+  const float dt = time.GetSeconds();
+  SAdvancementResults results(CCharAnimTime(0.f),
+                              SAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation()));
+  rstl::optional_object< rstl::ownership_transfer< IAnimReader > > simplified;
+
+  if (mAnimDir == kAD_Forward) {
+    results = mAnimRoot->VAdvanceView(time);
+    simplified = mAnimRoot->Simplified();
+  }
+
+  if (simplified.valid()) {
+    mAnimRoot = Cast(simplified.data());
+  }
+
+  if (x2ac_28_ || x2ac_27_) {
+    const int count = mPassedIntCount;
+    const CInt32POINode* node = mInt32POINodes.data();
+    if (count > 0) {
+      for (int i = 0; i < count; ++i, ++node) {
+        if (node->GetPoiType() == kPT_UserEvent) {
+          switch (node->GetValue()) {
+          case kUE_AlignTargetPosStart:
+            mAligningPos = true;
+            break;
+          case kUE_AlignTargetPos:
+            mAlignPos = CVector3f::Zero();
+            x2ac_28_ = false;
+            mAligningPos = false;
+            break;
+          case kUE_AlignTargetRot:
+            mAlignRot = CQuaternion::NoRotation();
+            x2ac_27_ = false;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  const SAdvancementDeltas deltas = results.mDeltas;
+  const CVector3f& deltaPos = deltas.GetOffsetDelta();
+  const CQuaternion& deltaRot = deltas.GetOrientationDelta();
+
+  offset += deltaPos;
+  if (mAligningPos) {
+    offset += mAlignPos * dt;
+  }
+
+  CQuaternion alignRot = deltaRot * mAlignRot;
+  rotation *= alignRot;
+  mAlignPos = alignRot.BuildInverted().Transform(mAlignPos);
+
+  time = results.mRemTime;
 }
 
 CAdvancementDeltas CAnimData::AdvanceIgnoreParticles(float dt, CRandom16& random,
@@ -327,8 +381,33 @@ CAdvancementDeltas CAnimData::AdvanceIgnoreParticles(float dt, CRandom16& random
 CAdvancementDeltas CAnimData::Advance(float dt, float minParticleWeight, const CVector3f& scale,
                                       CStateManager* mgr, CRandom16& random, TAreaId areaId,
                                       bool advanceTree) {
-  // TODO: Advance, suspend effects when requested, and emit eligible particle POIs.
-  return CAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation());
+  // Retail has no store to the out-parameter: `DoAdvance` opens by setting it
+  // (`li r0,0 ; stb r0,0(r29)` at 0x80029DBC), and Prime 1 spells the same thing as an
+  // uninitialised local, which is the only spelling that drops the store here too.
+  // Caveat: this tree's `DoAdvance` is still a TODO stub that does not write the
+  // parameter, so until `DoAdvance` is decompiled this reads an uninitialised byte.
+  bool suspendEffects;
+  CAdvancementDeltas deltas = DoAdvance(dt, suspendEffects, random, advanceTree);
+
+  if (suspendEffects) {
+    mParticleDB.SuspendAllActiveEffects(mgr);
+  }
+
+  const int passedParticleCount = mPassedParticleCount;
+  for (int i = 0; i < passedParticleCount; ++i) {
+    const CParticlePOINode& node = mParticlePOINodes[i];
+    const int charIdx = node.GetCharacterIndex();
+    if (charIdx == -1 || charIdx == mCharIdx) {
+      if (node.GetMaximumDistance() > minParticleWeight ||
+          (mgr != nullptr && !mgr->IsMultiplayer() &&
+           mgr->GetCameraManager(0)->IsInCinematicCamera())) {
+        mParticleDB.AddParticleEffect(node.GetNameHash(), node.GetFlags(), node.GetParticleData(),
+                                      scale, mgr, areaId, false, mParticleLightIdx);
+      }
+    }
+  }
+
+  return deltas;
 }
 
 CAdvancementDeltas CAnimData::DoAdvance(float dt, bool& suspendEffects, CRandom16& random,

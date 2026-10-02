@@ -562,3 +562,199 @@ same TU was stubbed are worth more than the template instantiations.
 
 `docs/HANDOFF.md` is rewritten by the judge's own `check_docs_claims.py` during `goal_check.sh`;
 it was reverted afterwards. Not committed.
+
+---
+
+# progress-prime1-canimdata — run 5 (lane 3, head `60b3f97e`)
+
+**Re-measured first: this worktree started at 101/216**, not the 58 / 66 / 72 / 73 / 74 / 84 the
+four earlier runs recorded, so none of their source edits were present and everything below was
+derived here. `tools/goal_check.sh build/goal/item.json` → **PASS**.
+
+```
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12387 -> 12390   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    All:  35.03% fuzzy, 28.70% matched, 12.90% linked (12390 / 28465 functions)
+  ok    target rose: main/MetroidPrime/CAnimData: 101 -> 104 / 216 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-canimdata
+```
+
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`. All 86 REL hashes
+hold. `python3 tools/check_symbol_names.py` → `checked 525 units; 0 declared names are missing`.
+Unit numbers: `fuzzy 39.88%` (was 35.76%), `matched_code 33.41%` (was 29.24%).
+
+## What landed, per function
+
+| function | before | after | Prime 1's source |
+| --- | ---: | ---: | --- |
+| `AdvanceAnim__9CAnimDataFR13CCharAnimTimeR9CVector3fR11CQuaternion` (1112 B) | 0.36% | **100.00%** | **matched unchanged** except three names |
+| `__ct__19SAdvancementResultsFRC13CCharAnimTimeRC18SAdvancementDeltas` (76 B) | 0.00% | **100.00%** | exact collateral from `AdvanceAnim` |
+| `Advance__9CAnimDataFffRC9CVector3fP13CStateManagerR9CRandom167TAreaIdb` (460 B) | 2.65% | **100.00%** | **Echoes-only**, no Prime 1 body |
+
+**`AdvanceAnim` is Prime 1's function verbatim** apart from three substitutions: `CAdvancementDeltas()`
+has no default constructor in this tree, so it is spelled
+`SAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation())` (retail materialises exactly those
+seven floats); Prime's `x220_28_`/`x220_27_` are `x2ac_28_`/`x2ac_27_`; and `results.GetAdvancementDeltas()`
+is `results.mDeltas`. It landed at 99.96% first and the last instruction came out of the guard (below).
+
+### Recipes, numbered after the earlier runs' 1-16
+
+17. **The `uchar x : 1` bitfield block at `this+0x2AC` is trustworthy; read the masks, not the
+    names.** Run 4 could not place `mAligningPos`/`x2ac_27_`/`x2ac_28_`. Measured here, from our
+    own object (MWCC is the only oracle that works): a *store* of a 1-bit field is
+    `rlwimi rD,rV,SH,MB,MB` and a *test* of one is `rlwinm. rD,rV,SH,31,31`, and **test `SH` = store
+    `MB` + 1** for the same field. So from retail's `AdvanceAnim`:
+    `mAligningPos` ↔ `MB=26`/`SH=27`, `x2ac_27_` ↔ `MB=27`/`SH=28`, `x2ac_28_` ↔ `MB=28`/`SH=29`.
+    Retail's loop guard is the two `SH=29` then `SH=28` tests, i.e.
+    **`if (x2ac_28_ || x2ac_27_)`** — and MWCC evaluates the *left* operand first here, so the source
+    order is the mask order. `if (mAligningPos || x2ac_27_)` and `if (mAligningPos || x2ac_28_)`
+    both compile and are both wrong; only the third spelling matches. The three `switch` cases
+    (`kUE_AlignTargetPosStart` → set `mAligningPos`; `kUE_AlignTargetPos` → `mAlignPos = Zero`,
+    `x2ac_28_ = false`, `mAligningPos = false`; `kUE_AlignTargetRot` → `mAlignRot = NoRotation`,
+    `x2ac_27_ = false`) map onto Prime 1's unchanged.
+18. **`SAdvancementResults`/`SAdvancementDeltas` already have the retail layout** - 0x24 and 0x1c with
+    `CHECK_SIZEOF` on both - so the 7-float store at `AdvanceAnim`'s prologue is just
+    `CVector3f::Zero()` + `CQuaternion::NoRotation()`, not a default ctor.
+19. **`Advance` is Echoes-only and its argument list is the retail one.** The 0x1CC bytes decode to:
+    `DoAdvance(dt, suspendEffects, random, advanceTree)` with `bool suspendEffects;` uninitialised
+    (retail has no store, `DoAdvance` opens by setting it - same trade runs 1 and 4 documented for
+    `AdvanceIgnoreParticles`, and `Advance` is the caller of that pair so it is consistent);
+    `SuspendAllActiveEffects(mgr)`; then per passed particle POI
+    `charIdx == -1 || charIdx == mCharIdx` (node+36 and node+40 are `mCharIdx`/`mFlags`, which fixes
+    `CCharAnimTime` at 12 bytes and `CPOINode` at 0x2c), and the emit condition is
+    **`node.GetMaximumDistance() > minParticleWeight || (mgr != nullptr && !mgr->IsMultiplayer() && mgr->GetCameraManager(0)->IsInCinematicCamera())`**.
+20. **`GetCameraManager(0)`, not `GetCurrentRenderCameraManager()`.** Both are accessors for a
+    `CCameraManager*`, but only the first is at retail's `this+0x151C`; the latter reads
+    `mCameraManager` at 0x1600. This is the *only* difference between the 99.99% and the 100%
+    version, and it is a one-token fix once the two accessors are told apart.
+21. **`TAreaId` and the extra float argument are the reason `Advance`'s register assignment looks
+    wrong.** `Advance` returns a 0x1c struct, so the sret is `r3` and `this` is `r4`; the five
+    integer arguments then land in `r5..r9` (`&scale`, `mgr`, `&random`, `&areaId`, `advanceTree`)
+    and retail re-reads the area id with `lwz r0,0(r31)`. Nothing in the source needs changing for
+    this - it is only here so the next reader does not "fix" the argument order.
+22. **Both new functions need `MetroidPrime/CStateManager.hpp` and `MetroidPrime/CCameraManager.hpp`
+    included in this TU** (it had neither). Adding them does **not** move any other function:
+    `InitializeEffects` stayed at 62.38% and `SetEffectState`/`SetEffectComponentExternalParam`/
+    `GetFirstParticleEffect` stayed at 100.00% across the change.
+
+## `GetLocatorSegId` reaches 100% and then the gate refuses it — read this before trying again
+
+Prime 1's one-liner, `return mLayoutData->GetSegIdFromString(name);`, is **byte-exact** against
+retail's 48 bytes at 0x8002BE04 (`stwu/mflr/stw lr/stw r31`, `mr r31,r3`, `lwz r4,268(r4)`, `bl
+GetSegIdFromString`, epilogue). Measured: **0.00% → 100.00%**, unit 101 → 102. It was in my diff and
+`tools/goal_check.sh` failed the whole item on it:
+
+```
+  FAIL  gate.sh
+          stale: _ZNK9CAnimData15GetLocatorSegIdERKN4rstl12basic_string<...>EEE is listed but no
+          longer missing - delete the entry
+        GATE FAIL: decl-order link-gap
+```
+
+`tools/gate.sh`'s `port link gap` step diffs the measured missing-symbol set against
+**`docs/research/port_link_gap_list.md`**, which `python3 tools/link_gap.py --write-list` generates.
+The port previously had no definition for `CAnimData::GetLocatorSegId`; adding the definition
+*reduces the port's link gap*, and the gate treats a shrunken gap as a failure until the list is
+re-recorded. I reverted the function to keep the item passing (104, not 105).
+
+**This is a general trap, not a quirk of this function**: *any* item that defines a symbol the port
+was missing trips the same step, and it always points at a file the goal rules reserve for the judge
+(`docs/research/port_link_baseline.txt` and `build/goal/` are named; `docs/research/` is not staged
+by `tools/run_goal.sh`'s `stage_change`, the same defect run 1 filed as
+`fix-stage-change-extern`). The fix is one `link_gap.py --write-list` plus a line in
+`docs/research/port_link_gap.md`; it is bookkeeping, not work that raises a count, so it is
+recorded here and **not** filed as `NEW:`. Until it is done, prefer functions whose symbols the port
+already resolves when choosing what to land in a `progress` item on this unit.
+
+## `DrawSkinnedModel` is 93.06% and fully decoded except one idiom — one build away if anyone wants it
+
+Not landed, because 93% scores nothing and a half-landed function is not progress. Everything below
+is measured, not guessed, so the next run can finish it in minutes. Retail, 0x8002B128, 0x118 bytes:
+
+```
+light = CGraphics::GetLightMask()                    // lbz r7,-25562(r13) -> mLightActive__9CGraphics
+attnFn = light ? GX_AF_SPOT : GX_AF_NONE             // li r9,2 ... li r9,1
+diffFn = light ? GX_DF_CLAMP : GX_DF_NONE            // li r8,0 ... li r8,2
+CGX::SetChanCtrl(CGX::Channel0, light != 0, GX_SRC_REG, GX_SRC_REG, light, diffFn, attnFn)
+if (lbl_80418F20 != 0 || lbl_80418F1C != 0) {        // -28256(r13), -28260(r13)
+  CTransform4f xf = CGraphics::GetModelMatrix();     // mModelMatrix__9CGraphics, 0x80416F74
+  if (lbl_80418F20 != 0) { uchar flag = 0; fn_80025E08(&mPose, *mLayoutData, xf, flag); }
+  if (lbl_80418F1C != 0) { fn_80025E0C(&mPose, *mLayoutData, xf, <bool>, <bool>); }
+  CGraphics::SetModelMatrix(xf);
+}
+if (lbl_80418F20 == 0) { model.Draw(&mPose, flags); }
+```
+
+- `lbl_80418F20` (1 byte) and `lbl_80418F1C` (4 bytes) are `docs/research` `.sbss` labels owned by
+  the generated `build/G2ME01/asm/auto_10_80418F18_sbss.s`, so a bare
+  `extern "C" uchar lbl_80418F20; extern "C" int lbl_80418F1C;` links with no other change. **Adding
+  them is not a port link gap change** - nothing in the port link refers to them.
+- **`fn_80025E08`/`fn_80025E0C` are NOT uncalled.** The comment at the bottom of this file says
+  "nothing in the DOL calls either of them with a `bl`" - that is **wrong**: `DrawSkinnedModel` calls
+  both, with four and five arguments, and retail only compiles their bodies away. Correcting that
+  comment is worth doing even if the function is not finished.
+- **The one unresolved idiom**: retail materialises both of the last two arguments from the *same*
+  raw word with two *different* one-bit conversions - `clrlwi r6,r0,31` and `rlwinm r7,r0,31,31,31`.
+  Ours always collapses to `neg / or / srwi` (MWCC's `(bool)int`) plus a `mr`. I ran **~200
+  spellings** on this: parameter types `{uchar, bool, int, GXBool}` x argument expressions
+  `{raw, != 0, !!x, & 1, > 0, % 2, == 0, (bool)(x & 1), (x != 0) & 1}` and **not one** produced
+  `clrlwi`/`rlwinm`. So the two arguments are not two conversions of one expression; something in
+  retail's source keeps a one-bit value in a full word. A named `bool` local initialised from
+  `lbl_80418F1C != 0` and then passed alongside the raw int is the next thing to try - that was not
+  among the ~200.
+
+## Not reached, and why — measured, not guessed
+
+- **`IsAdditiveAnimation` (228 B) is now fully read and is blocked on a name, not on the body.**
+  Retail 0x8002691C is Prime 1's `binary_find` over `mCharFactory->GetAdditiveAnimInfoList()`
+  (12-byte elements at +64/+72) followed by `found != end && animIdx >= found->first`, and the
+  search itself is the out-of-line helper `fn_8002EB74` (144 B, 0.00%). To match, that helper has to
+  be **written under retail's `fn_8002EB74` name** (`extern "C"`, hand-written halving loop) *and*
+  called by that name from `IsAdditiveAnimation` - the same device the file already uses for
+  `fn_80027728`/`48`/`70`/`B8` and `fn_80026EE0`..`fn_80026F68`. With `rstl::binary_find` the call's
+  relocation names a mangled symbol, so objdiff pairs nothing. That is `fn_8002EB74` **+2**.
+- **`GetAnimationDuration` (616 B), `GetAverageVelocity` (736 B), `GetAnimationPrimitives` (244 B),
+  `GetTimeOfUserEventForAnimation` (196 B), `CountUserEventsForAnimation` (224 B) and
+  `ReleaseData__Q24rstl18rc_ptr<9IMetaAnim>Fv` (100 B)** - unchanged from runs 1, 2 and 4 and still
+  true: all six need `CAnimationManager::GetMetaAnimation`, and this tree's
+  `include/Kyoto/Animation/CAnimationManager.hpp` is a 0x20-byte stub. Worse, it is not merely
+  undeclared: retail's call target is the raw placeholder `fn_8028CAE4` (extern "C"), so **any**
+  C++ declaration mangles to a symbol nothing provides and the link fails. Writing these five
+  functions means first recovering that one class *and* its extern "C" spelling. Best single unblock
+  in the unit, unchanged.
+- **`fn_8002A964` (148 B) and `fn_8002A9F8` (184 B)** - `AdvanceAnim` now emits retail's
+  `optional_object<ownership_transfer<IAnimReader>>::operator=` and its `construct`, but under the
+  mangled names `__as__Q24rstl59optional_object<...>` and `construct__4rstlFPvRC...`, so both still
+  score 0.00%. They **cannot** be hand-written under retail's names without breaking `AdvanceAnim`:
+  the header's `operator=` would still call the mangled copy, and the object would carry both.
+  Not fixable from `CAnimData.cpp`.
+- **`InitializeEffects` is still the 62.38% register-allocation wall** (runs 1, 2, 3 and 4 between
+  them tried four spellings). **Measured this run: `check_decl_order.py --unit MetroidPrime/CAnimData`
+  reports "would break on a flip" on the CLEAN tree too** (verified by `git stash`), so that warning
+  is pre-existing and not something this item introduced.
+- **`fn_8002783C` (96 B, 79.88%) and `fn_80027770` (72 B, 94.17%)** - both measured again, neither
+  moved. `fn_8002783C`'s whole delta is scheduling: retail does `lwz r0,0(r3) / stw r0,0(r5)` per
+  field in sequence, ours batches three loads before the stores and needs `r4` and `r0` at once.
+  `fn_80027770`'s whole delta is the placement-new null test (`mr. r30,r3 / beq`) that retail's raw
+  copy constructor does not have. **Tried this run**: reference parameters
+  (`TEffectEntry&` instead of `TEffectEntry*`), on the theory that `&ref` is provably non-null and
+  MWCC would fold the test - it does not fold it, byte-for-byte identical output. Placement new in
+  this tree always tests.
+- **`SetAnimation` (496 B), `AddAdditiveAnimation` (616 B), `SetAnimationPrimitives`,
+  `BuildAnimationTree` (520 B)** - all blocked on the same `CAnimationManager` gap above.
+- **`RecalcPoseBuilder` (352 B), `SetKeepJSPose` (348 B), `BuildTransitionTree` (124 B),
+  `GetBoundingBox()`'s remaining 47%, `GetTimeOfUserEvent(...)`'s 96.15% wall** - unchanged from run
+  4; not retried.
+
+## Files touched
+
+- `src/MetroidPrime/CAnimData.cpp` only: `AdvanceAnim`, `Advance`, and
+  `#include "MetroidPrime/CCameraManager.hpp"` + `#include "MetroidPrime/CStateManager.hpp"`.
+  No header touched, no class layout changed, no `asm` added, no initialisation deleted from any
+  code that runs, the DOL sha1 and all 86 REL hashes hold, and `goal_check` reported no function
+  anywhere worse.
+
+`docs/HANDOFF.md` is rewritten by the judge's own `check_docs_claims.py` during `goal_check.sh` and
+was reverted afterwards. Not committed.
