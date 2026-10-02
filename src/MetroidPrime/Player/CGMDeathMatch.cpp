@@ -33,22 +33,23 @@ void CGMDeathMatch::Update(float dt, CStateManager& mgr) {
     EndGame(GetResultIndex(), mgr);
   }
 
-  for (uint i = 0; i < uint(mgr.GetNumPlayers()); ++i) {
+  for (int i = 0; i < mgr.GetNumPlayers(); ++i) {
+    CPlayer* obj = mgr.GetPlayer(i);
     CPlayerState& state = *mgr.PlayerState(i);
     SPlayerState& player = mPlayers[i];
     if (!state.IsPlayerAlive()) {
-      if (!player.mDead) {
+      if (player.mDead) {
+        player.mRespawnTimer -= dt;
+        if (player.mRespawnTimer < 0.f && obj->fn_80019e20(mgr)) {
+          RespawnPlayer(mgr, uint(i));
+          player.mDead = false;
+        }
+      } else {
         player.mDead = true;
         state.AddPowerUp(CPlayerState::kIT_DiedCount, 1);
         state.IncrPickUp(CPlayerState::kIT_DiedCount, 1);
         player.mRespawnTimer = 1.f;
         player.mDeaths = state.GetItemAmount(CPlayerState::kIT_DiedCount);
-      } else {
-        player.mRespawnTimer -= dt;
-        if (player.mRespawnTimer < 0.f && mgr.GetPlayer(i)->fn_80019e20(mgr)) {
-          RespawnPlayer(mgr, i);
-          player.mDead = false;
-        }
       }
     }
     if (mHasFragLimit && state.GetItemAmount(CPlayerState::kIT_FragCount) >= mFragLimit) {
@@ -77,8 +78,8 @@ bool CGMDeathMatch::IsGameOver() { return x40_24_ || CGMMultiplayer::IsGameOver(
 void CGMDeathMatch::EndGame(int resultIndex, CStateManager& mgr) {
   CGMMultiplayer::EndGame(resultIndex, mgr);
   for (int i = 0; i < mPlayerCount; ++i) {
-    SPlayerState& player = mPlayers[uint(i)];
     const CPlayerState& state = *mgr.GetPlayerState(uint(i));
+    SPlayerState& player = mPlayers[i];
     player.mScore = state.GetItemAmount(CPlayerState::kIT_FragCount);
     player.mDeaths = state.GetItemAmount(CPlayerState::kIT_DiedCount);
     player.mPlayerSelection = state.GetPlayerSelection();
