@@ -1499,6 +1499,9 @@ MetroidPrime/ScriptLoader/Sandworm.cpp:
 	.text       start:0x80218850 end:0x8021887C
 	.sbss       start:0x804193C0 end:0x804193C8
 
+MetroidPrime/ScriptLoader/Carve8021887C.c:
+	.text       start:0x8021887C end:0x80218884
+
 MetroidPrime/ScriptLoader/CommandPirate.cpp:
 	.text       start:0x80218884 end:0x802188B0
 	.sbss       start:0x804193C8 end:0x804193D0
