@@ -1719,6 +1719,9 @@ MetroidPrime/ScriptLoader/IngPuddle.cpp:
 	.text       start:0x80229EB4 end:0x80229EE0
 	.sbss       start:0x80419598 end:0x804195A0
 
+MetroidPrime/ScriptLoader/Carve80229EE0.c:
+	.text       start:0x80229EE0 end:0x80229EE8
+
 MetroidPrime/ScriptLoader/FlyerSwarm.cpp:
 	.text       start:0x80229F90 end:0x80229FBC
 	.sbss       start:0x804195A0 end:0x804195A8
