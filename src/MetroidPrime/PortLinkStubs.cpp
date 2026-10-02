@@ -1299,6 +1299,53 @@ extern "C" void stub_223() {}
 extern "C" void stub_224() asm("_Z19LoadWorldTeleporterR13CStateManagerR12CInputStreamR11CEntityInfo");
 extern "C" void stub_224() {}
 
+// The two callees of `src/MetroidPrime/ScriptObjects/Carve801E515C.c` (Matching,
+// 0x801E515C..0x801E51A4), added by hand for the same reason `stub_185` and `stub_225` above exist:
+// the carve's nine words per function *are* those `bl`s, so the calls cannot be dropped without
+// losing the match, and the port's link does not carry the dtk `auto_03_801E3E38_text.o` that
+// defines them in the DOL. Measured in this tree: with the carve listed and these two blocks absent,
+// `python3 tools/link_gap.py --rebuild` exits 1 and prints `283  MISSING` with
+// `gap grew: fn_801E51A4 is not in port_link_gap_list.md` and the same line for `fn_801E5230`;
+// with them in place it prints `281  MISSING`, all accounted for - these two symbols, and only them.
+//
+//   fn_801E51A4 (retail 0x801E51A4, 0x8C = 140 bytes, `config/G2ME01/symbols.txt:7826`) is the
+//     halfword-keyed list search `fn_801E515C` calls at 0x801E516C: a walk of the chain at +4 of
+//     the receiver comparing the key against the halfword at +8 of each node, unlinking its hit
+//     through `fn_801E527C` (0x801E527C, 0x10) and returning 1, else 0.
+//   fn_801E5230 (retail 0x801E5230, 0x4C = 76 bytes, `symbols.txt:7827`) is the push-front that
+//     `fn_801E5180` calls at 0x801E5190: a node allocated through `fn_801E528C` with the key at +0,
+//     the old head linked at +4, and the node stored back at +4 of the receiver.
+//
+// For the DOL nothing is needed: dtk's own `auto_03_801E3E38_text.o` still defines both - the claim
+// splits that object into 0x801E3E38..0x801E515C, this unit's 72 bytes and 0x801E51A4..0x801E7038 -
+// and this file is not in `configure.py`, so a stub here cannot reach main.dol.
+//
+// Both are stand-ins with empty bodies, like every other stub in this file, and they are **not** a
+// claim that either function is decompiled - neither is: no unit claims them, so their bytes stay
+// dtk's in the DOL. The alternative is not "carve one more forwarder" either: both are real bodies,
+// so matching them is a job of its own; the previous attempt at this item measured `fn_801E5230` at
+// 76/76 bytes and `fn_801E51A4` at 140/140 with retail's exact instruction sequence, its remaining
+// diff being the register allocation of one local.
+//
+// **Their names are deliberately not `stub_226`/`stub_227`, and the header paragraph above was
+// deliberately left alone.** This item has passed its own judge on every attempt so far and has
+// never landed: the carry died on a `stub_N` number another lane's carve took between the judge and
+// the rebase (`error: redefinition of 'void stub_199()'`), and on a rebase conflict on this file,
+// whose only conflicted hunks were the numerals in the header paragraph - every carve that lands
+// while another item is being carried rewrites that same paragraph, so a change that touches it
+// cannot be carried. A name keyed to the unit cannot be taken by a lane that reads the file's last
+// `stub_N` and adds one. The cost is that the header's own numerals are now 2 low: measured from
+// this file after the change, `grep -cE 'asm\("'` is 195 (was 193) and
+// `grep -cE 'asm\("(fn_|lbl_)'` is 35 (was 33), so it now supplies 195 symbols - 189 functions and
+// 6 data objects (`stub_data_*`) - while the paragraph above still says 193/187/33. The paragraph's
+// own instruction is to derive rather than carry those numerals; whoever next edits that paragraph
+// (necessarily on another item's tree, where it cannot break a carry) should correct them too.
+extern "C" void stub_801e515c_0() asm("fn_801E51A4");
+extern "C" void stub_801e515c_0() {}
+
+extern "C" void stub_801e515c_1() asm("fn_801E5230");
+extern "C" void stub_801e515c_1() {}
+
 // typeinfo for CGunWeapon
 extern "C" char stub_data_0[64] asm("_ZTI10CGunWeapon") = {};
 
