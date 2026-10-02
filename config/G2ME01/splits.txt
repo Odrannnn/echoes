@@ -1265,6 +1265,9 @@ MetroidPrime/ScriptObjects/Carve802129A4.c:
 MetroidPrime/ScriptObjects/Carve80212A24.c:
 	.text       start:0x80212A24 end:0x80212A2C
 
+MetroidPrime/ScriptObjects/Carve80213320.cpp:
+	.text       start:0x80213320 end:0x8021348C
+
 MetroidPrime/CRelFile.cpp:
 	.text       start:0x80213650 end:0x80213C08
 	.rodata     start:0x803ACBE0 end:0x803ACBE8
