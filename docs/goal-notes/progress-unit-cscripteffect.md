@@ -915,3 +915,252 @@ Also measured: `sha1sum build/G2ME01/main.dol` -> `6ef9b491d0cc08bc81a124fdedb8b
 No `tools/`, no `config/`, no `docs/`, no `build/goal/` file was edited by hand; nothing
 committed. (`docs/HANDOFF.md`'s state block shows the judge's own rewritten numbers - that is
 `goal_check.sh` rewriting derived counts, not an edit of mine.)
+
+---
+
+# progress-unit-cscripteffect — run 6 (`wt-mp2-goal-L6`): 21/35 -> 23/35
+
+**Result: `PreRender` 98.50% -> 100.00% and `UpdateGeneratorRate` 85.62% -> 100.00%, both
+byte-identical (0 differing instructions of 135 and 139). `./tools/goal_check.sh
+build/goal/item.json` -> `PASS` (matched 12296 -> 12298, target rose 21 -> 23, linked 5863
+unchanged, no `asm` added).** The unit stays `NonMatching`, as a `progress` item requires.
+
+One file changed: `src/MetroidPrime/ScriptObjects/CScriptEffect.cpp` (+16/-18). No header, no
+`config/`, no `tools/`, no `build/goal/` file edited. Nothing committed.
+
+Re-measured on this tree first: the unit really was at 21/35, `matched_code` 3960/11284, DOL
+matched 12296, so runs 1-5's numbers were current and nothing had landed upstream.
+
+## Measured
+
+| | before | after |
+|---|---|---|
+| unit `matched_functions` | 21 / 35 | **23 / 35** |
+| unit `matched_code` | 3960 / 11284 (35.09%) | **5056 / 11284 (44.81%)** |
+| unit `fuzzy_match_percent` | 64.54% | **65.32%** |
+| DOL `matched_functions` | 12296 / 28465 | **12298 / 28465** |
+| DOL `linked` | 5863 | 5863 (unchanged) |
+| `All:` | 34.73% fuzzy, 28.28% matched | 34.74% fuzzy, **28.30%** matched |
+
+| function | before | after | size before -> after (retail) |
+|---|---|---|---|
+| `PreRender__13CScriptEffectFR13CStateManager` | 98.50% | **100.00%** | 540 -> 540 (540) |
+| `UpdateGeneratorRate__13CScriptEffectFR13CStateManager` | 85.62% | **100.00%** | 532 -> **556** (556) |
+| everything else in the unit | unchanged | unchanged | - |
+
+Diffs below are "retail instruction text | ours", branch targets and `r2` sdata displacements
+normalised, counted by the helper I left at `.tmp/opencode/insndiff.py` (it disassembles our
+object and `build/G2ME01/main.elf` and aligns instruction-by-instruction).
+
+## 1. `PreRender` 98.50% -> 100.00%: a *temporary*, not a named local
+
+Runs 4 and 5 both recorded the residue as "the Queue2 arm's second stack temporary at `r1+16` and
+one redundant `b`" and spent 18 spellings on it. One of those spellings was never tried, and it is
+the one that works: **pass a functional-cast temporary instead of a named local.**
+
+```cpp
+case kRO_Queue2:
+  mgr.fn_80037984(TUniqueId(id));   // was: mgr.fn_80037984(id);
+  break;
+case kRO_Queue1:
+  mgr.fn_80037A04(id);              // was: const TUniqueId copy = id; mgr.fn_80037A04(copy);
+  break;
+```
+
+`TUniqueId(id)` materialises a **caller-created temporary** which mwcceppc allocates *before* the
+implicit home for the by-value argument, giving the two stores retail has:
+
+```
+retail kRO_Queue2:  lhz r0,8(r28) ; mr r3,r29 ; addi r4,r1,16 ; sth r0,12(r1) ; sth r0,16(r1) ; bl
+```
+
+A **named local** does not: CW passes the local's address and only emits one store, or (when the
+local is dead) folds the two objects into one and mirrors the slots. So "give it a second stack
+slot" is the wrong model - the second slot has to be a *user temporary*, not a named object.
+
+Retail's two arms are **asymmetric** and runs 4/5 had them the wrong way round: Queue2 gets the
+local/temporary, Queue1 passes the `const TUniqueId&` straight through with a single store. Both
+runs tried "extra local in Queue2" while leaving the local in Queue1, which is the one
+combination that cannot be right.
+
+Measured this run, all with run 5's case order (`kRO_Queue2` written first, which run 5 showed is
+the layout retail has):
+
+| spelling | diffs / 135 |
+|---|---|
+| baseline: local in Queue1, reference in Queue2 (what runs 4-5 left) | 7 |
+| local in Queue2, reference in Queue1, `const TUniqueId copy` | 3 |
+| same, non-`const` `TUniqueId copy` | 3 (byte-identical to the row above) |
+| same, local wrapped in an extra `{ }` | 3 (byte-identical) |
+| case order swapped back to `kRO_Queue1` first, local in Queue2 | 13 (an extra `b` **and** a spurious second store in Queue1) |
+| **`mgr.fn_80037984(TUniqueId(id));`, reference in Queue1** | **0** |
+
+## 2. `UpdateGeneratorRate` 85.62% -> 100.00%: four independent spellings
+
+Runs 1 and 2 measured nine restructurings of this loop and stopped at 85.62%. All four changes
+below are spelling-level; none of them touches what the function computes. Measured one at a
+time, cumulatively:
+
+1. **`float rate = 1.f;` hoisted to the top of the function**, immediately after the early-out and
+   **before** the camera loop (it used to sit between the loop and the first `if`). This is the
+   whole reason retail's function has **two** FPR saves where ours had one: `rate` is live across
+   the loop, so mwcceppc gives it `f31` and drops the running max into `f30`. Retail's prologue
+   `stfd f31,64(r1) ; xsmaddmsp ; stfd f30,48(r1) ; xxsel` appears only after this change. It also
+   fixes the 24-byte size gap (532 -> 556). Runs 1 and 2 read this as "f30/f31 allocation" and never
+   tried moving the declaration, because both assumed the *register* choice was the lever; it is
+   the *liveness* that decides it.
+2. **`distanceSq = nextDistanceSq > distanceSq ? nextDistanceSq : distanceSq;` instead of
+   `rstl::max_val(distanceSq, nextDistanceSq)`.** `rstl::max_val(a,b)` is `(a < b) ? b : a`
+   (`include/rstl/math.hpp:13`), which lowers to `fcmpo cr0,f30,f0 ; bge`. Retail has
+   `fcmpo cr0,f0,f30 ; ble`, i.e. it tests `next > max`. **The two spellings are not
+   interchangeable**: swapping `max_val`'s arguments (`max_val(next, distanceSq)`, which run 1
+   measured) gives `fcmpo cr0,f0,f30` but still `bge`. Only an explicit `>` gives both halves.
+3. **`static_cast< uint >(mgr.GetNumPlayers())` in the loop bound.** Retail tests the bound with
+   `cmplw` (`0x80081bc4`), we emit `cmpw`, because `CStateManager::GetNumPlayers()` is declared
+   `int` at `include/MetroidPrime/CStateManager.hpp:229` while every override in `CGameMode`
+   returns `uint`. Run 2 measured this cast at 85.27% and concluded it "loses 12 bytes elsewhere";
+   with the other three fixes in place the loop is already retail's, so nothing is lost.
+   **The real fix is changing that one declaration to `uint`**, which also stops the cast at the
+   five other call sites (`CActor.cpp:1137`, `CScriptCannonBall.cpp:47`, `CScriptCameraHint.cpp:82`,
+   `CScriptSpawnPoint.cpp:51`, `CPatternedAiFunctions.cpp:119,146`) and moves their codegen - its
+   own item, not a fold-in here.
+4. **`const float range = mRateCamDistRangeMax - mRateCamDistRangeMin;` as a named local used as
+   the divisor.** This is what makes retail's `fsubs f1,f1,f3` - the denominator - happen *before*
+   the clamp compare (`0x80081c48`) rather than after it. Written inline,
+   `(max - min)` is only materialised once the division is reached. Same "named local in front of
+   the expression" shape that run 1 used successfully in `PreRenderAllViewports` and `Render`.
+
+Result: 139 instructions on both sides, 556 bytes on both sides, 0 differing instructions.
+
+## 3. `PreRenderAllViewports`: **the 30-spelling slot-order wall of runs 1-5 is one line away**
+
+This is the single most useful thing to hand on, because runs 1, 2, 3 and 5 all concluded the slot
+order was unreachable and 5 of them wrote that down. It is reachable:
+
+```cpp
+const CAABox& emptyBounds = CAABox(position, position);   // was: const CAABox emptyBounds(position, position);
+```
+
+A **reference bound to a temporary** puts the box at `r1+20`, which gives retail's frame layout
+exactly - `position`@8, box@20, empty ternary arm@44, non-null arm@72, `bounds` copy@100, flag@124.
+Every one of the 17 stack displacements that runs 1-3 measured disappears.
+
+What is left is 18 of 109 instructions and it is **not** a slot question any more: mwcceppc keeps
+`r3` (the temporary's address) live across the `__ct__CAABox` call and loads through it, where
+retail rematerialises `20(r1)` and puts the 0/1 constant in `r3`:
+
+```
+retail:  lwz r4,20(r1) ; li r3,0 ; lwz r0,24(r1) ; stw r4,204(r30) ; ...
+ours:    lwz r5,0(r3)  ; li r4,0 ; lwz r0,4(r3)  ; stw r5,204(r30) ; ...
+```
+
+So the wall to write down is **"get `r3` to die after the ctor call"**, not "move the box's slot".
+Note the shape is the same one that solved `PreRender`: there, a *temporary* bought the extra
+object but CW still used `r1`-relative addressing; here a temporary buys the right slot but CW
+keeps its address in a register. Both are about which of "user temporary" vs "named local" CW
+allocates first, and they pull in opposite directions.
+
+WALL: PreRenderAllViewports__13CScriptEffectFR13CStateManager 99.84% - the box's stack slot is reachable (const CAABox& bound to a temporary gives retail's exact frame layout); what is left is that mwcceppc keeps r3 live across __ct__CAABox and loads through it instead of rematerialising 20(r1)
+
+New spellings measured this run, all on top of the one above unless stated (baseline = named
+local, 17 diffs):
+
+| spelling | diffs / 109 | objdiff |
+|---|---|---|
+| `const CAABox& emptyBounds = CAABox(position, position);` | 18 (slots right, registers off) | 99.84% |
+| named local + an extra `const CAABox& box = emptyBounds;` used by the setters | 17, byte-identical to baseline | 99.84% |
+| `const CAABox emptyBounds = CAABox(position, position);` (copy-init) | 49 - the frame blows up to 176 bytes | 99.84% |
+| `const CVector3f& position = GetTranslation();` (reference, not value) | 37 | 99.84% |
+| hoisting `position` and `emptyBounds` above the ternary (re-measured here, run 3 measured 81.33%) | 79 | unit fuzzy drops to 63.90% |
+
+## 4. Re-read, not attempted
+
+**`AcceptScriptMsg` 48.56% (1872 B) - a rewrite, not a spelling.** Retail's prologue saves
+`stmw r20` (12 registers) where ours saves `stmw r21` (11), and every one of retail's long-lived
+values is exactly one register number lower (`r28`/`r27` for the message enum, `r29`/`r28` for the
+bool, `r30`/`r29` for `this`, `r31`/`r30` for `mgr`). Our object emits **477 instructions against
+retail's 468**, so the function is both longer *and* register-starved: one more value is live in
+retail that we do not keep. The dispatch tree matches instruction for instruction to index 49;
+retail's index 50 (`cmplwi r6,0 ; li r25,1 ; bne ... ; lhz r0,0(r25) ; mr r5,r30 ; addi r6,r1,100 ;
+li r7,-1 ; sth r0,100(r1) ; bl`) is a different arm layout from ours (`lwz r27,... ; b ...`). Do not
+start from a register-renaming theory.
+
+**`__ct__13CScriptEffect` 88.24%, and the `CModelDataNull` blocker is now fully characterised.**
+`CModelDataNull__10CModelDataFv` is a **separate 32-byte retail function at `0x80036184`** that this
+repo already matches at 100.00% - in `MetroidPrime/Weapons/CGameProjectile`, where
+`nm` shows `W CModelDataNull__10CModelDataFv`. `__ct__10CModelDataFv` (152 B) is separately matched
+at 100.00% in `MetroidPrime/CModelData`. Retail's `__ct__CScriptEffect` calls the *former*; we
+always inline. `include/MetroidPrime/CModelData.hpp:183` is
+`static CModelData CModelDataNull() { return CModelData(); }` - defined in-class, therefore
+implicitly inline - and **13 translation units** call it. Making it an out-of-line declaration would
+move every CActor-construction call site in the tree *and* would take `CModelDataNull` out of
+`CGameProjectile.o`, which is the only place it pairs at 100%, so `report_diff.py` would see a
+`GONE`. That is its own item; it does not belong folded into a `progress` item on this unit.
+
+## 5. The nine functions at 0.00% - a correction to runs 1-5, and why they are still stuck
+
+Re-measured, and **run 5's conclusion is right about `CScriptEffect.o` and wrong about the tree.**
+`nm -S` on `build/G2ME01/src/MetroidPrime/ScriptObjects/CScriptEffect.o` still shows nothing at 12,
+92, 152, 172, 224, 248, 124 or 1772 bytes. But five of them are **already byte-identical, at
+100.00%, somewhere else in this repo** - `Tweaks/MetroidPrime/ScriptLoader/Tweaks`:
+
+| retail name here | size | the same code at 100.00% in |
+|---|---|---|
+| `fn_80080DB8` | 172 B | `__as__11CMayaSplineFRC11CMayaSpline` |
+| `fn_80080E64` | 224 B | `__as__Q24rstl52vector<15CMayaSplineKnot,...>FRCQ24rstl52vector<...>` |
+| `reserve__Q24rstl52vector<15CMayaSplineKnot,...>Fi` | 152 B | same name, same unit |
+| `fn_80082E74` | 92 B | `uninitialized_copy<Q24rstl124pointer_iterator<15CMayaSplineKnot,...>,...>` |
+| `fn_80080F44` | 12 B | `clear__Q24rstl52vector<15CMayaSplineKnot,...>Fv` |
+
+**They cannot be emitted from `CScriptEffect.cpp` anyway**, and this is the part runs 1-5 did not
+establish. All five are `inline`/`template` members of `rstl::vector` / `CMayaSpline`, and
+mwcceppc only emits an inline COMDAT that something in the translation unit *references*. Run 4's
+route - declare `CMayaSpline& operator=(const CMayaSpline&);` in
+`include/Kyoto/Math/CMayaSpline.hpp` and write the definition into `CScriptEffect.cpp` - does emit
+both `__as__` symbols, but only because a **non-inline** definition is emitted unconditionally as a
+strong symbol; mark it `inline` and nothing references it. `CScriptEffect.cpp` contains no
+`CMayaSpline` assignment and no `vector<CMayaSplineKnot>` call, so there is no reference to
+manufacture. Retail's object emits them because retail's `fn_80080394` (1772 B, the token-parsing
+loader) *uses* them - so **`fn_80080394` is the only honest route to this cluster**, and it is 1772
+bytes of stream parsing. Not a naming problem, not a claim problem: a missing caller.
+
+## Gates
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12296 -> 12298   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    All:  34.74% fuzzy, 28.30% matched, 12.90% linked (12298 / 28465 functions)
+  ok    target rose: main/MetroidPrime/ScriptObjects/CScriptEffect: 21 -> 23 / 35 functions
+  ok    no asm added
+goal_check: PASS progress-unit-cscripteffect
+```
+
+Also measured: `python3 tools/check_symbol_names.py` -> `checked 525 units; 0 declared names are
+missing from their object`; `python3 tools/check_decl_order.py --unit
+MetroidPrime/ScriptObjects/CScriptEffect` -> `ok: 1 unit(s) checked, none emits its functions out
+of retail order`. No `tools/`, no `config/`, no `docs/`, no `build/goal/` file was edited by hand;
+nothing committed. (`docs/HANDOFF.md`'s state block shows 12298/10750 - that is `goal_check.sh`
+rewriting derived counts, not an edit of mine.)
+
+## Three codegen rules this run, generalisable
+
+1. **A by-value class argument gets a caller-allocated home. A *user temporary* in the argument
+   expression is allocated a separate object, and it gets the lower slot; a *named local* is folded
+   into the home.** To reproduce two stores at two displacements you need a temporary
+   (`TUniqueId(id)`), not a named local (`const TUniqueId copy = id;`), and swapping the two
+   arguments of an `rstl::max_val`-style helper is **not** a substitute for writing the `>`
+   directly.
+2. **Hoisting a `float` initialiser above the loop that uses it is what buys a second FPR save.**
+   Register *numbering* (f30 vs f31) is decided by liveness, not by declaration order of the uses.
+3. **Naming a repeated sub-expression as a `const` local in front of the expression makes
+   mwcceppc evaluate it there.** `(max - min)` inline was computed after the clamp; bound to
+   `range` it is computed before, which is what retail does. This is the third time this pattern
+   has won in this file (`Render`'s `ps`, `PreRenderAllViewports`' `position`, and now `range`).
+
+## Still open for the next run
+
+Nothing filed as `NEW:` - everything left here is this item's own target
+(`AcceptScriptMsg`, `__ct__CScriptEffect`, `fn_80080394` and its cluster, and
+`PreRenderAllViewports`), so it would be a restatement rather than a new unit of work.

@@ -323,24 +323,25 @@ void CScriptEffect::UpdateGeneratorRate(CStateManager& mgr) {
   if (!mUseRateInverseCamDist && !mUseRateCamDistRange) {
     return;
   }
+  float rate = 1.f;
   float distanceSq =
       (mgr.GetCameraManager(0)->GetCurrentCamera(mgr, true)->GetTranslation() - GetTranslation())
           .MagSquared();
-  for (int i = 1; i < mgr.GetNumPlayers(); ++i) {
+  for (int i = 1; i < static_cast< uint >(mgr.GetNumPlayers()); ++i) {
     const float nextDistanceSq =
         (mgr.GetCameraManager(i)->GetCurrentCamera(mgr, true)->GetTranslation() - GetTranslation())
             .MagSquared();
-    distanceSq = rstl::max_val(distanceSq, nextDistanceSq);
+    distanceSq = nextDistanceSq > distanceSq ? nextDistanceSq : distanceSq;
   }
   const float distance = distanceSq > 0.001f ? CMath::FastSqrtF(distanceSq) : 0.f;
-  float rate = 1.f;
   if (mUseRateInverseCamDist && distanceSq < mRateInverseCamDistSq) {
     rate = (1.f - mRateInverseCamDistRate) * (distance / mRateInverseCamDist) +
            mRateInverseCamDistRate;
   }
   if (mUseRateCamDistRange) {
-    const float t = rstl::min_val(1.f, rstl::max_val(0.f, distance - mRateCamDistRangeMin) /
-                                           (mRateCamDistRangeMax - mRateCamDistRangeMin));
+    const float range = mRateCamDistRangeMax - mRateCamDistRangeMin;
+    const float t = rstl::min_val(
+        1.f, rstl::max_val(0.f, distance - mRateCamDistRangeMin) / range);
     rate = (1.f - t) * rate + t * mRateCamDistRangeFarRate;
   }
   mParticleSystem->SetGeneratorRate(rate);
@@ -393,13 +394,11 @@ void CScriptEffect::PreRender(CStateManager& mgr) {
     case kRO_Normal:
       break;
     case kRO_Queue2:
-      mgr.fn_80037984(id);
+      mgr.fn_80037984(TUniqueId(id));
       break;
-    case kRO_Queue1: {
-      const TUniqueId copy = id;
-      mgr.fn_80037A04(copy);
+    case kRO_Queue1:
+      mgr.fn_80037A04(id);
       break;
-    }
     }
   }
 }
