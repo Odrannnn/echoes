@@ -8,12 +8,14 @@
 
 #include "GuiSys/CGuiFrame.hpp"
 #include "GuiSys/CGuiFrameLoader.hpp"
+#include "GuiSys/CGuiWidget.hpp"
 #include "Kyoto/Text/CGuiTextSupport.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/CResFactory.hpp"
 #include "Kyoto/Graphics/CGraphics.hpp"
 #include "dolphin/os/OSCache.h"
 
+#include <math.h>
 #include <string.h>
 
 // Structure-first scaffold. The scan-tree, GUI and model-viewer bodies remain incomplete.
@@ -137,8 +139,6 @@ bool CPauseScreen::EnsureTextureLoaded(const CToken& token) {
     }
     if (!texture->TryReloadBitmapData(*gpResourceFactory)) {
       return false;
-    } else {
-      return true;
     }
   }
   return true;
@@ -155,8 +155,27 @@ bool CPauseScreen::CheckLoadComplete(const CStateManager&) {
 }
 
 void CPauseScreen::UpdatePulse(float dt) {
-  mPulseTime += dt;
-  // TODO: animate the hex widgets' staggered color pulse.
+  mPulseTime += dt / gpTweakGui->GetMapBackgroundCycleTime();
+  if (mPulseTime >= 1.f) {
+    mPulseTime = 0.f;
+  }
+
+  const float pulseWidth = gpTweakGui->GetMapBackgroundPulseWidth();
+  const float t = mPulseTime;
+  float pulse = (1.f - t) * (t - pulseWidth) + t * (t + pulseWidth);
+  pulse = 1.f - pulse;
+  const float count = static_cast< float >(mHexWidgets.size());
+
+  int idx = 0;
+  for (rstl::vector< CGuiWidget* >::const_iterator it = mHexWidgets.begin();
+       it != mHexWidgets.end(); ++it, ++idx) {
+    float d = static_cast< float >(fabs(pulse - static_cast< float >(idx) / count)) / pulseWidth;
+    if (1.f < d) {
+      d = 1.f;
+    }
+    (*it)->SetColor(CColor::Modulate(gpTweakGui->GetMapBackgroundColor(),
+                                     CColor(1.f - d, 1.f - d, 1.f - d, 1.f)));
+  }
 }
 
 void CPauseScreen::Update(float, const CStateManager&, CArchitectureQueue&) {

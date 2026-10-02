@@ -445,3 +445,147 @@ item's instructions say to expect.
 - Read `restoreToARAM` (`bool`, at `rstl::pair<bool, TToken<CTexture>>` + 0x8, which retail
   `lbz r3,8(r30)`s) before writing `RestoreTextures` - it is the flag `EnsureTextureLoaded`'s
   `TrackTexture` call passes, and it is already named.
+
+---
+
+# Third run (lane 10, 2026-10-02)
+
+`kind: progress`, target `MetroidPrime/CPauseScreen`, unit stays `NonMatching`; `flip_test.sh` not
+run, as the item says. **`goal_check: PASS`** - one more real function match (not a flip).
+
+## Result
+
+`matched_functions` for `main/MetroidPrime/CPauseScreen`: **10 -> 11** (of 84).
+Project-wide `matched_functions` **13101 -> 13102**; `All:` fuzzy 37.09%, matched code 30.52%,
+linked 13.47% (unchanged). `tools/report_diff.py build/report.base.json build/report.json`:
+`+100% main/MetroidPrime/CPauseScreen :: UpdatePulse__12CPauseScreenFf`, **no regression**.
+
+```
+./tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 13101 -> 13102   linked 6199 -> 6199
+  ok    target rose: main/MetroidPrime/CPauseScreen: 10 -> 11 / 84 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-cpausescreen
+sha1sum build/G2ME01/main.dol -> 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010 (expected)
+```
+
+## What I changed (one file, `src/MetroidPrime/CPauseScreen.cpp`)
+
+- `UpdatePulse` (436 B) filled in from this unit's own disassembly: 3.35% -> **100.00**.
+- `EnsureTextureLoaded` - the `else { return true; }` removed so both `return true`s are one
+  statement: 92.26% -> **96.13** (no new match; see the residue below).
+- Two includes added: `GuiSys/CGuiWidget.hpp` (for `SetColor`) and `<math.h>` (for `fabs`).
+
+## THE finding of this run: report mode ignores relocation target names
+
+`objdiff-cli report generate` (the only thing `matched_functions` comes from) does **not** score a
+`bl` whose reloc target has a different name, while `objdiff-cli diff` does. Measured, same tree,
+same objects:
+
+| function | `report.json` | `objdiff-cli diff` | the whole difference |
+|---|---|---|---|
+| `TrackTexture__12CPauseScreenFRC17TToken<8CTexture>b` | **100.0** | 99.79 | `bl fn_8020AFFC` vs our weak `push_back` |
+| `SetFog__12CPauseScreenCFb` | **100.0** | 99.86 | sda21 reloc names only |
+
+So **a call to an unnamed `fn_*` symbol is not by itself a wall.** The first two runs' conclusion
+"`__dt__12CPauseScreenFv` can never be 100% because retail's `bl fn_8020D820` has no nameable
+spelling" is only true for `diff` mode; in `report.json` that `bl` is free, and the destructor's
+remaining ~1.6% is the *real* instruction differences (the `optional_object` null test + `li r4`
+shape) plus instruction count. Any function whose instructions can be reproduced is a candidate
+even when every callee is an unnamed `fn_*` - only the instruction stream has to match.
+
+**Consequence for the search:** filter candidates by "can I emit these exact instructions", not by
+"are the callees named". `lbl_*` SDA constants were already known to be free; `fn_*` calls are too.
+
+## `UpdatePulse` 3.35% -> 100.00: the four things that mattered
+
+Decoded from `build/G2ME01/obj/MetroidPrime/CPauseScreen.o` (the DOL itself is not
+objdump-readable). Retail body: wrap `mPulseTime` at 1.0, a staggered per-widget color pulse over
+`mHexWidgets` (0x370; count 0x374, items 0x37c - matches this header's layout), then
+`CColor::Modulate(gpTweakGui->GetMapBackgroundColor(), c)` -> `CGuiWidget::SetColor`. The exact
+spellings, each measured with `tools/fast_try.sh MetroidPrime/CPauseScreen`:
+
+| spelling | score |
+|---|---|
+| `mPulseTime += dt;` (the old TODO stub) | 3.35 |
+| full body, `pulse = t*(t+w) + (1-t)*(t-w)`, `if (d > 1.f)`, named `const CColor color(...)` | 84.83 |
+| + `pulse = (1-t)*(t-w) + t*(t+w)` (swap the addends) and `if (1.f < d)` | 86.26 |
+| + `CColor` as an **inline temporary** inside the `Modulate` call, not a named local | **100.00** |
+
+- The addend order is not cosmetic: retail emits `fadds t+w` first, then `fsubs 1-t`/`fsubs t-w`,
+  then `fmuls t*(t+w)` and finally `fmadds (1-t)*(t-w) + t*(t+w)`. `t*(t+w) + (1-t)*(t-w)` gives
+  the same arithmetic with a different schedule.
+- The clamp must be spelled `if (1.f < d)` - `if (d > 1.f)` emits `fcmpo cr0,d,1.0; ble`, retail
+  has `fcmpo cr0,1.0,d; bge`.
+- The last edit is what flipped it from 86 to 100: a named `CColor color(...)` makes MWCC recompute
+  the temp address (`addi r5,r1,8`) and reorder the two stack temps; the inline temporary makes it
+  keep the ctor's return in `r31` and use `mr r5,r31`, which is retail's shape. **Register
+  allocation is part of the match here** - with 4 live GPRs the whole function read r28..r31 and
+  every `this`-relative access scored as a diff; the inline temporary forced the 6 live GPRs
+  (r26..r31, `stmw r26,24(r1)`) retail has.
+- `(float)idx / (float)count` with a signed `int` emits the `lis 0x4330 / xoris / lfd / fsubs`
+  magic; the sda2 double at `lbl_8041D7A8` is `0x4330000080000000` = 2^52+2^31
+  (`python3 tools/dol_read.py 0x8041D790 0x28 orig/G2ME01/sys/main.dol`), i.e. the signed
+  int->float idiom - write plain `(float)i`, do not hand-roll it.
+
+## `EnsureTextureLoaded` 92.26 -> 96.13, and what still stops 100%
+
+Retail's control flow has **one** `li r3,1`, reached both by the non-`TXTR` path (`bne 0x9034`) and
+by fall-through after the success path's `~CToken`. That is a single trailing `return true`:
+
+```cpp
+if (token.GetTag().type == 'TXTR') {
+  ... TrackTexture ...
+  if (!texture->TryReloadBitmapData(*gpResourceFactory)) {
+    return false;
+  }
+}
+return true;
+```
+
+Measured spellings, this run: with `else { return true; }` inside the block (the previous run's
+best) 92.26%; dropping the `else` and letting the single trailing `return true` serve both exits
+**96.13%**; the early-return spelling `if (type != 'TXTR') { return true; }` **90.85%** (it emits a
+second `li r3,1` block, which is the tell that it is wrong). Also tried and identical (96.13%):
+hoisting `const SObjectTag& tag = token.GetTag();` into a local.
+
+Residue at 96.13%: 53 instructions both sides, exactly **one** instruction differs - retail loads
+`token.mObjRef` (`lwz r5,0(r4)`) *after* `mr r30,r3`, we hoist it above the callee-saved stores in
+the prologue (1 INSERT + 1 DELETE = the whole 3.87%). The `bl` targets to the local weak template
+copies print as different addresses in objdump but are not scored. This is scheduler placement; the
+four spellings above are the ones I tried. **Do not re-try them.**
+
+## Still blocked, re-measured on this tree
+
+- `RestoreTextures` (236 B, 1.69%) - decoded: `CTexture::sCurrentFrameCount = 0x7fffffff`
+  (MWCC emits `lis 0x8000; addi -1`), a walk of `mTexturesToRestore` (0x348) reading the pair's
+  `bool` at node+8, then `= 0` at the end. Blocked exactly where the previous run said: it tests
+  bit 4 of the byte at `CTexture+0xa` (`lbz r0,10(r31); rlwinm. r0,r0,27,31,31`) and the byte at
+  `CTexture+8`, and `include/Kyoto/Graphics/CTexture.hpp` (re-read this run) still exposes no
+  accessor for either - every member there is private with named getters for other fields. The
+  trailing `bl fn_8020AE24(&mTexturesToRestore)` is now known to be *free* (reloc names are not
+  scored), so that half is no longer a blocker.
+- `AdvancePage` (344 B) and `TouchVisibleNodes` (348 B) - both call scan-tree methods
+  (`fn_80210988`/`fn_80210930`/`fn_80210938`/`fn_8020D278`/`fn_80212BE4`/`fn_80210ADC`, i.e. the
+  `CScanTree` getters, an `rc_ptr<CScanTreeNode>` construction/destruction and `SetPage`).
+  `include/MetroidPrime/CScanTree.hpp` on this tree is a data-only "guessed" declaration with
+  **no methods at all**, so writing them means inventing a `CScanTree` API whose definitions do not
+  exist in the link - and the port's undefined count may not rise. Same class of blocker as
+  `SetFog`'s accessors were *before* they were written; cheap to re-check next run.
+
+## Notes for the next run
+
+- `.tmp/opencode/od4.py <symbol> [--all]` - side-by-side retail (`build/G2ME01/obj/...`) vs ours
+  (`build/G2ME01/src/...`) with reloc target names folded, which is the *report-mode-relevant*
+  comparison. `objdiff-cli diff` (JSON, `left` = retail, `right` = ours) is the other view, but it
+  scores reloc names and will make you chase diffs that `report.json` does not count.
+- Cheap loop: `tools/fast_try.sh MetroidPrime/CPauseScreen` rebuilds only this object and
+  regenerates `report.json` (~15 s); the per-function table it prints is the source of truth.
+- `EnsureTextureLoaded` is 96.13% with one scheduling residue - if someone wants the last 3.87%,
+  the thing to attack is the prologue placement of `lwz r5,0(r4)`, not the body.
+- `UpdatePulse` is the second function in this unit found by writing the body off the disassembly
+  and iterating on float-expression *order*; `SetFog`/`GetDefaultModelPosition`/`GetModelPosition`
+  (run 2) were the same game. The remaining named functions are all >= 344 B with real GUI/scan-tree
+  work in them; the small ones left are unnamed `fn_*` with no source to write against.
