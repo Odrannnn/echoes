@@ -97,22 +97,9 @@ void* fn_80220294(void* self, short flag) {
   return self;
 }
 
-#ifdef TARGET_PC
-// Port-only stand-in, and it is **not** a claim that `__dt__11CMayaSplineFv` is decompiled - it is
-// not.  The matching build does not compile this block (PORT_NOTES.md, "TARGET_PC, and the rule
-// for port edits"), so main.dol still takes the real 0x800327FC from dtk's auto object above and
-// the three functions keep their retail bytes.
-//
-// The host's flat link carries our sources only, not dtk's objects, so without this the port's
-// link loses one symbol: measured with `./tools/probe_sources.sh`, which compiles every file in
-// `files.cmake` with `-DTARGET_PC` (its COMMON, line 49) - without this block it prints
-// `link: NOT LINKED` and the strict check names `NEW __dt__11CMayaSplineFv`; with it, `LINKED`
-// and no growth.  Nothing in the port reaches the three wrappers above (the only caller in retail
-// is `fn_802201F8`, which no unit of ours claims and no table names), so this stand-in cannot
-// change what the game does.
-//
-// Empty body on purpose: a stand-in that returns something plausible is worse than one that
-// announces itself.  `include/Kyoto/Math/CMayaSpline.hpp` is not including it in the port link -
-// `src/Kyoto/Math/CMayaSpline.cpp` defines that class's other members and not its destructor.
-void __dt__11CMayaSplineFv(void* self, short flag) {}
-#endif
+// The `#ifdef TARGET_PC` stand-in for `__dt__11CMayaSplineFv` that used to sit here is **deleted**,
+// by `carve-80032774`: that unit (`src/MetroidPrime/Factories/Carve80032774.cpp`, retail
+// 0x800327FC) now defines the real deleting destructor for both builds and is in `files.cmake`, so
+// the host link binds to it.  Keeping this block as well would be two definitions of one symbol,
+// which `link_gap.py` reports as a duplicate.  The three wrappers above are unchanged, and they
+// still need no header: the identifier is the mangled name.

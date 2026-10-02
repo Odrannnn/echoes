@@ -119,24 +119,10 @@ void* fn_80032674(void* self, short flag) {
   return self;
 }
 
-#ifdef TARGET_PC
-// Port-only stand-in for the one symbol in this file that nothing else under `src/` defines.
-// The matching build does not compile this block (`PORT_NOTES.md`, "TARGET_PC, and the rule for
-// port edits"), so `main.dol` still takes the real 0x80032774 from dtk's auto object above and
-// `fn_8003271C` keeps its retail bytes.
-//
-// The host's flat link carries our sources only, not dtk's objects, so without a definition the
-// link loses `fn_80032774`; with it the undefined count does not grow.  The other callee needs
-// nothing here: `src/Kyoto/Alloc/PortMwccNew.cpp:34` already defines `Free__7CMemoryFPCv` for
-// the host, and a second definition would be a duplicate (`link_check: duplicate definitions`).
-//
-// Empty body on purpose: a stand-in that returns something plausible is worse than one that
-// announces itself.  Nothing in the port calls `fn_80032774` (its only caller in retail is
-// `fn_8003271C`, a tweak-global destructor reached from the DOL's global destructor chain, which
-// the host port does not run), so this cannot change what the game does.
-void* fn_80032774(void* self, short flag) {
-  (void)self;
-  (void)flag;
-  return self;
-}
-#endif
+// `fn_80032774` used to have an `#ifdef TARGET_PC` stand-in here - an announced empty body, because
+// the host's flat link carries our sources only and nothing else defined the symbol.  **The next
+// carve, `carve-80032774`, deleted it**: `src/MetroidPrime/Factories/Carve80032774.cpp` claims
+// 0x80032774..0x80032A98 and defines the real `fn_80032774` for both builds, so the host link binds
+// to that.  Keeping the stand-in as well is two definitions of one symbol, which
+// `./tools/probe_sources.sh` reports as `DUP fn_80032774` - measured on this tree before the
+// deletion.  `fn_8003271C` above is unchanged.

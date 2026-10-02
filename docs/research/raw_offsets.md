@@ -38,11 +38,11 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **170 sites in 74 files** (`python3 tools/check_raw_offsets.py`
-prints `170 raw-offset site(s) in 74 file(s)`, and the 74 `##` headings below sum to 170; measured
-2026-10-02, after the `fn_801E7C14` carve added `src/MetroidPrime/Cameras/Carve801E7C14.c` - this
-line read 168 in 72 while the tool already measured 169 in 73 and the headings already summed to
-169, so the totals here are re-derived from the tool rather than accumulated by hand).
+the count here fails the gate. **176 sites in 76 files** (`python3 tools/check_raw_offsets.py`
+prints `176 raw-offset site(s) in 76 file(s)`, and the 76 `##` headings below sum to 176; measured
+2026-10-02, after the `carve-80032774` item added `src/MetroidPrime/Factories/Carve80032774.cpp`
+(5 sites) - this line read 170 in 74 while the tool already measured 171 in 75 before that item,
+so the totals here are re-derived from the tool rather than accumulated by hand).
 
 **This line has been wrong before, five times over, and the failure was always the same one.**
 `tools/check_raw_offsets.py` compares the *per-file* counts in the headings and never this
@@ -936,3 +936,33 @@ file; this section read 165 in 69 when it was written (2026-10-01, with
   it as a member because no header owns the class, and inventing one would invent a class for bytes
   nothing else names; the unit that next claims the run around 0x801E782C can, and then this site
   goes with it.
+
+## `src/MetroidPrime/Factories/Carve80032774.cpp` (5 sites)
+
+- `+0x214`, `+0x1D0`, `+0x18C`, `+0x148`, `+0x104`, all in `fn_80032774` (retail 0x80032774,
+  `.text 0x80032774..0x80032A98`, 0x88 = 136 bytes, 34 instructions, 100.00% matched,
+  `Object(Matching)` in `configure.py`; `carve-80032774`). The five instructions are
+  `addi r3,r30,off / li r4,-1 / bl __dt__11CMayaSplineFv` - the destructive step of the
+  deleting-destructor chain this carve reproduces - and they are the five `SLdrSpline` members of
+  `CTweakPlayerRes` (`typedef CMayaSpline`, stride `CHECK_SIZEOF(CMayaSpline, 0x44)`), destroyed in
+  reverse declaration order. **Kind B, unmodelled member in a modelled class** - debt, not a pass.
+  The class *is* modelled and its offsets are retail's: `include/MetroidPrime/Tweaks/
+  CTweakPlayerRes.hpp:55-59` declares `mBallTransitionSpline1..4` and `mMovementControlSpline` in
+  that order with `const SLdrTweakPlayerRes* mData` after them, `CHECK_SIZEOF(CTweakPlayerRes,
+  0x25c)`, so 0x258 - 5 x 0x44 = 0x104 fixes the first member at the offset the bytes show, and
+  `mData` at +0x258 is measured independently in `docs/research/tweak_globals.md` row 13
+  (the 604-byte class, `fn_82_AB4` constructing the same five splines at +0x104 .. +0x214).
+  What stops the member spelling is **access, not layout**: the five splines are `private` in that
+  header (the first member is private and the class has no `friend` and no accessor for them), so a
+  free function cannot name them - `__dt__11CMayaSplineFv(&self->mMovementControlSpline, -1)`
+  fails with `illegal access to protected/private member`, measured this run. And the function has
+  to stay a free `extern "C"` definition: retail's symbol is the anonymous `fn_80032774`
+  (`config/G2ME01/symbols.txt:962`), the deleting destructor `.ctors` 0x80032610 registers for
+  `gpTweakPlayerRes`, and a member definition would emit `__dt__18CTweakPlayerResFv` and pair with
+  nothing in objdiff.
+  Removed by: nothing available to a carve. It goes if `CTweakPlayerRes` gets a public accessor (or
+  the class's own destructor is claimed under its own mangled name), which is a header change this
+  unit does not need and must not make. The other six functions in the claim spell no raw offset:
+  two reach their members through the real class types (`delete self->mPtr` on
+  `single_ptr< CTweakPlayerGun >`/`< CTweakParticle >`), and the remaining two use `+ 8` and `+ 0xC`
+  on `void*` receivers, which the checker's two-character minimum does not count as field accesses.

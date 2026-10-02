@@ -441,6 +441,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/Kyoto/Math/Carve80031414.c
     src/Kyoto/Math/Carve80031AC8.c
     src/MetroidPrime/Factories/Carve80032674.c
+    src/MetroidPrime/Factories/Carve80032774.cpp
     src/MetroidPrime/Factories/Carve80032A98.c
     src/MetroidPrime/Factories/Carve80032BE8.c
     src/MetroidPrime/Enemies/Carve800358E0.c

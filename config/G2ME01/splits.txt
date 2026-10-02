@@ -141,6 +141,9 @@ MetroidPrime/Factories/CAssetFactory.cpp:
 MetroidPrime/Factories/Carve80032674.c:
 	.text       start:0x80032674 end:0x80032774
 
+MetroidPrime/Factories/Carve80032774.cpp:
+	.text       start:0x80032774 end:0x80032A98
+
 MetroidPrime/Factories/Carve80032A98.c:
 	.text       start:0x80032A98 end:0x80032BE8
 
