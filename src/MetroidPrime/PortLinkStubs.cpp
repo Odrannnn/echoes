@@ -5,14 +5,18 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 200 of them: the ones referenced **only by
+ * file supplies 199 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   190 functions, 10 data objects (counted 2026-10-02, after `src/MetroidPrime/ScriptObjects/
+ *   189 functions, 10 data objects (counted 2026-10-02, after `src/MetroidPrime/ScriptObjects/
+ *   Carve801FD7D4.c` retired `stub_230` because that unit now defines `fn_801FD7D4` for the port's
+ *   link too - the file's three derived terms moved `grep -cE 'asm\("'` 200 -> 199 and
+ *   `^extern "C" void stub_*() asm(` 190 -> 189, with `^extern "C" char stub_data_*` unmoved at
+ *   10.  Before that, 190 functions and 10 data objects, after `src/MetroidPrime/ScriptObjects/
  *   Carve801FD52C.cpp` retired `stub_231` because that unit now defines `fn_801FD52C` for the port's
- *   link too - the file's three derived terms moved `grep -cE 'asm\("'` 201 -> 200 and
- *   `^extern "C" void stub_*() asm(` 191 -> 190, with `^extern "C" char stub_data_*` unmoved at 10.
+ *   link too - the same three terms moved `grep -cE 'asm\("'` 201 -> 200 and
+ *   `^extern "C" void stub_*() asm(` 191 -> 190.
  *   **The 190 / 9 this line carried before it was superseded.**  Re-derived this run by the same
  *   three terms, the file held 191 function stubs and 10 data stubs before the retirement, so read
  *   against those terms the old line was one function high and one data object low.  Before that,
@@ -1253,30 +1257,34 @@ extern "C" void stub_227() {}
 // (`src/MetroidPrime/ScriptObjects/Carve801FD5E8.c`).  So the carve asks the port's link for
 // nothing new: one function stub out, none in.
 //
+// `stub_230`, the second, is **gone** for the same reason: `src/MetroidPrime/ScriptObjects/
+// Carve801FD7D4.c` defines `fn_801FD7D4` for real, with the same `Carve801FD998.c` body at stride
+// 0x24, and it hands its iterators to `fn_801FD858`, which the companion
+// `src/MetroidPrime/ScriptObjects/Carve801FD858.c` defines - whose own callee `fn_801FD8E0` is the
+// `Matching` `src/MetroidPrime/ScriptObjects/Carve801FD8E0.c`.  So this carve also asks the port's
+// link for nothing: one function stub out, none in.
+//
 // Unlike the `Carve801FD924.cpp` / `Carve801FDAE8.cpp` / `Carve801FD67C.cpp` carves next door, this
 // one costs **no data stub**: `fn_801FD4B0` stores nothing into its receiver, so it names no vtable.
-// Function stubs 186 -> 190, data stubs stay at 9.
+// Function stubs were 186 -> 190 across the four carves of this family, and are 189 with `stub_230`
+// retired here.  Data stubs stay at 10.
 //
 // Each of these is a stand-in with an empty body, like every other stub in this file, and it is
-// **not** a claim that the symbol is decompiled - neither of the two remaining is, and
+// **not** a claim that the symbol is decompiled - `fn_801FDB5C` is not, and
 // `docs/research/port_link_gap.md` keeps a symbol listed as still missing until the port link
-// actually resolves it. Claiming one instead only moves the same gap along: its 0x84 bytes need the
-// body of its own inner walk (`fn_801FDBE0` / `fn_801FD858`, 0x38 bytes each).
-// `fn_801FDB5C` is the one whose inner walk is already ours - `ScriptObjects/Carve801FDB5C.c`
-// claims 0x801FDBE0..0x801FDC88 and defines `fn_801FDBE0` there - yet the 0x84 bytes in front of it
-// are still open, and `docs/goal-notes/carve-801fdb5c.md` records the seven spellings measured for
-// them and why none of them links.  `fn_801FD998` and `fn_801FD52C` went the other way - their
-// inner walks `fn_801FDA1C` and `fn_801FD5B0` are ours (`ScriptObjects/Carve801FDA1C.c`, and
-// `ScriptObjects/Carve801FD52C.cpp` itself, whose callee `fn_801FD5E8` is claimed too), so each
-// carve cost the port link nothing and each stand-in is retired above.
+// actually resolves it.  Claiming it instead only moves the same gap along: its 0x84 bytes need the
+// body of its own inner walk (`fn_801FDBE0`, 0x38 bytes, which sits behind `fn_801FDB5C` and is
+// still unclaimed).  `fn_801FDB5C` is the last of the four whose inner walk is not yet ours -
+// `fn_801FDA1C`, `fn_801FD858`, `fn_801FD5B0` and `fn_801FD998` are all ours now
+// (`ScriptObjects/Carve801FDA1C.c`, `ScriptObjects/Carve801FD858.c`,
+// `ScriptObjects/Carve801FD52C.cpp` itself, whose callee `fn_801FD5E8` is claimed too, and
+// `ScriptObjects/Carve801FD998.c`) - yet the 0.84 bytes in front of `fn_801FDB5C` are still open,
+// and `docs/goal-notes/carve-801fdb5c.md` records the seven spellings measured for them and why
+// none of them links.  `fn_801FD998`, `fn_801FD7D4` and `fn_801FD52C` went the other way - their
+// inner walks are ours, so each carve cost the port link nothing and each stand-in is retired above.
 // The same trade `stub_196`, `stub_197` and `stub_227` above make for their carves' callees.
 extern "C" void stub_228() asm("fn_801FDB5C");
 extern "C" void stub_228() {}
-
-// fn_801FD7D4 - the +0x10 container's destructor; see the block above.
-extern "C" void stub_230() asm("fn_801FD7D4");
-extern "C" void stub_230() {}
-
 
 // fn_801FEE88 - retail 0x801FEE88, 0x68 = 104 bytes (`config/G2ME01/symbols.txt:8323`), the
 // 0x24-byte element's copy constructor: store the `.data` vtable `lbl_803B7BCC` into +0x0 and then
