@@ -1156,3 +1156,244 @@ raw-offset site(s) in 71 file(s), all documented`. `sha1sum build/G2ME01/main.do
   and then hoists its constants out of the unrolled body, which is never what retail did; naming
   the components breaks the hoist. Seen twice now in this file (`AccumulateBounds`,
   `SetGlobalScale`/`SetLocalScale`).
+
+---
+
+# progress-unit-celementgen — attempt 6 (lane L5, 2026-10-02)
+
+**One** more function of `Kyoto/Particles/CElementGen` taken to 100%. The unit goes
+**86 -> 87 / 104** matched functions and stays `NonMatching`; project total matched
+**12258 -> 12259**, `linked` held at **5860**. Whole-project per-function diff against
+`build/goal/judge/report.base.json`, every function in every unit: **0 worse, 1 better (at
+100.00%), 0 new, 0 gone** — the check the judge does not print.
+
+Diff is **one file**, `src/Kyoto/Particles/CElementGen.cpp` (+22/-2): one added include, the
+`FLT_MAX` redefine, and the bodies of two statements inside `InternalUpdate`. No header, no
+`asm`, nothing under `tools/` or `build/goal/`.
+
+| Function | Before | After |
+| --- | ---: | ---: |
+| `InternalUpdate__11CElementGenFd` | 90.77% (1296 B ours / 1316 B retail) | **100.00%** (1316 B) |
+
+Three independent changes, each measured alone on the tree as it stands.
+
+## 1. `FLT_MAX` was a **call**, so the bounds reset could not be hoisted (the big one)
+
+`libc/float.h:10` defines `#define FLT_MAX (*(float*)__float_max)`, so `CVector3f(FLT_MAX, ...)`
+compiled to `liu r3,0 / cal r31,0(r3)` — materialise the address of `__float_max`, call it,
+keep the pointer — and then re-load through `r31` **inside** the loop. Ours:
+
+```text
+  lui   r3,0
+  cal   r31,0(r3)        ; __float_max()
+loop:
+  lfs   f0,0(r31)        ; FLT_MAX
+  stfs  f0,716(r27)      ; mAabbMin.x   ... x3
+  lfs   f0,0(r31)        ; FLT_MAX again
+  fneg  f0,f0
+  stfs  f0,728(r27)      ; mAabbMax.x   ... x3
+  stfs  f31,740(r27)     ; mMaxSize = 0.f
+```
+
+Retail (0x802DA410):
+
+```text
+  lfd   f26,-15344(r2)  ; tolerance
+  lfs   f29,-15336(r2)  ; FLT_MAX
+  lfs   f30,-15332(r2)  ; -FLT_MAX
+  lfs   f31,-15432(r2)  ; 0.f
+  lfd   f25,-15352(r2)  ; skTickTime
+loop:
+  stfs  f29,716(r28)    ; mAabbMin.x   ... x3
+  stfs  f30,728(r28)    ; mAabbMax.x   ... x3
+  stfs  f31,740(r28)    ; mMaxSize
+```
+
+Same **values** (verified from the DOL's pool, not guessed — see the `sda` correction below):
+FLT_MAX, -FLT_MAX, 0.f. Retail keeps them in callee-save FPRs across the whole function, which is
+also why retail saves 7 FPRs where we saved 5. `#undef FLT_MAX / #define FLT_MAX
+3.402823466e+38f` at the top of the TU — the same value, spelled so mwcceppc reads it in place.
+**90.77% -> 96.55%**, and the object no longer references `__float_max`.
+
+This is **not new to the repo**: `src/MetroidPrime/PathFinding/CPathFindArea.cpp:17`,
+`src/MetroidPrime/Player/CPlayerVisor.cpp:20` and
+`src/MetroidPrime/ScriptObjects/CScriptTeamAiMgr.cpp:13` already carry the identical `#undef`
+block with the identical comment. Five attempts on this unit missed it because nobody grepped
+for `FLT_MAX`/`__float_max` before reading disassembly. **Grep the tree for the macro before
+believing a constant is a constant.**
+
+## 2. `rstl::max_val` is two spellings, and only one of them is retail's
+
+`scaledDt = rstl::max_val(0.0, scaledDt * timeScale);` — `rstl::max_val(a,b)` is
+`return (a<b) ? b : a;` (`include/rstl/math.hpp:13`) — makes mwcceppc build a **phi on the
+destination FPR**, because the multiply lands in a scratch register first:
+
+```text
+  lfd   f0,0.0
+  fm    f1,f25,f1        ; scratch
+  fcmpo 0,f0,f1
+  bge   L
+  b     M
+  fmr   f27,f1
+  fmr   f27,f0
+```
+
+Splitting it — scale in place, then clamp the variable — gives retail's branch, and **keeping
+`max_val` on the second line** (`scaledDt = rstl::max_val(0.0, scaledDt);`) is what produces the
+`bge <body>; b <merge>; body; merge` layout with the body **out of line**:
+
+```text
+  lfd   f0,0.0
+  fm    f27,f27,f1       ; in place
+  fcmpo 0,f0,f27
+  bge   L_clamp          ; <- branch TO the body
+  b     L_merge
+L_clamp:
+  fmr   f27,f0
+L_merge:
+```
+
+**96.55% -> 99.67%**, and it is the difference between 328 and 329 instructions. The general
+rule: **MW lays out an assignment ternary as a phi; it lays out the same value as a statement as a
+branch — and only the statement form puts the body out of line.** See the spelling table below,
+because five of the seven other spellings are strictly worse.
+
+## 3. Retail rounds `floor()` to `float` **before** the integer cast
+
+```cpp
+const int count = static_cast< int >(floor(mGeneratorRemainder));
+```
+
+emits `bl floor / fctiwz f0,f1` (double -> int). Retail emits `bl floor / **frsp f0,f1** /
+fctiwz f0,f0` — the result is materialised as a `float` and only then cast to `int`. Naming the
+float (`const float whole = floor(...); const int count = static_cast<int>(whole);`) restores
+the round trip. **97.34% -> 99.67%** together with (2); note the two changes are complementary —
+(2) removes one instruction and (3) adds one, and both are needed.
+
+## Tooling correction: `tools/sda.py` resolves `disp(r2)` against the **wrong** base
+
+`tools/sda.py` uses `_SDA_BASE_` (0x8041FD80). Retail's constants in these functions resolve
+against **`_SDA2_BASE_` = 0x804223C0**. Under `_SDA_BASE_` every `lfd ...(r2)` in
+`InternalUpdate` reads as 1.4e306 / 2.06e11 / 4.7e-315 / 5.3e-35 — four nonsense doubles — and
+that is what sent me looking for a *semantic* difference in the bounds reset ("retail sets
+`mAabbMin=0`, `mAabbMax=1`, `mMaxSize=0.0625`!") which would have been a **wrong** change.
+Attempt 5's pool read was right because it used 0x804223C0 by hand. Correct reads:
+
+| disp | address | value |
+| ---: | --- | --- |
+| -15352 / -15384 | 0x8041E7C8 | 0.0166666667 = `skTickTime` (1/60) |
+| -15344 | 0x8041E7D0 | 1.66666667e-05 = `skTickTime`/1000 = `tolerance` |
+| -15376 | 0x8041E7B0 | 0.0 (the `max_val` clamp) |
+| -15336 / -15332 | 0x8041E7D8 / DC | FLT_MAX / -FLT_MAX |
+| -15432 | 0x8041E7D8 | 0.0f |
+| -15424 | 0x8041E780 | 1.0f |
+
+**Read every SDA constant with `_SDA2_BASE_`, and confirm the base on a value you already know
+(`-15424` must be 1.0f for `timeScale`) before trusting any other.** I did not edit
+`tools/sda.py` — it is judge-owned — but three prior attempts' pool readings in this file should
+be re-checked against 0x804223C0. A quick independent check that the base is right: of the 1343
+`lfd ...(r2)` sites in retail's `.text`, 984 land inside `.sdata2` and every one of them reads
+as a sane constant (0.0, 1.192e-07, 3.0518e-05, …) once the base is 0x804223C0.
+
+## Spellings tried and rejected (so the next run skips them)
+
+All measured **inside the real `InternalUpdate` body** with `tools/fast_try.sh
+Kyoto/Particles/CElementGen`; "instrs" is the count for the whole function (retail: 329).
+
+The `scaledDt` clamp, after `scaledDt *= timeScale;` — base = `!(0.0 < scaledDt)` at 99.67%/328:
+
+| spelling | % | instrs | mnemonic |
+| --- | ---: | ---: | --- |
+| `scaledDt = rstl::max_val(0.0, scaledDt * timeScale);` (original) | 98.88% | 330 | phi: `fm/fcmpo/bge/b/fmr/fmr` |
+| `scaledDt = rstl::max_val(scaledDt * timeScale, 0.0);` (operands swapped) | 98.84% | 330 | phi |
+| `if (!(0.0 < scaledDt)) { scaledDt = 0.0; }` | 99.67% | 328 | `blt` over an inline body |
+| `if (scaledDt < 0.0) { scaledDt = 0.0; }` | 99.67% | 328 | identical bytes to the above |
+| `if (0.0 < scaledDt) {} else { scaledDt = 0.0; }` (empty then) | 99.67% | 328 | MW normalises it away |
+| `if (0.0 >= scaledDt) { scaledDt = 0.0; }` | 99.36% | 329 | `cror 2,1,2` + `bne` |
+| `if (scaledDt <= 0.0) { scaledDt = 0.0; }` | 99.33% | 329 | `cror 2,0,2` + `bne` |
+| `double step = scaledDt * timeScale; if (!(0.0 < step)) step = 0.0; scaledDt = step;` | 97.92% | 331 | extra phi |
+| **`scaledDt = rstl::max_val(0.0, scaledDt);` (kept)** | **100.00%** | **329** | `bge` to an out-of-line body |
+
+**`>=` and `<=` on doubles are a trap**: mwcceppc canonicalises both into `cror` + `bne`, one
+instruction *more* than the statement form. Only `<` / `!(<)` are free.
+
+`RenderModelParticle` (99.94%, 796 B, unchanged) — its entire remaining diff is the order of two
+byte reloads out of the temporary `CModelFlags`: retail `lbz r7,72(r1)` then `lbz r6,73(r1)`
+(`mBlendMode` then `mMatSetIdx`), we do 73 then 72; identical register assignment on the stores.
+**Attempt 5's untried lever is now measured and it is not the lever**: swapping `mBlendMode` and
+`mMatSetIdx` in the initialiser list of `CModelFlags(const CModelFlags&, uint)` in
+`include/Kyoto/Graphics/CModelFlags.hpp` gives **99.94%, byte-identical**. So MW's load order
+here is not the initialiser order. Do not spend another run on the header.
+
+## Re-measured, unchanged, with the cause restated
+
+- **`RenderModels` (2332 B) 99.07%** — attempt 5's reading holds and is now bounded: one CSE of
+  the `EndModelRender`/`EndIndirectModelRender` argument setup plus a 1-register GPR offset.
+- **`GetLight` (660 B) 97.58%, `IsSystemDeletable` (164 B) 85.37%, `GetSystemCount` (132 B)
+  69.09%, `EndModelRender` (140 B) 94.29%, `__ct__CElementGen` (3080 B) 99.05%** — the
+  prologue-store-interleaving family, identical instruction multisets, differing only in where
+  the callee-save stores sit relative to the first body loads. Four attempts have now failed to
+  find a source lever. I did not try new spellings here, so this is **not** a `WALL:` line.
+- **`ConstructChildParticleSystem` (1244 B) 99.45%** — one instruction, retail's
+  `rlwinm r21,r6,31,31,31` vs our `clrlwi r21,r6,31`; unchanged.
+- **`GetBounds` (136 B) 81.59%** — attempt 4/5 concluded the copy "needs a flat block copy and a
+  `CAABox` specialisation". **That is now disproved by this run's disassembly**: ours already
+  emits a flat 6-word `lwz`/`stw` move, and the difference is purely the *schedule* — retail
+  pipelines load/store one deep with the `m_valid` store sunk between the first load and the
+  second, we batch the loads two deep and store the flag first. Identical multiset, identical
+  registers, identical size; a block-copy specialisation would change nothing. Do not attempt it.
+- **`fn_802DBE78` (36 B) 0.00%** — attempt 4's dead end stands (its definition location either
+  costs the helper or breaks the port link); unchanged.
+
+## Verification
+
+`./tools/goal_check.sh build/goal/item.json` in `wt-mp2-goal-L5`:
+
+```text
+goal_check: item progress-unit-celementgen (progress) target=Kyoto/Particles/CElementGen
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12258 -> 12259   linked 5860 -> 5860
+  ok    check_symbol_names.py
+  ok    All:  34.64% fuzzy, 28.02% matched, 12.89% linked (12259 / 28465 functions)
+  ok    target rose: main/Kyoto/Particles/CElementGen: 86 -> 87 / 104 functions
+  ok    no asm added
+goal_check: PASS progress-unit-celementgen
+```
+
+Whole-project per-function diff of `build/report.json` against
+`build/goal/judge/report.base.json`, all 28465 functions in all units: **0 worse, 1 better,
+0 new, 0 gone**. That is worth stating explicitly because the `#undef FLT_MAX` adds two pool
+entries to this TU's `.sdata2` and shifts every later constant address — objdiff ignores
+relocation fields, and **no other function in the project moved at all**.
+
+`python3 tools/check_decl_order.py --unit Kyoto/Particles/CElementGen` -> `ok: 1 unit(s) checked,
+none emits its functions out of retail order`. `python3 tools/check_raw_offsets.py` -> `ok: 167
+raw-offset site(s) in 71 file(s), all documented in raw_offsets.md`. `sha1sum
+build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+
+`docs/HANDOFF.md`'s state block shows the new counts because `goal_check.sh` runs `gate.sh` with
+`MP_GATE_DOCS_WRITE=1`, which rewrites the derived numbers itself; I did not hand-edit it.
+
+## Lessons worth keeping (general, not GameCube-specific)
+
+- **Grep for the macro before you trust a disassembly.** Five attempts on this unit read retail's
+  pool, saw `mAabbMin` set from a register instead of `__float_max()`, and looked for a semantic
+  difference. The semantic difference did not exist; the constant was not a constant. A
+  `#define` in a libc header had turned `FLT_MAX` into a function call that the compiler could
+  not hoist, and three files in this repo already document that.
+- **A wrong constant base produces a confident, plausible, wrong semantic difference.** Reading
+  four `lfd` operands against `_SDA_BASE_` gave four garbage doubles, and "retail sets the bounds
+  box to 0/1/0.0625" is exactly the kind of finding a reviewer should reject and a reader should
+  believe. Validate a base against one value you already know before deriving anything from it.
+- **An assignment and a statement can be the same value and different code.** MW gives the
+  assignment ternary a phi and the statement a branch; only the statement puts the body out of
+  line. This is the same lever as attempts 1-2's "arm order", seen from the other side: it is
+  not about `if` arms, it is about `?:` versus `if`.
+- **`>=` and `<=` cost an instruction.** mwcceppc canonicalises both on doubles into
+  `cror`+`bne`; `<` and `!(<)` compile to a bare `blt`. Prefer the strict form unless the value
+  is genuinely a boolean.
+- **A wrong-tool report is worse than no report.** Attempt 5 was right about `fsel` and the
+  `-m rs6000` decode, but read its pool against the wrong base; its numeric findings happened to
+  survive because it also knew the answer from another route. When a number is quoted from a
+  tool, record which base it used.

@@ -18,9 +18,21 @@
 #include "rstl/algorithm.hpp"
 #include "rstl/math.hpp"
 
+#include <float.h>
+
 #include "alloca.h"
 
 #include "dolphin/gx.h"
+
+// libc/float.h's `FLT_MAX` is `(*(float*)__float_max)`, which makes mwcceppc emit
+// `liu r3,0 / cal r31,0(r3)` and then re-load through `r31` *inside* the bounds-reset loop in
+// `InternalUpdate`, with a `fneg` for the negative case. Retail reads both constants in place
+// before the loop and keeps them in `f29`/`f30`, so the constant is spelled as a literal here -
+// same value, same store order, and the object references no `__float_max`. Same finding, same
+// workaround, as src/MetroidPrime/PathFinding/CPathFindArea.cpp:17, CPlayerVisor.cpp:20 and
+// CScriptTeamAiMgr.cpp:13.
+#undef FLT_MAX
+#define FLT_MAX 3.402823466e+38f
 
 // Guessed names for the TU-local scale default and initialization guard.
 static const CVector3f skOneVector(1.f, 1.f, 1.f);
@@ -417,7 +429,11 @@ bool CElementGen::InternalUpdate(double dt) {
   if (mLoadedGenDesc->mPSTS) {
     float timeScale = 1.f;
     mLoadedGenDesc->mPSTS->GetValue(mCurFrame, timeScale);
-    scaledDt = rstl::max_val(0.0, scaledDt * timeScale);
+    // `rstl::max_val` as an assignment forces mwcceppc into a 0/1 phi on the destination FPR
+    // (`fm`/`fcmpo`/`bge`/`b`/`fmr`/`fmr`). Retail scales in place and clamps with a single
+    // branch, which is `max_val(0.0, x)` written as a statement rather than an expression.
+    scaledDt *= timeScale;
+    scaledDt = rstl::max_val(0.0, scaledDt);
   }
   mCurSeconds += scaledDt;
   if (mMBLR && dt > 0.0 && mLoadedGenDesc->mMBSP) {
@@ -439,7 +455,11 @@ bool CElementGen::InternalUpdate(double dt) {
       }
       generationRate = rstl::max_val(0.f, generationRate * mGeneratorRate);
       mGeneratorRemainder += generationRate;
-      const int count = static_cast< int >(floor(mGeneratorRemainder));
+      // Retail rounds the `floor()` result to `float` *before* the integer cast: `frsp f0,f1`
+      // then `fctiwz f0,f0`. Written straight as a cast to `int`, mwcceppc emits only the
+      // `fctiwz` and the round trip through `float` disappears.
+      const float whole = floor(mGeneratorRemainder);
+      const int count = static_cast< int >(whole);
       mGeneratorRemainder -= static_cast< float >(count);
       if (mLoadedGenDesc->mMAXP) {
         mLoadedGenDesc->mMAXP->GetValue(mCurFrame, mMAXP);
