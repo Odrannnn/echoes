@@ -389,18 +389,25 @@ to 0 in the queue (`carve-8000447C`, `carve-80032674`, `carve-802188e4`,
 `fails=1` (backups `*.bak-dberr-*` in the goal dir). A lane runs the script it started with, so
 the change takes effect at each lane's next restart.
 
-**Next two loop improvements, measured 2026-10-02, neither built yet.** (1) *Judged-PASS work is
-thrown away at publish.* Of 464 agent runs that day, 316 passed the judge and 225 landed; 97 were
-released by `rebase_onto_tip()` in `tools/run_goal.sh` ("does not apply on H") for a whole new agent
-run. By conflicted non-docs file: 46 `src/MetroidPrime/PortLinkStubs.cpp` alone, about 65 involving
-it, 16 `patch too large` (the docs-bloat period, fixed), and nearly all the rest only `configure.py`,
-`files.cmake`, `config/G2ME01/splits.txt`. `PortLinkStubs.cpp` collides because every carve
-hand-edits the counted prose in its header comment (lines 1-153: "supplies N of them", "N functions,
-M data objects (counted ... after the X carve") although `tools/gen_link_stubs.py` owns that text.
-The fix is a resolver beside `tools/union_docs_conflicts.sh`: for the three additive config files
-take the tip's version and re-insert the item's added entries; for `PortLinkStubs.cpp` take the
-tip's header and apply only the item's `stub_N` add/retire hunks (better: derive the header counts
-so agents stop writing them); the existing re-judge then decides. (2) *Twins.* `tools/twin_scan.py`
+**Two loop improvements, measured 2026-10-02.** (1) *Judged-PASS work was thrown away at publish -
+built, live at each lane's next restart.* Of 464 agent runs that day, 316 passed the judge and 225
+landed; 97 were released by `rebase_onto_tip()` in `tools/run_goal.sh` ("does not apply on H") for a
+whole new agent run. By conflicted non-docs file: 46 `src/MetroidPrime/PortLinkStubs.cpp` alone,
+about 65 involving it, 16 `patch too large` (the docs-bloat period, fixed), and nearly all the rest
+only `configure.py`, `files.cmake`, `config/G2ME01/splits.txt`. `tools/resolve_carry_conflicts.py`
+now runs before `tools/union_docs_conflicts.sh`: in the three config files a hunk both sides only
+added to keeps both (lower `Carve<address>` first); in `PortLinkStubs.cpp` the header comment is
+the tip's, a carried `stub_N` whose name the tip took is renumbered, and one whose symbol the tip
+already stubs is dropped; anything both sides rewrote is still released, and the re-judge decides
+the rest. **Verified only by replay, not yet by a landed commit**: the four failed carries whose
+`rebase.patch` was still on disk (lanes 4, 6, 10, 11) each resolve with nothing left conflicted and
+the merged stub file passes `g++ -fsyntax-only`; none was put through `goal_check.sh`. One of the
+four (`carve-801fd998`, 0x801FD998..0x801FDAA4) overlaps `Carve801FDA1C.c` on the tip, so the judge
+should still refuse it - a real conflict, not a textual one. Count `both sides' entries kept` against
+`does not apply` in the lanes' `run.log` to measure it. Not done: `PortLinkStubs.cpp`'s header
+counts are still prose agents rewrite (lines 1-163, already one high or low several times by its own
+account); taking the tip's on a carry leaves them stale by that carry, and nothing reads them -
+deriving them, or deleting them, is the real fix. (2) *Twins.* `tools/twin_scan.py`
 (reloc-masked word hash of every function in the target objects against `build/report.json`) finds
 3,725 of the 14,997 unmatched functions over 8 bytes byte-shape-identical to an already matched one:
 888 DOL, 2,837 REL, 2,088 over 64 bytes, 329,012 bytes; 1,678 more are duplicates of each other.
