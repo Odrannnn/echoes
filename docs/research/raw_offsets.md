@@ -47,6 +47,8 @@ the `progress-twin-rel-ingboostballguardian` item's module 30 accessor block -
 `CIngBoostBallGuardian194C.cpp` (1 site), `CIngBoostBallGuardianC6AC.cpp` (1) and
 `CIngBoostBallGuardianPredicates.cpp` (7), nine sites over three new files. The line before those
 two read 176 in 76 while the tool already measured 185 in 79, so the totals here are re-derived
+2026-10-02, after the `progress-twin-rel-sporb` item added `SporbDtors.cpp` (6 sites: `+0x584`,
+`+0xA0`, `+0x5C`, `+0x18`, `+0x238`, `+0x1F8`). The line before that edit read 185 in 79 in the
 from the tool rather than accumulated by hand).
 
 **This line has been wrong before, five times over, and the failure was always the same one.**
@@ -892,6 +894,19 @@ Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-ac
 ## `src/MetroidPrime/ScriptObjects/SporbAccessors.cpp` (2 sites)
 
 Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/SporbDtors.cpp` (6 sites)
+
+Offsets 0x584, 0xA0, 0x5C, 0x18, 0x238, 0x1F8. **Kind A**, for the same reason as every other
+section on this page and the same situation as `SporbAccessors.cpp` above, only for a different
+part of the module: this is Sporb's (module 76) deleting-destructor chain, `.text 0x11B34..0x11D14`,
+carved out as its own `Matching` unit. The receivers are bare `void*`, so there is no `this` and no
+modelled class to write a field through: `+0x238` and `+0x1F8` are the two members
+`~CGameProjectile` tears down, `+0xA0`/`+0x5C`/`+0x18` the three `CMayaSpline` members
+`~CCameraShakerData` tears down, and `+0x584` the three floats `fn_76_11CCC` copies. The classes
+these belong to have no struct in this tree, and the same blockers as the rest of this table
+apply: modelling them is a per-class repair, not a one-line header edit. Rule 1 applies - turning
+these into fabricated members would be inventing a class.
 
 ## `src/MetroidPrime/ScriptObjects/StoneToadAccessors.cpp` (2 sites)
 

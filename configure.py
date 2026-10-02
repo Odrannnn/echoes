@@ -2892,6 +2892,7 @@ config.libs = [
         "Sporb",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/SporbAccessors.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/SporbDtors.cpp"),
         ],
     ),
     Rel(

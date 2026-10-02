@@ -1208,6 +1208,7 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/WallWalkerAccessors.cpp
     src/MetroidPrime/ScriptObjects/StoneToadAccessors.cpp
     src/MetroidPrime/ScriptObjects/SporbAccessors.cpp
+    src/MetroidPrime/ScriptObjects/SporbDtors.cpp
     src/MetroidPrime/ScriptObjects/SpankWeedAccessors.cpp
     # Module 73's .text 0x39E8..0x3ABC - `rstl::vector<SConnection, rmemory_allocator>::reserve`
     # and the `rstl::uninitialized_copy` it calls - and .text 0x3B7C..0x3BE4 - one more
