@@ -2838,6 +2838,9 @@ Kyoto/CRelFileDebugInfo.cpp:
 Kyoto/Math/Carve8033F2CC.c:
 	.text       start:0x8033F2CC end:0x8033F2D0
 
+Kyoto/Math/Carve80341284.c:
+	.text       start:0x80341284 end:0x80341310
+
 Kyoto/Math/Carve803414FC.c:
 	.text       start:0x803414FC end:0x80341500
 
