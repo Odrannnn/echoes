@@ -5,11 +5,12 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 158 of them: the ones referenced **only by
+ * file supplies 159 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   154 functions, 4 data objects (counted 2026-10-02, after the two
+ *   155 functions, 4 data objects (counted 2026-10-02, after `fn_801F9848` was added by hand
+ *   below for `Carve801F97C8.c`; before that 154, after the two
  *   `Carve801FF720.cpp` callees below were added; the count before that was 152, after `fn_80008D68` was added by
  *   hand below for `Carve800045A0.c`; the count before that was 151, after the three
  *   `Carve801FF5A0.cpp` callees were added by hand below, and 148 before those, itself
@@ -785,6 +786,26 @@ extern "C" void stub_183() {}
 
 extern "C" void stub_184() asm("fn_801FD8E0");
 extern "C" void stub_184() {}
+
+// fn_801F9848 - retail 0x801F9848, 0x88 = 136 bytes / 34 instructions (`symbols.txt:8193`), the
+// copy constructor of the 0x40-byte element that `CCameraColliderGroup`'s vector holds: it stores
+// the vtable `lbl_803B6564` into +0x0 and copies the rest of the payload with interleaved
+// `lfs`/`stfs` pairs and a `lwz`/`stw` at +0x38. Asked for by the port
+// because `src/MetroidPrime/ScriptObjects/Carve801F97C8.c` (Matching, 0x801F97C8..0x801F9848)
+// reproduces `fn_801F9820` byte for byte, and that body is exactly `cmplwi r3,0 / beq / bl
+// fn_801F9848` - the call is in retail's bytes, so the carve cannot drop it. For the DOL nothing is
+// needed: dtk's own `auto_03_801F9848_text.o` defines it, and this file is not in `configure.py`,
+// so the stub cannot reach main.dol. The port link does not have that object, which is why the gap
+// grew by this symbol: measured in this tree with the stub absent,
+// `python3 tools/link_gap.py --rebuild` exits 1 and prints `gap grew: fn_801F9848 is not in
+// port_link_gap_list.md` (`build/gate-link.log`), with 287 MISSING.
+//
+// This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
+// claim that fn_801F9848 is decompiled - it is not. Unlike `stub_178` and the callees above, the
+// alternative is not "carve one more forwarder": this body has no `bl` at all, and matching its 34
+// instructions is a spelling job of its own, which is why the claim stops at 0x801F9848.
+extern "C" void stub_185() asm("fn_801F9848");
+extern "C" void stub_185() {}
 
 
 // Data objects. A vtable or typeinfo stub is zero-filled: harmless to take the
