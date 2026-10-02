@@ -37,3 +37,19 @@ extern "C" bool fn_80215860(const CTweakPlayerControls* self) {
 extern "C" bool fn_8021583C(const CTweakPlayerControls* self) {
   return reinterpret_cast< const uchar* >(self->GetData())[0x145] != 0;
 }
+
+// `fn_80215854` (retail 0x80215854) and `fn_8021586C` (retail 0x8021586C) are two more readers in
+// the same run, three instructions each, and they are what `CPlayer::TurnInput` (retail
+// 0x80187E74) calls: `fn_8021586C` four times in the function and `fn_80215854` six, always as
+// `GetTweakPlayerControls()`'s return value, so until they had a compiled home the port could
+// not link TurnInput at all. Offsets are `lbz r3,320(r3)` and `lbz r3,316(r3)`; with
+// `SLdrTweakPlayerControls::booleans` at 0x130 those are its 17th and 13th members,
+// `fallingDoubleJump` and `unknown_0x4fcf4b70`. The loader-generated names are not what the call
+// site's control flow implies (Prime 1 reads a free-look toggle and a hold-buttons flag there),
+// so the call site keeps retail's function names and this file keeps the loader's field names.
+extern "C" bool fn_80215854(const CTweakPlayerControls* self) {
+  return self->GetData()->booleans.fallingDoubleJump;
+}
+extern "C" bool fn_8021586C(const CTweakPlayerControls* self) {
+  return self->GetData()->booleans.unknown_0x4fcf4b70;
+}

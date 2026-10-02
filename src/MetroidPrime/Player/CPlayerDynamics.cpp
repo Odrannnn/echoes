@@ -1,14 +1,21 @@
 #include "MetroidPrime/Player/CPlayer.hpp"
 
 #include "Collision/CCollidableSphere.hpp"
+#include "Kyoto/Math/CRelAngle.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CMorphBall.hpp"
-#include "MetroidPrime/Tweaks/CTweakBall.hpp"
-#include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptPlatform.hpp"
 #include "MetroidPrime/TCastTo.hpp"
+#include "MetroidPrime/Tweaks/CTweakBall.hpp"
+#include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 
 #include "Kyoto/Alloc/CMemory.hpp"
+
+// Retail's two unnamed control-tweak flag readers, hosted in
+// `src/MetroidPrime/PortCTweakPlayerControls.cpp` next to `fn_80215860`.
+extern "C" bool fn_80215854(const CTweakPlayerControls* self);
+extern "C" bool fn_80215860(const CTweakPlayerControls* self);
+extern "C" bool fn_8021586C(const CTweakPlayerControls* self);
 
 // NonMatching scaffold. Definitions are in reverse target order for deferred inlining.
 
@@ -302,8 +309,46 @@ void CPlayer::ComputeMovement(const CFinalInput& input, CStateManager& mgr, floa
 }
 
 float CPlayer::ForwardInput(const CFinalInput& input, float turnInput) const {
-  // TODO: Recover the remaining target behavior.
-  return 0.f;
+  // Retail 0x80188160. Prime 1's body, with two of its names replaced: `CheckPostGrapple()` is
+  // this repo's `InGrappleJumpCooldown()`, and `GetMoveDuringFreeLook()` is retail's unnamed
+  // `fn_80215860`. Prime 1's `close_enough(a, b)` is `CMath::AbsF(a - b) < 1e-05f`, which is
+  // exactly the `fsubs` against a pooled 0.f and the 1e-05f threshold retail compares against.
+  float forward = GetControlMapper().GetAnalogInput(CControlMapper::kC_Forward, input);
+  float backward = GetControlMapper().GetAnalogInput(CControlMapper::kC_Backward, input);
+  if (mMorphBallState != kMS_Unmorphed || InGrappleJumpCooldown()) {
+    backward = 0.f;
+  }
+  if (!(forward < 0.001f)) {
+    forward = CMath::Limit(forward / 0.8f, 1.f);
+    if (CMath::AbsF(atan2f(CMath::AbsF(turnInput), forward)) <
+        CRelAngle::FromDegrees(50.f).AsRadians()) {
+      const CVector3f stick(CMath::AbsF(turnInput), forward, 0.f);
+      if (stick.CanBeNormalized()) {
+        forward = stick.Magnitude();
+      }
+    }
+  }
+  if (!(backward < 0.001f)) {
+    backward = CMath::Limit(backward / 0.8f, 1.f);
+    if (CMath::AbsF(atan2f(CMath::AbsF(turnInput), backward)) <
+        CRelAngle::FromDegrees(50.f).AsRadians()) {
+      const CVector3f stick(CMath::AbsF(turnInput), backward, 0.f);
+      if (stick.CanBeNormalized()) {
+        backward = stick.Magnitude();
+      }
+    }
+  }
+  if (!fn_80215860(GetTweakPlayerControls())) {
+    CVector3f flatVelocity = GetVelocityWR();
+    flatVelocity.SetZ(0.f);
+    if (mInFreeLook || mLookButtonHeld) {
+      if (mMovementState == NPlayer::kMS_OnGround ||
+          CMath::IsEpsilon(flatVelocity.Magnitude(), 0.f, 1e-05f)) {
+        return 0.f;
+      }
+    }
+  }
+  return CMath::Limit(forward - backward * GetTweakPlayer()->GetBackwardsForceMultiplier(), 1.f);
 }
 
 float CPlayer::StrafeInput(const CFinalInput& input) const {
@@ -315,8 +360,41 @@ float CPlayer::StrafeInput(const CFinalInput& input) const {
 }
 
 float CPlayer::TurnInput(const CFinalInput& input) const {
-  // TODO: Recover the remaining target behavior.
-  return 0.f;
+  // Retail 0x80187E74. Prime 1's body verbatim, with the two tweak-control flags taken from
+  // retail's own unnamed readers rather than `gpTweakPlayer`: `fn_8021586C` gates the whole
+  // free-look block and `fn_80215854` the look-button hold test, and each of them is re-`d`
+  // rather than hoisted, so the source has to spell `!H || (H && mLookButtonHeld)` twice over.
+  float left = GetControlMapper().GetAnalogInput(CControlMapper::kC_TurnLeft, input);
+  float right = GetControlMapper().GetAnalogInput(CControlMapper::kC_TurnRight, input);
+  if (fn_8021586C(GetTweakPlayerControls())) {
+    if (!fn_80215854(GetTweakPlayerControls()) ||
+        (fn_80215854(GetTweakPlayerControls()) && mLookButtonHeld)) {
+      if (left < 0.01f && right < 0.01f) {
+        left = GetControlMapper().GetAnalogInput(CControlMapper::kC_LookLeft, input);
+        right = GetControlMapper().GetAnalogInput(CControlMapper::kC_LookRight, input);
+      }
+    }
+  } else if (!fn_80215854(GetTweakPlayerControls()) ||
+             (fn_80215854(GetTweakPlayerControls()) && mLookButtonHeld)) {
+    const float lookLeft = GetControlMapper().GetAnalogInput(CControlMapper::kC_LookLeft, input);
+    const float lookRight =
+        GetControlMapper().GetAnalogInput(CControlMapper::kC_LookRight, input);
+    if (lookLeft > 0.01f || lookRight > 0.01f) {
+      return 0.f;
+    }
+  }
+  if (mOrbitState == kOS_OrbitObject || mOrbitState == kOS_Grapple) {
+    return 0.f;
+  }
+  if (IsMorphBallTransitioning()) {
+    return 0.f;
+  }
+  float turn = left - right;
+  if (mOrbitModeTimer > 0.f) {
+    turn *= 1.f - 0.5f * CMath::Clamp(0.f, mOrbitModeTimer / GetTweakPlayer()->GetOrbitModeTimer(),
+                                     1.f);
+  }
+  return CMath::Limit(turn, 1.f);
 }
 
 float CPlayer::JumpInput(const CFinalInput& input, CStateManager& mgr) {
@@ -329,7 +407,81 @@ void CPlayer::SetMoveState(NPlayer::EPlayerMovementState state, CStateManager& m
 }
 
 void CPlayer::CalculatePlayerMovementDirection(float dt, const CVector3f& displacement) {
-  // TODO: Recover the remaining target behavior.
+  // Retail 0x80186FE4. Prime 1's body, with two measured differences: there is no early
+  // `kMS_Morphing || kMS_Unmorphing` return, and the delta is the `displacement` argument itself
+  // (r31, used in place - the function opens with `displacement.CanBeNormalized()`). The two
+  // thresholds are Prime 1's own, read out of the pool: 0.02f (`-23012(r2)`) and 0.25f
+  // (`-23008(r2)`). `GetTranslation()` here is `CActor::mPosition` (0x54), which is what retail's
+  // `lfs f0,84(r30)` triple reads.
+  if (displacement.CanBeNormalized() && displacement.Magnitude() > 0.02f) {
+    mTimeMoving += dt;
+    mMoveSpeed = CMath::AbsF(displacement.Magnitude() / dt);
+    mLookDir = displacement.AsNormalized();
+    CVector3f flatDelta = displacement;
+    flatDelta.SetZ(0.f);
+    if (flatDelta.CanBeNormalized()) {
+      mFlatMoveSpeed = CMath::AbsF(flatDelta.Magnitude() / dt);
+      flatDelta.Normalize();
+      switch (mMorphBallState) {
+      case kMS_Morphed:
+        if (mFlatMoveSpeed > 0.25f) {
+          mMoveDir = flatDelta;
+        }
+        mGunDir = mMoveDir;
+        mLastPosForDirCalc = GetTranslation();
+        break;
+      case kMS_Unmorphed:
+      case kMS_Morphing:
+      case kMS_Unmorphing:
+        mLookDir = GetTransform().GetForward();
+        mMoveDir = mLookDir;
+        mMoveDir.SetZ(0.f);
+        if (mMoveDir.CanBeNormalized()) {
+          mMoveDir.Normalize();
+        }
+        mGunDir = mMoveDir;
+        mLastPosForDirCalc = GetTranslation();
+        break;
+      }
+    } else {
+      if (mMorphBallState != kMS_Morphed) {
+        mLookDir = GetTransform().GetForward();
+        mMoveDir = mLookDir;
+        mMoveDir.SetZ(0.f);
+        if (mMoveDir.CanBeNormalized()) {
+          mMoveDir.Normalize();
+        }
+        mGunDir = mMoveDir;
+        mLastPosForDirCalc = GetTranslation();
+      }
+      mFlatMoveSpeed = 0.f;
+    }
+  } else {
+    mTimeMoving = 0.f;
+    switch (mMorphBallState) {
+    case kMS_Morphed:
+    case kMS_Morphing:
+    case kMS_Unmorphing:
+      mLookDir = mMoveDir;
+      break;
+    default:
+      mLookDir = GetTransform().GetForward();
+      mMoveDir = mLookDir;
+      mMoveDir.SetZ(0.f);
+      if (mMoveDir.CanBeNormalized()) {
+        mMoveDir.Normalize();
+      }
+      mGunDir = mMoveDir;
+      mLastPosForDirCalc = GetTranslation();
+      break;
+    }
+    mMoveSpeed = 0.f;
+    mFlatMoveSpeed = 0.f;
+  }
+  mMoveDir.SetZ(0.f);
+  if (mMoveDir.CanBeNormalized()) {
+    mLookDir.Normalize();
+  }
 }
 
 void CPlayer::CalculateLeaveMorphBallDirection(const CFinalInput& input) {

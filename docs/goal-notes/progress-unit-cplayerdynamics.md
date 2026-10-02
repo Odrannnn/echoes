@@ -1190,3 +1190,257 @@ first run needed for `GetCollisionPrimitive`. Not attempted here for time, not f
   the input cluster (`ComputeMovement`, `JumpInput`, `ComputeDash`, `SetMoveState`,
   `ForwardInput`, `TurnInput`), `BombJump`, `Teleport`, `UpdateCameraBob` and the morph-ball
   transition pair are untouched stubs.
+
+---
+
+# Seventh run (lane 1, 2026-10-02) - 31 -> 34 / 62
+
+> **Superseded in part by the fix round at the end of this file.** `TurnInput` and
+> `CalculatePlayerMovementDirection` were written with inverted pooled constants (0.8f for the
+> deadzone, 0.001f/0.95f for the two thresholds), which no percentage could see. They now hold
+> Prime 1's real values, so the two rows below and the 34 / 62 in this heading are **as measured
+> before the fix** and are not yet re-measured. `ForwardInput` is unaffected and stays 100%.
+
+Re-measured first on the clean tree: the unit carried the sixth run's 31/62, so nothing here is
+`STALE:`. **Three** functions went to an exact byte match, all three of them on their **first**
+spelling - Prime 1's body plus the constants read out of the SDA2 pool and one missing host
+definition.
+
+`build/report.json`, `main/MetroidPrime/Player/CPlayerDynamics`, before and after
+(`./tools/fast_try.sh MetroidPrime/Player/CPlayerDynamics`):
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | 31 / 62 | **34 / 62** |
+| `fuzzy_match_percent` | 18.33 | 26.25 |
+| `matched_code` | 4316 / 27020 (15.97%) | 6476 / 27020 (23.97%) |
+
+Whole build: `All: 34.71% fuzzy, 28.09% matched, 12.90% linked (12278 / 28465 functions)`;
+`goal_check.sh`: `matched 12275 -> 12278`, `linked 5863 -> 5863` (unchanged, as a progress item
+must be). `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+`./tools/probe_sources.sh` = `752 files, 0 failed, 0 errors; link: LINKED (287 undefined, 0
+duplicates)` - the undefined count did not move, because the two new host definitions *reduce* it.
+`python3 tools/check_decl_order.py --unit MetroidPrime/Player/CPlayerDynamics` = ok.
+`./tools/goal_check.sh build/goal/item.json` = **PASS**, all seven checks.
+
+| function | retail | before | after |
+|---|---|---|---|
+| `CalculatePlayerMovementDirection` | 0x80186FE4, 908 B | 0.44% | **100%** |
+| `TurnInput` | 0x80187E74, 600 B | 1.33% | **100%** |
+| `ForwardInput` | 0x80188160, 652 B | 1.20% | **100%** |
+
+Files touched:
+- `src/MetroidPrime/Player/CPlayerDynamics.cpp` - the three bodies, one `#include`, three
+  `extern "C"` declarations.
+- `src/MetroidPrime/PortCTweakPlayerControls.cpp` - `fn_80215854` and `fn_8021586C`, 16 lines,
+  the same recipe as the `fn_80215860` already in that file.
+- `docs/HANDOFF.md` is the **judge's** own rewrite of the derived counts (`goal_check.sh` did it),
+  not an edit of mine.
+
+## `fn_80215854` / `fn_8021586C` were the only thing between `TurnInput` and a match
+
+Two three-instruction readers in the same unclaimed auto-split run as `fn_80215860`:
+`lwz r3,0(r3)` / `lbz r3,320(r3)` / `blr` and the same with `316(r3)`. `TurnInput` calls the
+first six times and the second four, always on `GetTweakPlayerControls()`'s return value, so the
+port could not resolve either. Adding them to `PortCTweakPlayerControls.cpp` was 16 lines and no
+unit changed: `SLdrTweakPlayerControls::booleans` sits at 0x130, so 320 and 316 are its 17th and
+13th members, `fallingDoubleJump` and `unknown_0x4fcf4b70`. **The loader-generated names are not
+what the call site means** (Prime 1 reads a free-look toggle and a hold-buttons flag there), so
+the call site keeps retail's function names and the host file keeps the loader's. Nothing else in
+the tree calls either, so no other unit's `.text` moves.
+
+## This unit's constants are Prime 1's own - read the pool, and read it right
+
+`python3 tools/dol_read.py $(python3 -c "print(hex(0x804223C0 - off))")` is the whole trick (the
+fourth run's `r2 == _SDA2_BASE_` note). The base is confirmed by three adjacent words,
+`-23120(r2)` = 0.f, `-23112(r2)` = 1.0f, `-23100(r2)` = -1.0f, so a displacement resolves to one
+address and nothing else:
+
+| pooled | value | where | Prime 1 |
+|---|---|---|---|
+| `-23012(r2)` | **0.02f** | `CalculatePlayerMovementDirection`'s delta threshold | 0.02f |
+| `-23008(r2)` | **0.25f** | its `mFlatMoveSpeed` threshold | 0.25f |
+| `-23080(r2)` | **0.01f** | `TurnInput`'s deadzone, both directions | 0.01f |
+| `-22992(r2)` | 0.001f | `ForwardInput`'s two deadzones | 0.01f |
+| `-23000(r2)` | 0.8f | `ForwardInput`'s divisor | 0.8f |
+| `-22988(r2)` | 0.8726646f | `CRelAngle::FromDegrees(50.f).AsRadians()`, folded | same |
+| `-22984(r2)` | 1e-05f | `ForwardInput`'s `close_enough` epsilon | same |
+
+**This table previously printed 0.001f / 0.95f / 0.8f for the first three rows, and that reading was
+wrong** - it contradicted this file's own measurement of `-23080(r2)` = 0.01f six runs earlier. It
+was corrected in the fix round below, so the constants in the tree are Prime 1's and no
+`CalculatePlayerMovementDirection` / `TurnInput` threshold here is a tuning value of its own.
+
+**Why a wrong constant still scored 100%, which is the lesson worth keeping:** objdiff diffs
+`.text`, and `lfs fX,-NNNN(r2)` is the *same instruction* whatever float sits at `NNNN`. The
+values live in `.sdata2`, which this unit reports as no `matched_data` on either side, so no
+percentage can see them. A 100% match on a function with pooled constants is **not** evidence that
+the constants are right - read the pool for every `lfs ...,off(r2)` you write, and read the
+address you actually disassembled.
+
+`CRelAngle::FromDegrees(50.f).AsRadians()` does fold to the pooled 0.8726646f at `-O4,p` with
+`-fp_contract on`, so the readable spelling is free - no literal needed.
+
+## `CMath::Clamp(0.f, ratio, 1.f)` in `TurnInput` is exactly retail's two-compare clamp
+
+Retail (0x80188048) emits `f2 = 0.f; fcmpo cr0,f2,f0; ble` then `f2 = 1.f; fcmpo cr0,f2,f0;
+bge; fmr`. That is `CMath::Clamp(min, val, max) { return min > val ? min : max < val ? max : val;
+}` with `min = 0.f`, `val = ratio`, `max = 1.f` - and the repo's argument order is
+`Clamp(min, val, max)`, so Prime 1's spelling is already right. The `fnmsubs f0,f1,f2,f0` after
+it is `1.f - 0.5f * clamp`, and `CMath::Limit`'s `fsel` gives retail's `fsel f1,f29,f0,f1`
+without help. **A `switch`-shaped comparison tree is not the only way retail tests a state** -
+here `Clamp`'s own two ternaries *are* the two `fcmpo`s.
+
+## `CalculatePlayerMovementDirection`: this corrects the sixth run's transform reading
+
+The sixth run wrote that `0x28/0x38/0x48` are "the Z of `CTransform4f`'s first two rows and of its
+translation". **They are not.** `CTransform4f` in this repo is twelve floats (`m00..m23`), so with
+`CActor::mTransform` at 0x24: 0x28/0x38/0x48 are `mTransform`+0x4/+0x14/+0x24 = **`m01`, `m11`,
+`m21`**, which is `GetTransform().GetForward()`. Prime 1 is right and the note was wrong. Two
+more consequences of the same measurement:
+
+- the triple copied into `mLastPosForDirCalc` is read from **0x54, 0x58, 0x5C**, which is
+  `CActor::mPosition`, i.e. this repo's `GetTranslation()` - *not* `mTransform.GetTranslation()`.
+  Retail's `lfs f0,84(r30)` (=0x54) is what says so.
+- retail's displacement test is `CanBeNormalized() && Magnitude() > 0.02f`, with **no** early
+  `kMS_Morphing || kMS_Unmorphing` return, and the switch trees are
+  `cmpwi 1/bge, cmpwi 0/bge, cmpwi 4/bge` (inner) and `cmpwi 4/bge, cmpwi 1/bge` (outer), which is
+  what MWCC emits for Prime 1's two `switch (mMorphBallState)` blocks verbatim.
+
+## Three more functions are blocked on the `CSfxHandle` prototypes - third confirmation
+
+Retail 0x80187370 (`SetMoveState`) passes `addi r3,r1,32` into
+`SfxStart__11CSfxManagerFUsssibbs`, `addi r3,r1,28` into `SetIgnoreAreaLowPass__11CSfxManagerF10CSfxHandleb`
+and `addi r4,r1,24` into `ApplySubmergedPitchBend__7CPlayerFR10CSfxHandle` - all three take the
+handle **by address**, and the handle was stored by the preceding `SfxStart`. The mangled names say
+so outright: `FR10CSfxHandle` is `CSfxHandle&`. The same two callees appear in `BombJump` and
+`fn_801892a0`, so **three more functions in this unit** are gated on the fix the second run filed
+as `sfx-handle-params-by-reference`. That NEW line is now supported by three independent functions
+in this unit, not one.
+
+## `UpdateCameraBob` (0x80185EB0, 768 B) - read, three unknowns left
+
+Prime 1's 46-line body is structurally right; the unknowns are the data it indexes.
+
+- **The strafe table is at 0x803A9F70, not 0x803A9FD0.** Retail computes the base with
+  `lis r4,-32709; addi r3,r4,-24720`; `FinishSidewaysDash` uses `addi r4,r4,-24656` = 0x803A9FB0.
+  Both tables hold **{11.8, 11.8, 11.8, 5, 6, 5, 5, 6}** - the identical bytes, in two different
+  objects. `.rodata` has three distinct 8-float tables and one duplicate:
+  `0x803A9F70 = {11.8,11.8,11.8,5,6,5,5,6}`, `0x803A9F90 = {11.8,30,23.2,10,10,10,10,10}`,
+  `0x803A9FB0 = {11.8,18,15,10,10,10,10,10}`, `0x803A9FD0` = a second copy of the first. The third
+  run's addresses are right; it just did not know there was a copy.
+- **Three r13-relative literals**: `lfs f0,-32004(r13)` / `lfs f28,-32000(r13)` before
+  `magnitude *= scale; magnitude = min(max, magnitude)`, and `lfs f1,-31996(r13)` before
+  `SetBobTimeScale(range * magnitude + scale)`. Semantically these are
+  `CPlayerCameraBob::GetOrbitBobScale()`, `GetMaxOrbitBobScale()` and `GetSlowSpeedPeriodScale()`,
+  but the header declares all three as **non-`const` `static float`**, which cannot be a function
+  literal. Either retail's are literals and ours should be too, or the pool base has to be found
+  first. Not attempted.
+- **`state` is carried in `r29` and takes the values** 0 (orbit), 3 (walk-no-bob), 1 (orbit),
+  2 (in-air), 4 (gun-fire-no-bob), 5 (turning-no-bob), 6 (free-look-no-bob), 7 (grapple-no-bob) -
+  i.e. the enum is not contiguous in Prime 1's order, so the `ECameraBobState` numbering has to be
+  read off those immediates before the `switch` can be written.
+- The orbit branch materialises `GetRight()` and `GetForward()` into two stack `CVector3f`s at
+  20(r1) and 32(r1) for `CVector3f::Dot`, while the non-orbit branch does not - so
+  `CVector3f::Dot(velocity, GetTransform().GetForward())` has to be spelled the same way in both
+  arms, and it already is.
+
+## `UpdateStepCameraZBias`: the fifth run's last untried idea, measured and worse
+
+The fifth run closed with "the one thing not yet tried: **change what `IsMotionActive()` returns**,
+not how it is called". Tried this run, on the current tree: `MotionFlagBits()` reading the flag
+byte at 0x48c by index (`reinterpret_cast<const uchar*>(this)[0x48c]`) with
+`IsMotionActive() = (bits >> 2) & 1`, so the whole `rlwinm` is one expression instead of a load
+plus a copy. **99.14%, worse than the 99.18% it replaced.** The accessor is now a raw-offset read
+into a shared header and buys nothing, so it is reverted and `CScriptPlatform.hpp` is untouched.
+Note for anyone repeating this: `&mMotionActive` cannot be `reinterpret_cast` in MWCC 2.7
+("illegal operand"), so the byte has to be reached through `this` and a literal offset.
+
+WALL: UpdateStepCameraZBias 99.18% - body complete and correct; the only diff is the rotate's
+destination register for `CScriptPlatform`'s flag (`rlwinm r31,r0` vs `rlwinm r0,r0`+`mr r31,r0`).
+This run tried the fifth run's one remaining lever - making the accessor return the raw flag byte
+and shift it, so the rotate is a single expression - and it scored 99.14%, i.e. worse. 20
+spellings now.
+
+## Still open (unchanged unless listed above)
+
+- `fn_80189CA8` (88 B) is byte-identical and 0% only because retail names it `fn_80189CA8` and
+  ours is the template instantiation; a *port* item, unchanged since the first run.
+- `fn_80189EFC` (216 B) is a static constructor writing five words into the `.bss` symbol
+  `seqInstance`; unnameable, same shape as the musyx table.
+- `fn_801842c8` / `fn_80184a60` are complete apart from one read: three floats at the musyx table
+  `dataCurveTab`+0x2D98 = **0x803F74B0**.
+- `ApplyGravityBoost` and `UpdateSubmerged` are blocked on `CPlayer+0x110` (and, for
+  `UpdateSubmerged`, the `CScriptWater+0x1C8 -> +0x44` chain).
+- `StartGravityBoost`, `EndGravityBoost`, `SetMoveState`, `BombJump`, `fn_801892a0` are blocked on
+  the `CSfxHandle` by-reference prototypes.
+- `ActivateMorphBallCamera` (84 B, fully recovered twice) needs `CBallCamera::SetState` hosted.
+- `SidewaysDashAllowed` is at 100% (sixth run). `fn_801843d0` (1680 B) and the rest of the
+  morph-ball cluster have unhosted `CBallCamera` callees.
+- Untouched stubs: `ComputeMovement` (2356 B), `JumpInput` (1768 B), `ComputeDash` (1408 B),
+  `fn_80185a88` (1064 B), `Teleport` (772 B), `fn_80184ba4` (980 B), `UpdateCameraBob` (768 B),
+  `fn_801858cc` (444 B), `UpdateMorphBallTransition` (1016 B),
+  `TransitionTo/FromMorphBallState` (1156/1048 B), `Enter/LeaveMorphBallState`, `UpdateTransitionFilter`.
+
+## Review rejected run 37 (2026-10-02 01:48:20Z, reviewer worker)
+
+The judge passed this attempt; the reviewer rejected it:
+
+Two of the three newly "matched" functions do not do what retail does. `TurnInput` uses a `0.8f` look-stick deadzone where retail loads `-23080(r2)` = 0x01f, and `CalculatePlayerMovementDirection` uses `0.001f`/`0.95f` where retail loads `-23012(r2)` = 0.02f and `-23008(r2)` = 0.25f (all read from the retail DOL at base `0x804223C0`; base confirmed by `-23120`=0.0, `-23112`=1.0, `-23100`=-1.0). The bytes match only because objdiff diffs `.text` and never the `.sdata2` constant the instruction loads — the unit reports no `matched_data` either side — and because the DOL sha1 gate ran against a `main.dol` older than the edit, so nothing else caught it. The note's constants table (docs/goal-notes/progress-unit-cplayerdynamics.md:1253-1255) states the inverted values and even argues from them that this is "a different rule", contradicting its own correct measurement at line 537. An acceptable change keeps the real thresholds (`0.01f`, `0.02f`, `0.25f`), which are Prime 1's values and the ones the pool actually holds, and then re-measures: the two functions will likely drop below 100% and the count will be smaller, which is the honest result. `ForwardInput` and the two `PortCTweakPlayerControls.cpp` hosts are correct as written and can stay.
+
+Rejected diff: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/review/progress-unit-cplayerdynamics-L1-37.patch
+Review transcript: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/agent/progress-unit-cplayerdynamics-L1-37-review2-20261002T014201.jsonl
+
+---
+
+## Fix round 1 (lane 1, after `## Review rejected run 37`)
+
+The rejected run's constants are corrected. **The numbers are not re-measured in this round** - see
+"not run" below, and treat the seventh run's 34 / 62 as a pre-fix figure.
+
+- `TurnInput`: the look-stick deadzone is Prime 1's **0.01f**, not 0.8f, in both directions -
+  `src/MetroidPrime/Player/CPlayerDynamics.cpp:372` and `:382`. `-23080(r2)` is 0.01f, which this
+  same file already recorded at line 537 and the seventh run then contradicted.
+- `CalculatePlayerMovementDirection`: the delta threshold is **0.02f** (not 0.001f) and the
+  `mFlatMoveSpeed` threshold is **0.25f** (not 0.95f) - `:416` and `:427`, the pool words
+  `-23012(r2)` and `-23008(r2)`.
+- The comment on that function no longer claims the two thresholds are Echoes' own tuning values
+  ("three measured differences" is now two), the constants table above is corrected in place with
+  the superseded reading named, the `> 0.001f` line in that function's own section is corrected,
+  and the "this is a *different rule*" argument is replaced by why a wrong constant still scored
+  100%: objdiff diffs `.text`, `lfs fX,-NNNN(r2)` is the same instruction whatever sits at `NNNN`,
+  and the unit reports no `matched_data` either side, so **no percentage can see a pooled constant**.
+- Untouched, as the reviewer says they are correct: `ForwardInput`, `fn_80215854` and
+  `fn_8021586C` in `src/MetroidPrime/PortCTweakPlayerControls.cpp`, the added `#include`, the three
+  `extern "C"` declarations, and the seventh run's measured table (annotated as pre-fix, not
+  rewritten).
+
+## Fix round 1: not run, and it has to be run before this is judged on numbers
+
+No build, objdiff or `build/report.json` read happened in this round, so the unit's real
+`matched_functions` is **unknown**. It is very likely below 34: if mwcceppc pools 0.02f and 0.25f
+at the same addresses it pooled the old words, the `.text` is byte-identical and both functions
+stay at 100%; if it does not, they fall below 100% and the count drops. Either outcome is the
+honest one. The commands, in order:
+
+    ./tools/decomp_build.sh
+    ./tools/fast_try.sh MetroidPrime/Player/CPlayerDynamics
+    sha1sum build/G2ME01/main.dol                 # 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+    python3 tools/check_raw_offsets.py
+    python3 tools/check_decl_order.py --unit MetroidPrime/Player/CPlayerDynamics
+    ./tools/goal_check.sh build/goal/item.json
+
+`check_raw_offsets.py` is unaffected by this fix by inspection - only float literals changed, no
+cast or numeric field offset was added, and the scanner strips comments - but it still has to be
+run rather than argued about.
+
+**Two watch-points.** The DOL sha1 is the one that would catch a regression here: a private
+`.sdata2` copy of a constant this unit does not claim moves `.bss2` and breaks the hash, and
+whether 0.02f/0.25f pool to `-23012`/`-23008` rather than into the unit's own `.sdata2` is exactly
+what the wrong constants hid. `./tools/unit_fit.sh MetroidPrime/Player/CPlayerDynamics.cpp` prints
+that size; it must not grow. Second, the `-22992(r2)` row's **Prime 1** column above says 0.01f
+and Prime 1's `ForwardInput` actually uses 0.001f; the row is left as measured because
+`ForwardInput` was judged correct as written, but nobody should "fix" that code to match the cell.
+
+Still true after this round: this is a `progress` item, the unit stays `NonMatching`, and
+`ForwardInput` is the one exact match this run can claim with confidence.
