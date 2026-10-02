@@ -866,3 +866,253 @@ so filing one would spend a lane on a guess.
 question cannot be answered by reverting the source alone** - the object has to be rebuilt, or the
 tool reports the previous object's verdict. Reverting the source and running it gave a false
 "permuted", and the same for the object under `build/G2ME01/obj/`.
+
+---
+
+# Run 6 (2026-10-02, lane 3) - target `MetroidPrime/CAnimData`, **+6 functions**, PASS
+
+`kind: progress`, target `MetroidPrime/CAnimData`. **Unit 105 -> 111 of 216 matched functions.
+Global `build/report.json` 12398 -> 12404, `linked` 5863 -> 5863 (no regression).
+`./tools/goal_check.sh build/goal/item.json` -> PASS:**
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12398 -> 12404   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    All:  35.07% fuzzy, 28.74% matched, 12.90% linked (12404 / 28465 functions)
+  ok    target rose: main/MetroidPrime/CAnimData: 105 -> 111 / 216 functions
+  ok    no asm added
+goal_check: PASS fix-stage-change-extern
+```
+
+Files touched: `src/MetroidPrime/CAnimData.cpp` only, +242 lines, no header, no `configure.py`, no
+`files.cmake`, no `build/goal/` file, no `tools/` file, no `.s` file, no asm. `docs/HANDOFF.md`'s
+four lines are the judge's own `check_docs_claims.py --write` inside `goal_check.sh`, not a hand
+edit.
+
+**One gate failure worth knowing about, because the fix is better than the debt it removed:** the
+first `goal_check` failed on `gate.sh`'s `raw-offsets` step. My two new destructor loops advanced a
+`T*` with `reinterpret_cast< uchar* >(cur) + 0x34`, which `tools/check_raw_offsets.py` counts as a
+raw-offset site, and `docs/research/raw_offsets.md` has no section for this file. **`++cur` on the
+typed pointer emits the identical `addi r31, r31, 0x34`** (every element size here is a multiple of
+4 and fits a signed 16-bit immediate) and removes both sites; scores did not move. Do that instead
+of writing a doc section.
+
+## The `reason` is stale, measured a **sixth** time on this tree
+
+```
+$ sed -n '/stage_change/,+2p' tools/run_goal.sh
+  ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt \
+      extern/musyx extern/musyx-port ) || true
+```
+
+so the `extern/` pathspec defect the reason describes was fixed in `e6916a5` and the `MUSY_VERSION`
+guards landed in `ef9e308`; `sha1sum build/G2ME01/main.dol` below is retail's exact hash. **Sixth run
+in a row to reach that conclusion; recommend the driver drop or re-scope this id.** Runs 1-2 worked
+CGameState and runs 3-6 CAnimData, and none of them has touched the reason, which is not actionable
+by an agent anyway (the file is in `tools/`).
+
+## What landed: six functions, all `100.00%`
+
+| retail | bytes | what it is |
+| --- | --- | --- |
+| 0x8002E1EC | 132 | `rstl::vector< SAnimInfo40 >::vector(const vector&)`, stride 0x28 |
+| 0x8002CD8C | 84 | `~vector< CPASParmInfo >`: `Free(mItems)`, then `Free(this)` on the flag |
+| 0x8002CC38 | 84 | the same 84 bytes for `~vector< CVector3f >` |
+| 0x800275B8..50 | 104 | `~TEffectEntry`: the vector at `+0x10`, then the string at `+0` |
+| 0x8002752C | 36 | `rstl::destroy<T>` with the flag hard-wired to -1 (`li r4,-1`) |
+| 0x8002750C | 32 | the outlined `rstl::destroy<T>` forwarder |
+
+`fn_8002E1EC` is run 5's `fn_8002E3CC` with the stride changed; the five destructor functions are
+run 4/5's "`fn_8002C858` / `fn_8002CD08` / `fn_8002CC38` / `fn_8002CD8C` / `fn_8002750C` / `2C` /
+`50`" rows, which run 5 listed as sizes without trying them.
+
+### Finding 1: retail's `~vector<T>` takes an `int flag`, and **returning the pointer is what matches**
+
+`fn_8002CD8C` and `fn_8002CC38` first came out **80 bytes / 20 instructions against retail's 84 /
+21**: the bodies were identical and the epilogue was missing `mr r3, r30`. Retail's
+`__dt__Q24rstl45vector<9CVector3f,...>Fv` (0x8002CDE0, named and already matched) has that `mr`, so
+these bodies are declared to **return `this`**. That is run 5's finding 1 again - a `void` wrapper
+around a retail destructor body will not match - and it is worth 4 bytes and one instruction on
+every one of them. Only 2 differing instructions remain in each, both `bl` relocation fields.
+
+### Finding 2: the `int flag` makes `~vector<T>` and `~T` **the same function**
+
+Once the flag is a parameter, retail's destructor chain collapses:
+
+* `if (this != nullptr) { destroy elements; Free(mItems); if ((short)flag > 0) Free(this); } return this;`
+* and when the element destructor is trivial (stride 0x1c at 0x800275B8, and the *named*
+  `__dt__vector<CPASParmInfo>`/`vector<CPASAnimInfo>`/`vector<CVector3f>` at 0x8002CA18/0x8002CA6C/
+  0x8002CDE0) the "destroy elements" part degenerates to the empty `while (cur != end) ++cur;`
+  walk, which still costs the 0x20 frame and four spill stores.
+
+**The `fn_8002CD8C`/`fn_8002CC38` 84-byte form is therefore the smallest thing left in the unit** -
+two instructions of body plus the prologue - and it is the one to write first next time.
+
+### Finding 3: a local's address-taken-ness decides whether retail's four spill stores appear
+
+`fn_8002C858` and `fn_8002C6E8` (132 B) need **four** stack words for the iterator pair: the value
+and a second copy of it, at `0x8`/`0xc` and `0x10`/`0x14`, with `r3 = r1+0x14` and `r4 = r1+0xc`.
+Measured on this file, same unit, same flags:
+
+| spelling of the iterator pair in `fn_8002C858` | bytes | score |
+| --- | --- | --- |
+| **two fields of one struct, `end` first** (`SPASAnimStateIters`) | 120 | **84.45%** |
+| two plain locals, `first` then `last` | 108 | 75.36% |
+| two plain locals, `last` then `first` | 108 | 75.36% |
+
+What is left in the 84.45% is the two duplicate stores and their schedule - 19 differing
+instructions of 30, all inside the prologue. Not chased further.
+
+### Finding 4: the 0x14-byte element's destructor has **two** null tests, and the second is dead
+
+`fn_8002C7A4`'s loop body is
+
+```
+cmplwi r31, 0x0 / beq .L          <- the element pointer is null
+addic. r3, r31, 0x4 / beq .L      <- (r31 + 4) == 0, i.e. r31 == -4: unreachable
+addi r3, r31, 0x4 / bl internal_dereference
+```
+
+so `cur->x04_name.~basic_string()` inside `if (cur != nullptr)` reproduces four of the five
+instructions exactly. `fn_8002C7A4` is at **91.67%** (3 differing instructions of 24: this pair is
+scheduled one slot earlier than retail's, and the `bl`). The same three-instruction block is the
+*only* difference in `fn_8002C914` (90.00%, 4 of 20) and it is the same defect in both:
+mwccceppc emits `stw r31 / stw r30 / mr r30 / lwz r31` where retail emits `stw r31 / lwz r31 /
+stw r30 / mr r30`, i.e. it schedules the load of `*first` *after* the callee-save spill of `r30`
+instead of before it. Four spellings tried (no `end` local; `end = last` after `cur = *first`;
+`end = last` before it; `const` locals) and none moves it. **This is a wall for those two.**
+
+### Finding 5: the two `fn_8002C8DC`/`fn_8002C76C` forwarders are the same 56-byte schedule problem
+
+`fn_8002C8DC` and `fn_8002C76C` are at **71.00%** (8 differing instructions of 14). The slots and
+the call are right; only the prologue schedule is not. Retail:
+
+```
+lwz r5, 0(r4) / stw r0, 0x14(r1) / addi r4, r1, 0x8 / lwz r0, 0(r3)
+addi r3, r1, 0xc / stw r5, 0x8(r1) / stw r0, 0xc(r1) / bl
+```
+
+- the load of `*last` happens **before** the `lr` spill and lands in **r5**, and
+- **both** stores come after **both** `addi`s.
+
+Every spelling tried keeps the slots right and gets the placement wrong:
+
+| spelling | bytes | score |
+| --- | --- | --- |
+| `begin` and `end` both initialised, `begin` first (right slots, wrong load order) | 56 | 69.79% |
+| `end = *last` first, then `begin = *first` (right load order, wrong store placement) | 56 | 71.00% |
+| the two as fields of a struct (right order, extra `addi`/`mr` pair from taking `&struct.field`) | 60 | 77.00% |
+| `end` and `begin` swapped so the load order and the slot order agree | 56 | 71.00% |
+
+**Not claimed to be reachable.** The `77.00%` row is also the wrong size (60 vs 56 bytes), which is
+why the 56-byte spelling is what the file keeps.
+
+## Measured, not landed - for whoever takes CAnimData next
+
+### `fn_8002E270` (0x8002E270, 160 B): 94.15%, 12 of 40 differing - retail's FP schedule
+
+The element is 40 bytes: a `rstl::string` at `+0` (its copy constructor is a real `bl`) then six
+floats at `0x10`..`0x24`. The loop shape, register assignment (r31/r30/r29), counted-loop rotation
+and the placement-new null test are already identical - only the float copies differ:
+
+```
+retail  lfs f0,0x10(r31) ; stfs f0,0x10(r30) ; lfs f0,0x14(r31) ; stfs f0,0x14(r30) ; ...
+ours    lfs f1,0x10(r31) ; lfs f0,0x14(r31) ; stfs f1,0x10(r30) ; lfs f1,0x18(r31) ; ...
+```
+
+Retail reuses one FP register, load-then-store per member; mwccceppc batches two loads then two
+stores and alternates `f0`/`f1`. **One thing that is decided and worth keeping: the six values must
+be six separate `float` members, not `float[6]`** - an array member is copied word-wise with
+`lwz`/`stw` and that is a *different* 12-instruction difference (82.00%). Three spellings of the
+same layout all produce the identical 94.15% bytes:
+
+| spelling of `SAnimInfo40` | bytes | score |
+| --- | --- | --- |
+| **six `float` members** | 160 | **94.15%** |
+| `float x10_values[6]` with a user copy ctor looping over the array | 160 | 94.15% |
+| `CVector3f x10_first; CVector3f x1c_second;` | 160 | 94.15% |
+| `float x10_values[6]` with the implicit copy ctor | 160 | 82.00% |
+
+**Wall:** no spelling moved the schedule.
+
+### `fn_800275B8` (0x800275B8, 132 B): 87.64%, 116 bytes against 132
+
+`~vector< CEffectComponent >`. The loop **is** the empty `while (cur != end) ++cur;` walk (see
+finding 2), and it comes out empty for free: `cur->~CEffectComponent()` compiles to nothing here, so
+the loop shape, stride `addi r4,r4,0x1c`, the `Free(mItems)` and the flag test are all right. The
+19 remaining differences are exactly the missing `-0x20` frame and its four spill stores - the
+finding-3 problem, which the struct spelling solved for `fn_8002C858` but not here. Applying
+finding 3 to this one is the obvious next attempt.
+
+### Still open, with what this run established
+
+`fn_8002C804` (0x8002C804, 84 B) is the **`~vector<CPASAnimState>` forwarder that is not written**:
+84 bytes, identical to `fn_8002CD8C`, body `if (this) { fn_8002C858(this, -1); if (flag > 0)
+Free(this); } return this;`. It is worth 4 lines given `fn_8002CD8C` now matches - it was not
+attempted because it is a one-line extension of work already done, not a discovery.
+
+The `ReleaseData__Q24rstl28rc_ptr<...>Fv` family at 0x8002F060/0x8002F114/0x8002F1A4/0x8002F1F4/
+0x8002F270/0x8002F454/0x8002EFFC (76-144 B, eight of them) is **one shape each in four sizes** and
+none is written; `ReleaseData__Q24rstl18rc_ptr<9CRandom16>Fv` (0x8002F454, 76 B, already 100%) is
+the smallest member of that family and its body is the template to copy.
+
+`fn_8002CED4`, `fn_8002CF44`, `fn_8002CFA0`/`CFC0`/`CFF4`/`D044` (the `CToken` `rstl::destroy` chain
+run 5 sized), `fn_8002CB54`/`CBD8` (the 0x28-stride twin of `fn_8002C6E8`/`C7A4`; `fn_8002CBD8`'s
+loop body has a **duplicated** `beq` on an unchanged `cr0`, which no ordinary spelling of
+`if (p && p->field)` produces), `fn_8002CD08` (the 0x3c-stride empty-loop `~vector`), and
+`fn_8002E1EC`'s neighbours `fn_8002E310`/`fn_8002E388`/`fn_8002E564` are all sized here and
+unattempted. No `WALL:` is claimed for any of them - I have no spelling that reached 100% for any.
+
+## Verification (all re-measured on this tree)
+
+```
+sha1sum build/G2ME01/main.dol               6ef9b491d0cc08bc81a124fdedb8bfaec34d0010  (retail, exact)
+./tools/decomp_build.sh                     All: 35.07% fuzzy, 28.74% matched, 12.90% linked
+                                            (12404 / 28465 functions)
+                                            main/MetroidPrime/CAnimData: 111 / 216
+./tools/goal_check.sh build/goal/item.json  PASS  (output at the top of this section)
+./tools/probe_sources.sh                    752 files, 0 failed, 0 errors;
+                                            LINKED (290 undefined, 0 duplicates)
+python3 tools/check_symbol_names.py         checked 525 units; 0 declared names are missing
+python3 tools/check_decl_order.py           ok: 981 units checked, 28 permuted, all accounted for
+python3 tools/check_decl_order.py --unit MetroidPrime/CAnimData
+                                            ok: 1 unit checked, none out of retail order
+python3 tools/check_raw_offsets.py           ok: 167 raw-offset sites in 71 files, all documented
+python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+                                            matched 12398 -> 12404  linked 5863 -> 5863
+                                              +100%  fn_8002750C, fn_8002752C, fn_80027550,
+                                                      fn_8002CC38, fn_8002CD8C, fn_8002E1EC
+                                            no regression
+python3 tools/bytescmp.py build/G2ME01/src/MetroidPrime/CAnimData.o <fn> <addr> <size>
+                                            fn_8002750C  1 differing instruction of 8   (32 B)
+                                            fn_8002752C  1 of 9  (36 B)
+                                            fn_80027550  3 of 26 (104 B)
+                                            fn_8002CC38  2 of 21 (84 B)
+                                            fn_8002CD8C  2 of 21 (84 B)
+                                            fn_8002E1EC  2 of 33 (132 B)
+                                            every one of them a `bl` relocation field, which
+                                            objdiff ignores - hence 100.00%
+```
+
+**Decl order is load-bearing here and it moved twice.** `fn_8002C964` had to be *redeclared and
+moved* from before the new destructor block to between `fn_8002CC38` and `fn_8002C914`, because
+0x8002C964 has to sit between 0x8002C8DC and 0x8002CC38 in `.text` and mwcceppc emits in reverse
+source order. `check_decl_order.py --unit` is the only thing that sees this: the build, objdiff,
+`unit_fit.sh` and the link were all green with the permutation in place. Same lesson run 5 recorded
+for chain A; **place each new body by its retail address, not next to the function it is related
+to.** The new bodies went in at `src/MetroidPrime/CAnimData.cpp:169` (`fn_8002E270`), `:178`
+(`fn_8002E1EC`), `:323` (CD8C), `:333` (CC38), `:352` (C914), `:360` (C8DC), `:367` (C858), `:381`
+(C7A4), `:391` (C76C), `:398` (C6E8), and `:965`-`:993` (the `TEffectEntry` chain, which belongs
+after `fn_80027728` at 0x80027728 and before `fn_80027394` at 0x80027394).
+
+The unit is still `NonMatching` and still not a flip candidate, so no `flip_test.sh` was run.
+`src/MetroidPrime/CAnimData.cpp` is **not** in `files.cmake`, so it is not compiled or linked by the
+port; the new undefined `rstl::basic_string< char >::internal_dereference` and
+`rstl::basic_string< char >::basic_string(const basic_string< char >&)` calls cannot move the
+port's link gap, and the probe above confirms it is still 290.
+
+No `NEW:` line is filed: everything left in this unit is either a measured wall (the two schedule
+defects, `fn_8002E270`'s FP one) or a one-line extension of work this run landed
+(`fn_8002C804`), and filing either would spend a lane on a guess.

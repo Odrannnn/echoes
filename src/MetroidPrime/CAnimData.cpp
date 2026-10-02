@@ -32,6 +32,59 @@ struct SPASAnimStateVector {
   CPASAnimState* mItems;
 };
 
+/**
+ * The 0x28-byte element of `SAnimInfoVector`: a `rstl::string` then six floats. Six members and
+ * not an array is what reproduces retail's `lfs`/`stfs` at `0x10`..`0x24` (an array member is
+ * copied word-wise with `lwz`/`stw`). What is left over is retail's FP schedule - it reuses `f0`
+ * for one member at a time, mwccceppc batches two loads then two stores - and no spelling tried
+ * moves it; see `fn_8002E270` below.
+ */
+struct SAnimInfo40 {
+  rstl::string x00_name;
+  float x10_value0;
+  float x14_value1;
+  float x18_value2;
+  float x1c_value3;
+  float x20_value4;
+  float x24_value5;
+};
+
+/**
+ * Same layout as `rstl::vector< T, rstl::rmemory_allocator >` again, for the two element types
+ * retail's map leaves unnamed and whose real C++ types this tree has no class for. Declared with
+ * the other layout views at the top for the reason spelled out above `SPASAnimStateVector`.
+ */
+struct SAnimInfoVector {
+  rstl::rmemory_allocator mAllocator;
+  int mCount;
+  int mCapacity;
+  SAnimInfo40* mItems;
+};
+
+/** The 0x14-byte element of `rstl::vector< SStr20 >`: a word then a `rstl::string`. */
+struct SStr20 {
+  int x00;
+  rstl::string x04_name;
+};
+
+/**
+ * The pair of iterators retail's `~vector<T>` bodies hand to `rstl::destroy(begin, end)`. It is a
+ * struct rather than two locals because retail spills **four** words for them - the value and a
+ * second copy of it, at `0x8`/`0xc` and `0x10`/`0x14` - and mwccceppc only gives that shape when
+ * the two are fields of one object (measured: two plain locals give 75.36% here, this gives
+ * 84.45%, and what is left is the two duplicate spill stores and their schedule).
+ */
+struct SPASAnimStateIters {
+  CPASAnimState* end;
+  CPASAnimState* begin;
+};
+
+struct SStr20Iters {
+  SStr20* end;
+  SStr20* begin;
+};
+
+
 /** 0x8002EB54 - the second `rstl::less<rstl::string>` forwarder; see fn_80027394. */
 extern "C" bool fn_8002EB54(rstl::less< rstl::string >* cmp, const rstl::string& a,
                            const rstl::string& b) {
@@ -98,6 +151,40 @@ rstl::vector< CPASAnimInfo >::vector(const rstl::vector< CPASAnimInfo >& other)
       ++dest;
     }
   }
+}
+
+/**
+ * `.text 0x8002E1EC` and `0x8002E270` - the third pair of the `rstl/vector.hpp` copy-constructor
+ * body this file spells out, for the 0x28-byte element retail's map leaves unnamed (`fn_8002E1EC`
+ * is the same 33 instructions as `fn_8002E3CC` and `fn_800277B8` above, with `mCapacity * 0x28`
+ * where they have `* 0x34` and `* 0x1c`).
+ *
+ * The element is 40 bytes and **holds a `rstl::string`**: `fn_8002E270`'s loop calls
+ * `rstl::basic_string<char>`'s copy constructor and then copies six floats at `0x10`..`0x24`,
+ * member by member - the same counted `bdnz`-shaped loop with the placement-new null test that
+ * `fn_8002E450` has, which is why the spelling below is that function's spelling. This tree has no
+ * class for the element, so the copy goes through the same-layout view `SAnimInfo40`, and the
+ * vector through `SAnimInfoVector`.
+ */
+extern "C" SAnimInfo40* fn_8002E270(const SAnimInfo40* src, int n, SAnimInfo40* dest) {
+  const SAnimInfo40* it = src;
+  SAnimInfo40* cur = dest;
+  for (int remaining = n; remaining != 0; --remaining, ++it, ++cur) {
+    new (cur) SAnimInfo40(*it);
+  }
+  return cur;
+}
+
+extern "C" SAnimInfoVector* fn_8002E1EC(SAnimInfoVector* dest, const SAnimInfoVector* other) {
+  dest->mCount = other->mCount;
+  dest->mCapacity = other->mCapacity;
+  if (other->mCount == 0 && other->mCapacity == 0) {
+    dest->mItems = nullptr;
+  } else {
+    dest->mAllocator.allocate(dest->mItems, dest->mCapacity);
+    fn_8002E270(other->mItems, dest->mCount, dest->mItems);
+  }
+  return dest;
 }
 
 rstl::reserved_vector< CBoolPOINode, 8 > CAnimData::mBoolPOINodes;
@@ -210,8 +297,117 @@ CAnimData::CAnimData(
   // TODO: Build mAnimRoot from the character-mapped defaultAnim with no special orders.
 }
 
-/** 0x8002C964 - the `rstl::destroy` forwarder for `CPASAnimState`; see fn_8002DDA4 below. */
+/**
+ * `.text 0x8002C6E8`..`0x8002C914` and `0x8002CC38`/`0x8002CD8C` - the rest of the `rstl` destructor
+ * chains retail's map leaves unnamed. All of them are the same shape `rstl/vector.hpp`'s
+ * `~vector()` has in retail, in which the `~vector()` body takes the `int flag` that decides
+ * whether the container itself is freed:
+ *
+ *   0x8002C914   80 B  the `destroy(begin, end)` loop, stride 0x34
+ *   0x8002C8DC   56 B  its `destroy(begin, end)` forwarder (copies both iterators to the stack)
+ *   0x8002C858  132 B  `~vector< CPASAnimState >`: the loop, then `Free(mItems)`, then `Free(this)`
+ *   0x8002C7A4   96 B  the same loop for the 0x14-byte element, whose destructor is one string's
+ *   0x8002C76C   56 B  its forwarder
+ *   0x8002C6E8  132 B  `~vector< SStr20 >`
+ *   0x8002CD8C   84 B  the element destructor is trivial, so only `Free(mItems)` + the flag
+ *   0x8002CC38   84 B  the same 84 bytes for a second instantiation - the three *named* 84-byte
+ *                      destructors at 0x8002CA18/0x8002CA6C/0x8002CDE0 are this function too
+ *
+ * As with the `rstl::construct` chains further down, retail named none of these, so each body is
+ * written out under its `fn_<addr>` name rather than reached through the mangled template. `It` is
+ * `T**` in retail - the loops reload `*end` every iteration and take `*cur` - so the caller hands
+ * over the address of a `T*` pair; the loop itself walks a `T*`, which is what puts retail's
+ * `addi r31, r31, 0x34` (the element size, which is a multiple of 4 for every type here) where the
+ * `bne` is.
+ */
+extern "C" rstl::vector< CPASParmInfo >* fn_8002CD8C(rstl::vector< CPASParmInfo >* vec, int flag) {
+  if (vec != nullptr) {
+    CMemory::Free(vec->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(vec);
+    }
+  }
+  return vec;
+}
+
+extern "C" rstl::vector< CVector3f >* fn_8002CC38(rstl::vector< CVector3f >* vec, int flag) {
+  if (vec != nullptr) {
+    CMemory::Free(vec->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(vec);
+    }
+  }
+  return vec;
+}
+
+/**
+ * 0x8002C964 - the `rstl::destroy` forwarder for `CPASAnimState`; see fn_8002DDA4 below. It is
+ * declared here and defined between `fn_8002CC38` and `fn_8002C914` because mwcceppc emits
+ * definitions in reverse source order: 0x8002C964 has to sit between them in `.text`.
+ */
+extern "C" void fn_8002C964(CPASAnimState* ptr);
+
 extern "C" void fn_8002C964(CPASAnimState* ptr) { rstl::destroy_impl< CPASAnimState >(ptr); }
+
+extern "C" void fn_8002C914(CPASAnimState** first, CPASAnimState** last) {
+  CPASAnimState* cur = *first;
+  while (cur != *last) {
+    fn_8002C964(cur);
+    ++cur;
+  }
+}
+
+extern "C" void fn_8002C8DC(CPASAnimState** first, CPASAnimState** last) {
+  CPASAnimState* begin;
+  CPASAnimState* end = *last;
+  begin = *first;
+  fn_8002C914(&begin, &end);
+}
+
+extern "C" rstl::vector< CPASAnimState >* fn_8002C858(rstl::vector< CPASAnimState >* vec, int flag) {
+  if (vec != nullptr) {
+    SPASAnimStateIters iters;
+    iters.end = vec->mItems + vec->mCount;
+    iters.begin = vec->mItems;
+    fn_8002C8DC(&iters.begin, &iters.end);
+    CMemory::Free(vec->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(vec);
+    }
+  }
+  return vec;
+}
+
+extern "C" void fn_8002C7A4(SStr20** first, SStr20** last) {
+  SStr20* cur = *first;
+  while (cur != *last) {
+    if (cur != nullptr) {
+      cur->x04_name.~basic_string();
+    }
+    ++cur;
+  }
+}
+
+extern "C" void fn_8002C76C(SStr20** first, SStr20** last) {
+  SStr20* begin;
+  SStr20* end = *last;
+  begin = *first;
+  fn_8002C7A4(&begin, &end);
+}
+
+extern "C" rstl::vector< SStr20 >* fn_8002C6E8(rstl::vector< SStr20 >* vec, int flag) {
+  if (vec != nullptr) {
+    SStr20Iters iters;
+    iters.end = vec->mItems + vec->mCount;
+    iters.begin = vec->mItems;
+    fn_8002C76C(&iters.begin, &iters.end);
+    CMemory::Free(vec->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(vec);
+    }
+  }
+  return vec;
+}
 
 CAnimData::~CAnimData() {
   if (--sPOICacheReferenceCount == 0) {
@@ -751,6 +947,50 @@ extern "C" void fn_80027748(void* dest, const TEffectEntry& src) {
 }
 
 extern "C" void fn_80027728(void* dest, const TEffectEntry& src) { fn_80027748(dest, src); }
+
+/**
+ * `.text 0x8002750C`..`0x800275B8` - the `rstl::destroy` chain for the **same** `TEffectEntry`
+ * `fn_80027728`/`48`/`70`/`B8` above is the `rstl::construct` chain for, so it is written the same
+ * way. Retail named all four, and the two halves are the same shape from the outside in:
+ *
+ *   0x800275B8  132 B  `~vector< CEffectComponent >`: free the items, then `Free(this)` on the flag
+ *   0x80027550  104 B  `~TEffectEntry`: the vector at `+0x10`, then the string at `+0`
+ *   0x8002752C   36 B  `rstl::destroy<T>` with the flag hard-wired to -1 (`li r4,-1`)
+ *   0x8002750C   32 B  the outlined `rstl::destroy<T>` forwarder
+ *
+ * The `li r4,-1` at 0x80027534 is what makes 0x8002752C nine instructions and not the eight of the
+ * plain forwarders above, and the two `beq`s at the top of each body are the null tests that
+ * `rstl::destroy_impl` puts on `in`.
+ */
+extern "C" CEffectComponentVector* fn_800275B8(CEffectComponentVector* vec, int flag) {
+  if (vec != nullptr) {
+    CEffectComponent* first = vec->mItems;
+    CEffectComponent* last = first + vec->mCount;
+    for (CEffectComponent* cur = first; cur != last; ++cur) {
+      cur->~CEffectComponent();
+    }
+    CMemory::Free(first);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(vec);
+    }
+  }
+  return vec;
+}
+
+extern "C" TEffectEntry* fn_80027550(TEffectEntry* entry, int flag) {
+  if (entry != nullptr) {
+    fn_800275B8(&entry->second, -1);
+    entry->first.~basic_string();
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(entry);
+    }
+  }
+  return entry;
+}
+
+extern "C" TEffectEntry* fn_8002752C(TEffectEntry* entry) { return fn_80027550(entry, -1); }
+
+extern "C" TEffectEntry* fn_8002750C(TEffectEntry* entry) { return fn_8002752C(entry); }
 
 /** 0x80027394 - the `rstl::less<rstl::string>` forwarder; see fn_8002DDA4 above for the shape. */
 extern "C" bool fn_80027394(rstl::less< rstl::string >* cmp, const rstl::string& a,
