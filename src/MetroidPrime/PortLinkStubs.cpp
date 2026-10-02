@@ -9,7 +9,10 @@
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   191 functions, 9 data objects (counted 2026-10-02, after the `Carve801FD4B0.cpp` carve, which
+ *   190 functions, 9 data objects (counted 2026-10-02, after `src/MetroidPrime/ScriptObjects/
+ *   Carve801FD998.c` retired `stub_229` because that unit now defines `fn_801FD998` for the port's
+ *   link too - functions 191 -> 190, data unmoved at 9, the total 200 -> 199.  Before that, after
+ *   the `Carve801FD4B0.cpp` carve, which
  *   added `stub_228`..`stub_231` for that unit's four unclaimed callees and **no data stub**,
  *   because `fn_801FD4B0` stores nothing into its receiver - functions 187 -> 191, data unmoved at
  *   9, the total 196 -> 200).  The 187 was itself one high: `grep -cE 'asm\("'` counted 196 before
@@ -1164,7 +1167,7 @@ extern "C" void stub_227() asm("fn_801FD6F0");
 extern "C" void stub_227() {}
 
 
-// The four stand-ins for `fn_801FD4B0`'s callees - stub_228 .. stub_231, added by
+// The stand-ins for `fn_801FD4B0`'s callees - stub_228, stub_230 and stub_231, added by
 // `src/MetroidPrime/ScriptObjects/Carve801FD4B0.cpp`'s carve and asked for by the port because that
 // unit reproduces `fn_801FD4B0` byte for byte and all four `bl`s are in retail's bytes:
 //
@@ -1191,28 +1194,32 @@ extern "C" void stub_227() {}
 // `gap grew: fn_801FD52C is not in port_link_gap_list.md`, and the same for `fn_801FD7D4`,
 // `fn_801FD998` and `fn_801FDB5C` - and with all four in place the same command prints
 // `280  MISSING`, all accounted for.  So this carve costs the port link nothing, which is what the
-// four blocks are for.
+// four blocks were for.
+//
+// `stub_229`, the third of them, is **gone**: `src/MetroidPrime/ScriptObjects/Carve801FD998.c` now
+// defines `fn_801FD998` for real, so the port's link takes the symbol from that unit's object and
+// keeping the stand-in as well would be two definitions of one symbol in its flat link - the
+// duplicate the `link-dups` gate step and `link_check.sh` exist to catch, and the reason
+// `stub_180`, `stub_197`, `stub_198` and `stub_199` above were retired the same way.
 //
 // Unlike the `Carve801FD924.cpp` / `Carve801FDAE8.cpp` / `Carve801FD67C.cpp` carves next door, this
 // one costs **no data stub**: `fn_801FD4B0` stores nothing into its receiver, so it names no vtable.
 // Function stubs 186 -> 190, data stubs stay at 9.
 //
 // Each of these is a stand-in with an empty body, like every other stub in this file, and it is
-// **not** a claim that the symbol is decompiled - none of the four is, and
+// **not** a claim that the symbol is decompiled - none of the three remaining is, and
 // `docs/research/port_link_gap.md` keeps a symbol listed as still missing until the port link
 // actually resolves it. Claiming one instead only moves the same gap along: its 0x84 bytes need the
-// body of its own inner walk (`fn_801FDBE0` / `fn_801FDA1C` / `fn_801FD858` / `fn_801FD5B0`,
-// 0x38 bytes each), all unclaimed.  `fn_801FDBE0` is the only one of the four with a claimed
-// neighbour (`ScriptObjects/Carve801FDB5C.c`, Matching, claims 0x801FDBE0..0x801FDC88 - so
-// `fn_801FDBE0` itself is *not* claimed; the carve of 0x801FDB5C..0x801FDBE0 is the one still
-// open, and `docs/goal-notes/carve-801fdb5c.md` records that it did not match). The same trade
-// `stub_196`, `stub_197` and `stub_227` above make for their carves' callees.
+// body of its own inner walk (`fn_801FDBE0` / `fn_801FD858` / `fn_801FD5B0`, 0x38 bytes each).
+// `fn_801FDB5C` is the one whose inner walk is already ours - `ScriptObjects/Carve801FDB5C.c`
+// claims 0x801FDBE0..0x801FDC88 and defines `fn_801FDBE0` there - yet the 0x84 bytes in front of it
+// are still open, and `docs/goal-notes/carve-801fdb5c.md` records the seven spellings measured for
+// them and why none of them links.  `fn_801FD998` went the other way - its inner walk `fn_801FDA1C`
+// is claimed by `ScriptObjects/Carve801FDA1C.c` (0x801FDA1C..0x801FDAA4, `Matching`), so the carve
+// of the 0x84 bytes in front of it cost the port link nothing and its stand-in is retired above.
+// The same trade `stub_196`, `stub_197` and `stub_227` above make for their carves' callees.
 extern "C" void stub_228() asm("fn_801FDB5C");
 extern "C" void stub_228() {}
-
-// fn_801FD998 - the +0x20 container's destructor; see the block above for all four.
-extern "C" void stub_229() asm("fn_801FD998");
-extern "C" void stub_229() {}
 
 // fn_801FD7D4 - the +0x10 container's destructor; see the block above.
 extern "C" void stub_230() asm("fn_801FD7D4");
