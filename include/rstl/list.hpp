@@ -26,20 +26,6 @@ public:
   , mEmpty_next(reinterpret_cast< node* >(&mEmpty_prev))
   , mCount(0) {}
 
-  struct destroy_helper {
-    destroy_helper(list* l) : mList(l), mActive(true) {}
-    ~destroy_helper() {
-      if (mActive) {
-        mList->destroy();
-      }
-    }
-    void release() { mActive = false; }
-
-  private:
-    list* mList;
-    bool mActive;
-  };
-
   list(const list& other)
   : mAllocator(other.mAllocator)
   , mStart(reinterpret_cast< node* >(&mEmpty_prev))
@@ -47,9 +33,7 @@ public:
   , mEmpty_prev(reinterpret_cast< node* >(&mEmpty_prev))
   , mEmpty_next(reinterpret_cast< node* >(&mEmpty_prev))
   , mCount(0) {
-    destroy_helper dh(this);
     insert(end(), other.begin(), other.end());
-    dh.release();
   }
 
   list& operator=(const list& other) {
