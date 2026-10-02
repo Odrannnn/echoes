@@ -38,6 +38,7 @@ public:
   // Retail symbol fn_800B4518; upstream dropped the declaration with the body.
   void fn_800B4518(CStateManager& mgr);
   bool IsVisible() const;
+  const CVector3f& GetOrbitOffset() const { return mOrbitOffset; }
   void ShowAllKeysCollectedAlert(CStateManager& mgr, CPlayerState* playerState, CPlayerState::EItemType itemType);
 
 private:
