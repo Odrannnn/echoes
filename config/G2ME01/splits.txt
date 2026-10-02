@@ -1159,6 +1159,9 @@ MetroidPrime/ScriptObjects/Carve801FEEF0.c:
 MetroidPrime/ScriptObjects/Carve801FF4A4.c:
 	.text       start:0x801FF4A4 end:0x801FF4C4
 
+MetroidPrime/ScriptObjects/Carve801FF5A0.cpp:
+	.text       start:0x801FF5A0 end:0x801FF720
+
 MetroidPrime/ScriptLoader/SpacePirate.cpp:
 	.text       start:0x80200E10 end:0x80200E3C
 	.sbss       start:0x80419358 end:0x80419360

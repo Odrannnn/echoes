@@ -5,16 +5,19 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 151 of them: the ones referenced **only by
+ * file supplies 154 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   148 functions, 4 data objects (counted 2026-10-02, after `fn_801FDC88` was added by hand
- *   below; the count before that was 147, measured 2026-10-01 after the eighth upstream sync,
- *   which retired `CDamageVulnerability::~CDamageVulnerability()` - upstream's
+ *   151 functions, 4 data objects (counted 2026-10-02, after the three
+ *   `Carve801FF5A0.cpp` callees were added by hand below; the count before those was
+ *   148, itself after `fn_801FDC88` was added by hand, and 147 before that, measured
+ *   2026-10-01 after the eighth upstream sync, which retired
+ *   `CDamageVulnerability::~CDamageVulnerability()` - upstream's
  *   `CDamageVulnerability.cpp` defines it and is listed in `files.cmake`).
  *
- * Breakdown: 86 REL loader, 46 game method, 18 unmangled fn_/lbl_, 4 vtable/typeinfo.
+ * Breakdown: 86 REL loader, 46 game method, 21 unmangled fn_/lbl_, 1 CodeWarrior-mangled
+ * `rstl::rmemory_allocator::allocate`, 4 vtable/typeinfo.
  *
  * **Eighteen more were deleted by hand in the 2026-09-28 upstream merge**, each now defined by an
  * upstream TU: `CPlayer::SetSpawnedMorphBallState`, `CPlayer::fn_80019E40`, `CPlayer::Teleport`,
@@ -708,6 +711,33 @@ extern "C" void stub_176() {}
 // the carve's `fn_801FDC68` is retail's byte for byte, and retail's is one `bl fn_801FDC88`.
 extern "C" void stub_178() asm("fn_801FDC88");
 extern "C" void stub_178() {}
+
+// The three callees of `src/MetroidPrime/ScriptObjects/Carve801FF5A0.cpp` (Matching,
+// 0x801FF5A0..0x801FF720), added by hand on 2026-10-02 for the same reason `stub_178` above
+// exists: the carve's bytes *are* those `bl`s, so the calls cannot be dropped without losing
+// the match, and the port's link does not have the dtk `auto_*` objects that define them in
+// the DOL. Measured: the gap went 291 -> 294 with the carve listed (`build/gate-link.log`).
+//
+//   fn_801FF5A0 (retail 0x801FF5A0) calls `allocate__Q24rstl17rmemory_allocatorFi` at
+//     0x801FF5D0 and `Free__7CMemoryFPCv` at 0x801FF624.  The latter was already defined; the
+//     former was not, because the port spells the allocator `_ZN4rstl17rmemory_allocator8allocateEi`
+//     and the DOL spells it with CodeWarrior's own mangling.
+//   fn_801FF6B8 (retail 0x801FF6B8) calls `fn_801FEE40` at 0x801FF6E8 - the 0x20-byte element
+//     copy, itself one `bl fn_801FEE60`.
+//   fn_801FF66C (retail 0x801FF66C) calls `fn_801FD638` at 0x801FF690 - the 0x20-byte element
+//     destructor, itself one `bl fn_801FD658`.
+//
+// Same trade as `stub_178`: empty bodies, no claim that any of the three is decompiled (none is),
+// and carving them instead only moves the gap one function along because each is a forwarder.
+// `docs/research/port_link_gap.md` keeps all three listed as still missing.
+extern "C" void stub_179() asm("allocate__Q24rstl17rmemory_allocatorFi");
+extern "C" void stub_179() {}
+
+extern "C" void stub_180() asm("fn_801FEE40");
+extern "C" void stub_180() {}
+
+extern "C" void stub_181() asm("fn_801FD638");
+extern "C" void stub_181() {}
 
 
 // Data objects. A vtable or typeinfo stub is zero-filled: harmless to take the
