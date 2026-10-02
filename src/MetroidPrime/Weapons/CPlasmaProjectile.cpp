@@ -1,10 +1,11 @@
 // Retail's `operator new` sites in this object name the `??(??)` placement literal at
 // 0x803A8D40 (see `CMEMORY_NEW_FILE` in `Kyoto/Alloc/CMemory.hpp`); without this the compiler
 // emits a per-TU `@stringBase0` literal that lands at a different address.
-extern "C" const char lbl_803A8D40[];
+extern "C" const char lbl_803A8D40[]; // "??(??)\0PlasmaElectricFx\0PlasmaVisorFx\0" in retail's pool.
 #define CMEMORY_NEW_FILE lbl_803A8D40
 #include "MetroidPrime/Weapons/CPlasmaProjectile.hpp"
 
+#include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/Basics/CCast.hpp"
 #include "Kyoto/Graphics/CGX.hpp"
 #include "Kyoto/Graphics/CGraphics.hpp"
@@ -15,11 +16,29 @@ extern "C" const char lbl_803A8D40[];
 #include "Kyoto/Particles/CGenDescription.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CCameraManager.hpp"
+#include "MetroidPrime/CEffect.hpp"
 #include "MetroidPrime/CGameLight.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/TCastTo.hpp"
+#include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 #include "MetroidPrime/Weapons/CBeamInfo.hpp"
 #include "MetroidPrime/Weapons/CWeaponAssetInfo.hpp"
+
+// Retail's HUD billboard effect (CHUDBillboardEffect, 384 bytes); only the pieces this unit calls.
+class CHUDBillboardEffect : public CEffect {
+public:
+  CHUDBillboardEffect(const rstl::optional_object< TToken< CGenDescription > >& particle,
+                      const rstl::optional_object< TToken< CElectricDescription > >& electric,
+                      TUniqueId uid, bool active, const rstl::string& name, float zOffset,
+                      const CVector3f& scale, uint playerMask, const CColor& color,
+                      const CVector3f& a, const CVector3f& b, bool flag);
+  static const CVector3f& GetScaleForPOV(const CStateManager& mgr);
+  static float GetNearClipDistance(const CStateManager& mgr, uint playerMask);
+  char pad[0x180 - 0x158];
+};
+
+extern "C" void fn_801BF960(CPlayerKnockBackMgr*, CPlayer*, float); // Retail knock-back freeze.
+extern "C" CDamageInfo fn_800B5FF0(const CDamageInfo&, float);      // Retail time-scaled damage copy.
 
 const int CPlasmaProjectile::kMaxPlasmaLights = 3;
 const float CPlasmaProjectile::kInvMaxPlasmaLights = 1.f / CCast::LtoF(kMaxPlasmaLights - 1);
@@ -156,11 +175,78 @@ void CPlasmaProjectile::MakeBillboardEffect(
     const rstl::optional_object< TToken< CGenDescription > >& particle,
     const rstl::optional_object< TToken< CElectricDescription > >& electric,
     const rstl::string& name, CStateManager& mgr, uint playerMask) {
-  // TODO: create the HUD billboard effect with the affected player's visibility mask.
+  CHUDBillboardEffect* effect = rs_new CHUDBillboardEffect(
+      particle, electric, mgr.AllocateUniqueId(), true, name,
+      CHUDBillboardEffect::GetNearClipDistance(mgr, playerMask),
+      CHUDBillboardEffect::GetScaleForPOV(mgr), playerMask, CColor::White(), CVector3f::One(),
+      CVector3f::Zero(), false);
+  mgr.AddObject(effect);
 }
 
 void CPlasmaProjectile::UpdatePlayerEffects(float dt, CStateManager& mgr) {
-  // TODO: initial contact damage, per-player visor effects and sustained-damage ownership.
+  mPlayerEffectPulseTimer -= dt;
+  if (mExpansionState == kES_Attack || mExpansionState == kES_Sustain) {
+    if ((mBeamAttributes & 0x100) && mAppliedDamageToPlayer) {
+      mExpansionState = kES_Release;
+    }
+    CPlayer* player = TCastToPtr< CPlayer >(mgr.ObjectById(GetCollisionActorIdRef()));
+    if (GetDamageType() == kDT_Actor && player) {
+      if (mInitialDamageEnabled && mInitialDamagePending) {
+        CDamageInfo info = GetCurrentDamageInfo();
+        info.SetDamage(mInitialDamage);
+        mgr.ApplyDamage(GetUniqueId(), player->GetUniqueId(), GetOwnerId(), info, GetFilter(),
+                        CVector3f::Zero());
+        mInitialDamagePending = false;
+      }
+      if (mPlayerEffectPulseTimer <= 0.f) {
+        if ((mBeamAttributes & 8) && mSustainedDamagePlayerId == kInvalidUniqueId) {
+          mSustainedDamagePlayerId = player->GetUniqueId();
+          mPlayerDamageTimer = 0.f;
+          player->PushSustainedDamage();
+        }
+        switch (GetType()) {
+        case 1:
+          fn_801BF960(&player->GetKnockBackManager(), player,
+                      player->GetTweakPlayer()->GetFrozenTimeout());
+          break;
+        case 2:
+          if (mVisorElectric) {
+            MakeBillboardEffect(rstl::optional_object_null(), mVisorElectric,
+                                rstl::string_l(lbl_803A8D40 + 7), mgr,
+                                mgr.MaskUIdNumPlayers(player->GetUniqueId()));
+            CSfxManager::SfxStart(mElectricSfx, 127, player->GetSoundPan(CPlayer::kMSP_4));
+            player->SetHudDisable(3.f, 0.5f, 2.5f);
+            player->SetOrbitRequestForTarget(player->GetOrbitTargetId(),
+                                             CPlayer::kOR_ActivateOrbitSource, mgr);
+            player->GetPlayerState()->StaticInterference().AddSource(GetUniqueId(), 0.2f, 3.f);
+          }
+          break;
+        case 3:
+          if (mVisorParticle) {
+            MakeBillboardEffect(mVisorParticle, rstl::optional_object_null(),
+                                rstl::string_l(lbl_803A8D40 + 24), mgr,
+                                mgr.MaskUIdNumPlayers(player->GetUniqueId()));
+          }
+          break;
+        default:
+          break;
+        }
+        mPlayerEffectPulseTimer = 0.75f;
+      }
+    }
+  }
+  if (mSustainedDamagePlayerId != kInvalidUniqueId) {
+    mgr.ApplyDamage(GetUniqueId(), mSustainedDamagePlayerId, GetOwnerId(),
+                    fn_800B5FF0(mPhazonDamage, dt), GetFilter(), CVector3f::Zero());
+    mPlayerDamageTimer += dt;
+    if (mPlayerDamageTimer >= mPlayerDamageDuration) {
+      if (CPlayer* player = TCastToPtr< CPlayer >(mgr.ObjectById(GetOwnerId()))) {
+        player->PopSustainedDamage();
+      }
+      mPlayerDamageTimer = 0.f;
+      mSustainedDamagePlayerId = kInvalidUniqueId;
+    }
+  }
 }
 
 void CPlasmaProjectile::UpdateFx(const CTransform4f& xf, float dt, CStateManager& mgr) {

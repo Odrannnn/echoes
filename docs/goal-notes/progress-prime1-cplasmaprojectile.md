@@ -506,3 +506,28 @@ gives mwcceppc a reason to keep them live, and it allocates exactly as retail do
 - `mgr.GetCameraManager(0)` in `Render`, or any attempt to move `CStateManager`'s layout: the
   offset 5632 is `m_cameraManager` and our layout is correct as it stands.
 - hoisting `mCoreColor` into a local as well (retail passes it directly).
+
+## Run 5 (2026-10-02): 18 -> 20 / 21 matched (goal_check PASS)
+
+Measured: unit 96.20% -> 98.37% fuzzy; 20 / 21 functions matched; All 12425 -> 12427 matched.
+
+- **UpdatePlayerEffects (was 0.34%) now 100%.** Not blocked on missing members; the "blockers" were
+  Echoes renames. Retail callees: `fn_801BF960(CPlayerKnockBackMgr*, CPlayer*, float)` (knock-back
+  freeze, `GetFrozenTimeout()` arg) and `fn_800B5FF0(const CDamageInfo&, float)` (time-scaled damage
+  copy, returns by value), both declared `extern "C"` locally. Added accessors:
+  `CStateManager::ApplyDamage` (retail 0x8003E25C), `CPlayer::GetKnockBackManager`,
+  `CPlayerState::StaticInterference`, `CBeamProjectile::GetCollisionActorIdRef`.
+  Bitfield rule: MWCC bitfields are MSB-first; `rlwinm. rX,rY,SH,31,31` tests `1 << (32-SH)`.
+- **Stack-slot trap:** `mgr.ObjectById(GetCollisionActorId())` costs an extra `TUniqueId` temp
+  (every later stack offset +4, `sth` doubled). A `const TUniqueId&` accessor (same pattern as
+  `CEntity::GetUniqueIdRef`) gives retail's single copy.
+- **MakeBillboardEffect (was 1.75%) now 100%.** Retail is `rs_new CHUDBillboardEffect(...)` with
+  384 bytes: `fn_800EDCB4` = ctor, `fn_800EDFA0` = `GetNearClipDistance(mgr, mask)` (float, f1),
+  `fn_800EDFE4` = `GetScaleForPOV(mgr)` (`const CVector3f&`). Declared a local
+  `class CHUDBillboardEffect : public CEffect` with a `pad` to 0x180 in the .cpp (ctor args:
+  particle, electric, id, true, name, nearclip, scale, mask, White(), One(), Zero(), false).
+- **String literals:** retail addresses `"PlasmaElectricFx"`/`"PlasmaVisorFx"` as `lbl_803A8D40`
+  +7 / +24 (that symbol, size 0x28, is the whole pool). Spelling `string_l(lbl_803A8D40 + 7)` gives
+  the exact `lis/addi/addi 7` shape; plain literals left addend 0/17 and capped at 99.59%.
+- WALL: Render (91.75%) still blocked on the `CStateManager` camera-manager offset (not re-measured
+  this run beyond the previous note).

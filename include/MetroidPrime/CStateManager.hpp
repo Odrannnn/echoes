@@ -155,6 +155,9 @@ public:
   int GetWeaponIdCount(TUniqueId owner, EWeaponType type);
   void AddWeaponId(TUniqueId owner, EWeaponType type);
   void RemoveWeaponId(TUniqueId owner, EWeaponType type);
+  // Retail 0x8003E25C.
+  void ApplyDamage(TUniqueId sender, TUniqueId victim, TUniqueId owner, const CDamageInfo& damage,
+                   const CMaterialFilter& filter, const CVector3f& direction);
   void ApplyDamageToWorld(TUniqueId owner, CActor& projectile, const CVector3f& position,
                           const CDamageInfo& damage, const CMaterialFilter& filter);
   void DrawSpaceWarp(const CVector3f& position, float strength) const;

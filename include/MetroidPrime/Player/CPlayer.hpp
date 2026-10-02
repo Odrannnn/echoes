@@ -209,6 +209,7 @@ public:
   TUniqueId GetAimTarget() const { return mAimTarget; }
   CMorphBall* GetMorphBall() { return mMorphBall; }
   const CMorphBall* GetMorphBall() const { return mMorphBall; }
+  CPlayerKnockBackMgr& GetKnockBackManager() { return mKnockBackManager; }
   CPlayerState* GetPlayerState() { return mPlayerState; }
   const CPlayerState* GetPlayerState() const { return mPlayerState; }
   // Retail reads bit 5 of the byte at 0x1268 (CCompoundTargetReticle::UpdateOrbitZoneGroup
