@@ -1721,8 +1721,9 @@ void CMotionSpline::CalculateLength() {
 }
 
 // `fn_8022EA5C` (retail 0x8022EA5C, 0x64 bytes) is in the *same* unclaimed gap as
-// `CHintManager::RemoveHint` above - `config/G2ME01/splits.txt` claims 0x8022E134..0x8022E13C and
-// then 0x8022EB9C..0x8022EBC8, so 0x8022E13C..0x8022EB9C belongs to no unit of ours. Its callers
+// `CHintManager::RemoveHint` above - `config/G2ME01/splits.txt` claims 0x8022E134..0x8022E13C, then
+// 0x8022EB54..0x8022EB9C (`Carve8022EB54.c`), and then 0x8022EB9C..0x8022EBC8, so
+// 0x8022E13C..0x8022EB54 belongs to no unit of ours. Its callers
 // are `CPlayer::ResetRezbitState` (0x8022B164) and `CPlayer::StopRezbitState` (0x8022B0D8), which
 // reach it through `mRezbitEffectToken`, so without this the port goes from 250 to 251 undefined
 // and `tools/link_check.sh` fails STRICT. The declaration, with the body read off the

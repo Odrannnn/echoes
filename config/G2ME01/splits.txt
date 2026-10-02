@@ -1749,6 +1749,9 @@ MetroidPrime/ScriptLoader/IngBlobSwarm.cpp:
 MetroidPrime/ScriptLoader/IngBlobSwarmLoaderSet.cpp:
 	.text       start:0x8022E134 end:0x8022E13C
 
+MetroidPrime/ScriptLoader/Carve8022EB54.c:
+	.text       start:0x8022EB54 end:0x8022EB9C
+
 MetroidPrime/ScriptLoader/EmperorIngStage3.cpp:
 	.text       start:0x8022EB9C end:0x8022EBC8
 	.sbss       start:0x804195F0 end:0x804195F8

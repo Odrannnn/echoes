@@ -845,8 +845,9 @@ CHECK_SIZEOF(CPlayer, 0x14c8)
 typedef char CPlayerVisorSteamSizeCheck[check_sizeof< CPlayer::CVisorSteam, 0x28 >::value];
 
 // `fn_8022EA5C` - retail `.text:0x8022EA5C`, `size:0x64`, 0x8022EA5C..0x8022EAC0. It sits in the
-// **unclaimed** gap 0x8022E13C..0x8022EB9C: `config/G2ME01/splits.txt` claims
-// `MetroidPrime/ScriptLoader/IngBlobSwarmLoaderSet.cpp .text 0x8022E134..0x8022E13C` and then
+// **unclaimed** gap 0x8022E13C..0x8022EB54: `config/G2ME01/splits.txt` claims
+// `MetroidPrime/ScriptLoader/IngBlobSwarmLoaderSet.cpp .text 0x8022E134..0x8022E13C`, then
+// `MetroidPrime/ScriptLoader/Carve8022EB54.c .text 0x8022EB54..0x8022EB9C`, and then
 // `MetroidPrime/ScriptLoader/EmperorIngStage3.cpp .text 0x8022EB9C..0x8022EBC8`, so the bytes in
 // between belong to no unit of ours. Retail's own object for the range is dtk's
 // `auto_03_8022E13C_text.o`, which is in `build.ninja`'s `main.elf` link and defines this symbol, so
