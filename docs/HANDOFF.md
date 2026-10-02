@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    13380 / 28465 functions        (37.44% fuzzy, 30.87% of code, 13.74% fully linked)
-linked     6428 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+matched    13382 / 28465 functions        (37.45% fuzzy, 30.88% of code, 13.75% fully linked)
+linked     6430 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  11535 / 16726 functions        (main/*, including the SDK's)
 port link  287 undefined, 0 duplicates   (287 since the ninth upstream sync, 2026-10-02: 26 upstream
                                    units joined files.cmake, five listed names were renamed and three
@@ -22,7 +22,7 @@ port link  287 undefined, 0 duplicates   (287 since the ninth upstream sync, 202
                                    closed 23 names and opened 97 that nothing implements yet -
                                    docs/research/port_link_gap.md, "The four whole units". Before that:
                                    250 again since 2026-09-30: lane commits 33b784fb
-REL units   1845 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   1847 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 How these numbers got here - the first seven upstream syncs and the unit flips, each with what it
@@ -123,7 +123,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 873 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 874 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## What is not in git (check these before blaming the tree)
@@ -198,7 +198,7 @@ with `boot_path.md` for port work and `port_link_gap.md` for what the port's lin
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (873 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (874 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -227,7 +227,7 @@ merge widened it. Others: `TypesMatch` 509/511, `CStateManager` 108/239, `CPlaye
 **2. The REL modules** - the `REL units` line above, 86 modules. A module counts only when its
 sha1 matches `config/G2ME01/config.yml`. **Measure which modules link our own code, never recall
 it**: `python3 tools/check_module_wiring.py`. As of the last commit it reports
-**142 units of our own code in 80 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `BacteriaSwarm`, `Blogg`, `ChozoGhost`, `CommandoPirate`, `DarkCommando`, `DarkSamus`, `DarkSamusBattleStage`, `DarkTrooper`, `DestructibleBarrier`, `DigitalGuardian`, `ElitePirate`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EmperorIngStage3`, `EyeBall`, `FishCloud`, `FlyerSwarm`, `FlyingPirate`, `FogOverlay`, `GeomBlobV2`, `Glowbug`, `Grenchler`, `GunTurret`, `Ing`, `IngBlobSwarm`, `IngBoostBallGuardian`, `IngPuddle`, `IngSnatchingSwarm`, `IngSpaceJumpGuardian`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Lumite`, `MediumIng`, `Metaree`, `MetareeSwarm`, `Metroid`, `MinorIng`, `MysteryFlyer`, `OctapedeSegment`, `Parasite`, `PillBug`, `PirateRagDoll`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Rezbit`, `Ripper`, `RubiksPuzzle`, `SandBoss`, `Sandworm`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `Shrieker`, `SnakeWeedSwarm`, `SpacePirate`, `SpankWeed`, `Splinter`, `Splitter`, `Sporb`, `StoneToad`, `SwampBossStage1`, `SwampBossStage2`, `SwarmBasics`, `Tryclops`, `WallCrawler`, `WallWalker`, `WispTentacle`.
+**143 units of our own code in 80 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `BacteriaSwarm`, `Blogg`, `ChozoGhost`, `CommandoPirate`, `DarkCommando`, `DarkSamus`, `DarkSamusBattleStage`, `DarkTrooper`, `DestructibleBarrier`, `DigitalGuardian`, `ElitePirate`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EmperorIngStage3`, `EyeBall`, `FishCloud`, `FlyerSwarm`, `FlyingPirate`, `FogOverlay`, `GeomBlobV2`, `Glowbug`, `Grenchler`, `GunTurret`, `Ing`, `IngBlobSwarm`, `IngBoostBallGuardian`, `IngPuddle`, `IngSnatchingSwarm`, `IngSpaceJumpGuardian`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Lumite`, `MediumIng`, `Metaree`, `MetareeSwarm`, `Metroid`, `MinorIng`, `MysteryFlyer`, `OctapedeSegment`, `Parasite`, `PillBug`, `PirateRagDoll`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Rezbit`, `Ripper`, `RubiksPuzzle`, `SandBoss`, `Sandworm`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `Shrieker`, `SnakeWeedSwarm`, `SpacePirate`, `SpankWeed`, `Splinter`, `Splitter`, `Sporb`, `StoneToad`, `SwampBossStage1`, `SwampBossStage2`, `SwarmBasics`, `Tryclops`, `WallCrawler`, `WallWalker`, `WispTentacle`.
 
 The dated account of both (which modules joined when, the `TypesMatch` naming work, the `Rel(...)`
 blocks that were lost and restored) is in `docs/history/handoff-to-2026-10-01.md`.

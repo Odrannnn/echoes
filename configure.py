@@ -1633,6 +1633,14 @@ config.libs = [
             # directly below the state-table run and is the last contiguous range of
             # auto_00_000000A8_text that does not need the CActor constructor chain (fn_33_41CC),
             # so the claim stops here and the rest of that run is left to retail.
+            # The module's `DiveToTarget`/`FollowArcPath` state run, .text 0x3068..0x31A4: fn_33_3068 and
+            # fn_33_312C, the two entries the module's own .data record table at 0x130/0x124 names
+            # next to the strings "DiveToTarget" and "FollowArcPath". Contiguous, and directly
+            # below CIngSnatchingSwarmUpdate.cpp (0x348C..0x35F8); the range stops short of
+            # fn_33_31A4 above it (0x31A4, 0x2E8, "ExitPortal"), which is a path-point builder that
+            # sits at 94.91% and has no room in this claim until its last few instructions are
+            # scheduled as retail schedules them.
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngSnatchingSwarmState.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CIngSnatchingSwarmUpdate.cpp"),
             # IngSnatchingSwarm's state-table run, .text 0x35F8..0x383C: eleven functions, the ten
             # named by the module's own `.data` record tables plus the box-snapshot copier above

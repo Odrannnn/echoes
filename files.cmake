@@ -1221,6 +1221,7 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/SpankWeedCopyFloat.cpp
     src/MetroidPrime/ScriptObjects/SpankWeedCopyDesc.cpp
     src/MetroidPrime/ScriptObjects/ShredderAccessors.cpp
+    src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmState.cpp
     src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmUpdate.cpp
     src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmAi.cpp
     src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmBounds.cpp
