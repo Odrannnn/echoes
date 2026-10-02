@@ -712,3 +712,206 @@ duplicates)` — 287 is the baseline in `build/goal/judge/undef.base.count`, unc
 MetroidPrime/ScriptObjects/CScriptEffect` -> `ok: 1 unit(s) checked, none emits its functions out of
 retail order`. (`docs/HANDOFF.md`'s state block shows the judge's own rewritten 12228/10680 lines —
 that is `goal_check.sh` rewriting derived counts, not an edit of mine.)
+
+---
+
+# progress-unit-cscripteffect — run 5 (`wt-mp2-goal-L4`): 20/35 -> 21/35
+
+**Result: `__ct__15CGameSplineDesc` taken from 92.31% to 100.00% by spelling its two by-value
+parameters `const`, and `PreRender` 97.72% -> 98.50%. `./tools/goal_check.sh build/goal/item.json`
+-> `PASS` (matched 12278 -> 12279, target rose 20 -> 21, linked 5863 unchanged, no `asm` added).**
+The unit stays `NonMatching`, as a `progress` item requires.
+
+Only `src/MetroidPrime/ScriptObjects/CScriptEffect.cpp` changed (+39/-27). No header, no
+`config/`, no `tools/`, no `build/goal/` file edited. Nothing committed.
+
+**The three previous runs' wall on `__ct__15CGameSplineDesc` was a spelling problem, not a
+codegen limit.** Runs 2 and 3 spent 23 init-list/body permutations on it and concluded the
+epilogue order was unreachable. One word of `const` on each by-value parameter fixes it.
+
+## Measured
+
+Re-measured first: the unit really was at 20/35, `matched_code` 3856/11284, DOL matched 12278, so
+nothing had landed upstream and runs 1-4's numbers were current.
+
+| | before | after |
+|---|---|---|
+| unit `matched_functions` | 20 / 35 | **21 / 35** |
+| unit `matched_code` | 3856 / 11284 (34.17%) | **3960 / 11284 (35.09%)** |
+| unit `fuzzy_match_percent` | 64.43% | **64.54%** |
+| DOL `matched_functions` | 12278 / 28465 | **12279 / 28465** |
+| DOL `linked` | 5863 | 5863 (unchanged) |
+| `All:` | 34.68% fuzzy, 28.07% matched | 34.68% fuzzy, **28.07%** matched (12279 / 28465) |
+
+| function | before | after |
+|---|---|---|
+| `__ct__15CGameSplineDescFRC11CMayaSplineQ213CMotionSpline11ESplineTypefb` | 92.31% | **100.00%** |
+| `PreRender__13CScriptEffectFR13CStateManager` | 97.72% | **98.50%** |
+| everything else in the unit | unchanged | unchanged |
+
+## 1. `__ct__CGameSplineDesc` 92.31% -> 100.00%: `const` on the by-value parameters
+
+The function is 104 bytes and differed from retail in exactly one instruction, the epilogue's
+reload of the saved LR:
+
+```
+retail:  lwz r0,36(r1) ; lfd f31,24(r1) ; lwz r31,20(r1) ; lwz r30,16(r1) ; lwz r29,12(r1) ; mtlr r0
+ours:    lfd f31,24(r1) ; lwz r31,20(r1) ; lwz r30,16(r1) ; lwz r29,12(r1) ; lwz r0,36(r1) ; mtlr r0
+```
+
+Adding `const` to `float duration` and `bool closedLoop` puts the `lwz r0` first and every
+instruction in the function becomes byte-identical. **Top-level cv-qualifiers on parameters are
+not mangled**, so the symbol is unchanged: `nm -S` still shows
+`00000250 00000068 T __ct__15CGameSplineDescFRC11CMayaSplineQ213CMotionSpline11ESplineTypefb`
+(0x68 = 104 = retail's size).
+
+**This retires run 4's lead, which was measured and is wrong.** Run 4 concluded that "the trigger
+is what terminates the body, not the init-list spelling" from scanning all 2066 objects. Re-scanning
+them (`objdump -d` over every object under `build/G2ME01/src`, 50815 functions) says something
+different and more useful:
+
+- Counting functions that restore a saved FPR in the epilogue: **2887 emit `lwz r0` before the
+  `lfd`, 1324 after it.** `lwz r0`-first is the *common* form, not a rare one as run 4 implied.
+- Narrowed to the shape this constructor has - three GPR saves (`r29,r30,r31`), one FPR save
+  (`f31`), no paired-single/SPE save - 16 such functions exist in the tree and **15 of them emit
+  `lwz r0` first; only `__ct__CGameSplineDesc` did not.** So the spelling was the outlier all
+  along.
+- Run 4's "all five that get it right end their body with a call" does not survive either:
+  `CRainSplashGenerator::SSplashLine::Update` and `CActorModelParticles::Update` are also
+  `lwz r0`-first and both end their body with `bne`, not a call.
+
+### Spellings measured this run (this is what runs 1-3 did not try)
+
+All with `tools/g2try.sh`-style per-instruction comparison against retail's 29 instructions:
+
+| spelling | diffs |
+|---|---|
+| baseline (mem-init list, no qualifiers) | 4 |
+| **`const float duration, const bool closedLoop`** | **2 (byte-identical; the 2 are the objdump address line)** |
+| `mClosedLoop` moved into the body via `const bool loop` | 2 (byte-identical) |
+| `const` on the parameters only, init list untouched | 2 (byte-identical) |
+| `mClosedLoop(closedLoop ? true : false)` | 12 |
+| `mClosedLoop(static_cast<bool>(closedLoop))` | 4 (no change) |
+| all four members assigned in the body, no init list | 24 |
+| `if (!closedLoop) { return; }` appended to the body | 44 |
+| body assigning `mDuration` again from a `const float dur` | 6 |
+| `const float duration` alone / `const bool closedLoop` alone | 2 each |
+
+The `const bool loop = closedLoop; mClosedLoop = loop;` spelling is an independent way to the same
+100%, which is the useful part: the trigger is having the bitfield's source value come from a
+*named local* rather than from the parameter register, not `const` as such.
+
+## 2. `PreRender` 97.72% -> 98.50%: two structural fixes, 4 of the 10 differences gone
+
+Measured one at a time with a per-instruction diff of retail's 138 instructions against ours:
+
+1. **`const CAABox& bounds` bound inside the `else`, not at the top of the function** (alone:
+   97.72% -> 98.32% of the diff). Run 4 noted that retail computes `addi r31,r28,204` at
+   instruction 22 rather than in the prologue, and run 4's chosen fix hoisted the reference to the
+   top - which puts the `addi` in the *prologue*, two instructions wrong. Writing
+   ```cpp
+   } else {
+     const CAABox& bounds = GetOtherBounds();
+     if (mgr.fn_800366e4(this)) { ... }
+   }
+   ```
+   puts it exactly where retail has it: inside the branch, immediately before the call. Semantically
+   identical - `GetOtherBounds()` is `const CAABox& GetOtherBounds() const { return mOtherBounds; }`
+   (`include/MetroidPrime/CActor.hpp:237`), a pure member read, and its only uses are inside that
+   branch.
+2. **`case kRO_Queue2` written before `case kRO_Queue1`** (alone: 4 of the remaining differences).
+   Retail lays `kRO_Queue2`'s body out at 0x80081A60, falling straight out of the `cmpwi r0,3`
+   that guards it, and reaches `kRO_Queue1`'s body with the `beq` at 0x80081A4C. mwcceppc emits the
+   arm bodies in source order, so the other order makes it jump over the first arm with one extra
+   `b`. `case kRO_Normal: break;` must stay in the enum's original first position: dropping it
+   changes the first comparison from `cmpwi r0,1` to `cmpwi r0,2` (12 diffs instead of 6).
+
+Still 98.50% (6 of 138 instructions, 2 of them real). What is left, measured:
+
+```
+retail kRO_Queue2:  lhz r0,8(r28) ; mr r3,r29 ; addi r4,r1,16 ; sth r0,12(r1) ; sth r0,16(r1) ; bl
+ours   kRO_Queue2:  lhz r0,8(r28) ; mr r3,r29 ; addi r4,r1,12 ; sth r0,16(r1) ; sth r0,12(r1) ; bl
+retail kRO_Queue1:  lhz r0,8(r28) ; mr r3,r29 ; addi r4,r1,8  ; sth r0,8(r1)              ; bl
+ours   kRO_Queue1:  identical
+```
+
+So `kRO_Queue1` is now retail's, and `kRO_Queue2` is a mirror image: retail materialises a
+**second** 2-byte temporary at `r1+12` before the one it passes at `r1+16`, we do the opposite.
+The frame is right - the slots are `r1+8`, `r1+12`, `r1+16`, all 4-byte-strided 2-byte objects,
+in both. Nine spellings measured this run, all 6 or worse:
+
+- `const TUniqueId a = id; const TUniqueId b = a; mgr.fn_80037984(b);` with `mgr.fn_80037A04(id)`
+  plain in the other arm: 6, and it is the closest - `kRO_Queue1` comes out exactly like retail's
+  and `kRO_Queue2`'s two slots are 12 and 16, just mirrored. Reversing the two declarations
+  (`b` first, `a` second), and passing the first-declared one instead of the second: **all three
+  produce byte-identical output**, so the compiler canonicalises the dead intermediate and the
+  declaration order is not the lever.
+- Keeping the copy in *both* arms (one extra local): 30 - the whole frame shifts by 4 and the
+  light-list block moves with it.
+- Making the outer `id` a value (`const TUniqueId id = GetUniqueId();`) instead of the
+  `reinterpret_cast` reference: 36, all three variants of the arms. **The reference binding has to
+  stay.**
+- Dropping `case kRO_Normal` from the swapped switch: 12 (see above).
+- Two locals in `kRO_Queue2` built from `GetUniqueId()` directly, plus a copy in `kRO_Queue1`: 30.
+
+**What is probably going on, for the next run:** `sth` into `r1+12` *and* `r1+16` of the same
+register is the same idiom as the light-list block just above it, where a by-value `TAreaId`
+argument produces `stw r8,20(r1) ; stw r8,24(r1)` - one 8-byte home written at `+0` and `+4`. So
+retail's `kRO_Queue2` argument looks like a by-value class argument whose 8-byte home is at
+`r1+12`, with `r1+16` being the reference actually passed. `fn_80037984`/`fn_80037A04` are declared
+`bool (…)(TUniqueId id)` - by value - at `include/MetroidPrime/CStateManager.hpp:300,302`, yet
+retail's callee reads `lhz r5,0(r4)`, i.e. it **dereferences** r4. That declaration is the
+by-value/by-reference mismatch; both functions are at 96.06% in the `CStateManager` unit for
+exactly this reason. Changing those two declarations to `const TUniqueId&` would emit the 8-byte
+home in the caller, but it is a header change on `CStateManager` that moves every caller, so it
+needs its own measured item.
+
+## Re-measured, so the next run does not repeat it
+
+- **`PreRenderAllViewports` is unchanged at 99.84%** (4 stack displacements). Runs 1-3 measured 30
+  spellings; I added none, but the frame is now legible in one place: retail allocates `position`
+  at `r1+8`, the empty `CAABox` at `r1+20`, then the two ternary-arm `optional_object<CAABox>`
+  temporaries at `r1+44` and `r1+72`, then `bounds` at `r1+100`; we allocate `position` at `r1+8`,
+  then the arms at `r1+20` and `r1+48`, then the empty `CAABox` at `r1+76`. Only the **position of
+  the empty `CAABox`** differs - everything else is the same size in the same order. Since
+  mwcceppc allocates lazily in codegen order and the `CAABox` is built in the `else`, this looks
+  like it needs the empty box to exist as an object *before* the ternary is evaluated, which the
+  source shape cannot express (run 3 measured the hoist: 81.33%, slot order unchanged).
+- **`__ct__13CScriptEffect` 88.24%,** unchanged; its first divergence is still
+  `bl CModelDataNull` where retail has a call to a one-instruction tail-call thunk at 0x80036184.
+  Run 3's finding that `CModelDataNull()` cannot be un-inlined stands (taking its address emits
+  the copy and still calls `__ct__CModelData`).
+- **`UpdateGeneratorRate` 85.62%, `AcceptScriptMsg` 48.56%,** unchanged and not attempted.
+- **The nine functions at 0.00% are still nine functions at 0.00%.** Re-measured rather than
+  recalled, and **run 4's naming test does not rescue any of them**: `nm -S` on
+  `build/G2ME01/src/MetroidPrime/ScriptObjects/CScriptEffect.o` lists every symbol the object emits
+  and there is nothing at 24, 92, 152, 248, 124, 12, 224 or 1772 bytes. They are unwritten code,
+  not misnamed code. Their callers are now pinned: `fn_80080FCC` (248 B), `fn_80080DB8` (172 B,
+  the assignment-shaped `CMayaSpline` copy), `fn_80080E64` (224 B), `fn_80080F44` (12 B) and
+  `fn_80080F50` (124 B) are called **only** from inside `fn_80080394` (1772 B, at 0x80080394), which
+  is a token-parsing loader - it reads 4-byte ids off a stream at `this+8` and dispatches through a
+  14-way comparison tree. `reserve` (152 B, 0x80082E18) is called only by `fn_80082E74` (92 B), and
+  **neither `reserve` nor `fn_80082ED0` has any caller anywhere in the DOL** (`grep` over a full
+  `objdump -d build/G2ME01/main.elf`): they are uncalled weak COMDATs, which is why our object
+  cannot emit them at all - there is nothing to reference them. Writing `fn_80080394` is the only
+  route to that cluster, and it is 1772 bytes of stream parsing.
+
+## Gates
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12278 -> 12279   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    All:  34.68% fuzzy, 28.07% matched, 12.90% linked (12279 / 28465 functions)
+  ok    target rose: main/MetroidPrime/ScriptObjects/CScriptEffect: 20 -> 21 / 35 functions
+  ok    no asm added
+goal_check: PASS progress-unit-cscripteffect
+```
+
+Also measured: `sha1sum build/G2ME01/main.dol` -> `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`tools/report_diff.py build/goal/judge/report.base.json build/report.json` -> `+100% __ct__15CGameSplineDesc…`,
+`no regression`; `tools/check_docs_claims.py` -> `docs claims agree with the tree`.
+No `tools/`, no `config/`, no `docs/`, no `build/goal/` file was edited by hand; nothing
+committed. (`docs/HANDOFF.md`'s state block shows the judge's own rewritten numbers - that is
+`goal_check.sh` rewriting derived counts, not an edit of mine.)

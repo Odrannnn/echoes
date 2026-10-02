@@ -347,52 +347,59 @@ void CScriptEffect::UpdateGeneratorRate(CStateManager& mgr) {
 }
 
 void CScriptEffect::PreRender(CStateManager& mgr) {
-  const CAABox& bounds = GetOtherBounds();
   bool visible = false;
   if (!mCanRender) {
     mRemTime = rstl::max_val(mDurationResetWhileVisible, mRemTime);
-  } else if (mgr.fn_800366e4(this)) {
-    mRemTime = rstl::max_val(mDurationResetWhileVisible, mRemTime);
-    visible = true;
-    if (!mAnyVisorVisible) {
-      switch (mgr.GetPlayerState()->GetActiveVisor(mgr)) {
-      case CPlayerState::kPV_Combat:
-      case CPlayerState::kPV_Scan:
-        visible = mCombatVisorVisible;
-        break;
-      case CPlayerState::kPV_Echo:
-        visible = mEchoVisorVisible;
-        break;
-      case CPlayerState::kPV_Dark:
-        visible = mDarkVisorVisible;
-        break;
+  } else {
+    // Retail 0x800818D8 computes `addi r31,r28,204` here, inside the branch and immediately
+    // before the `fn_800366e4` call, not at the top of the function.
+    const CAABox& bounds = GetOtherBounds();
+    if (mgr.fn_800366e4(this)) {
+      mRemTime = rstl::max_val(mDurationResetWhileVisible, mRemTime);
+      visible = true;
+      if (!mAnyVisorVisible) {
+        switch (mgr.GetPlayerState()->GetActiveVisor(mgr)) {
+        case CPlayerState::kPV_Combat:
+        case CPlayerState::kPV_Scan:
+          visible = mCombatVisorVisible;
+          break;
+        case CPlayerState::kPV_Echo:
+          visible = mEchoVisorVisible;
+          break;
+        case CPlayerState::kPV_Dark:
+          visible = mDarkVisorVisible;
+          break;
+        }
       }
-    }
-    if (visible && !mEffectLights.null()) {
-      const CVector3f center = bounds.GetCenterPoint();
-      mEffectLights->BuildAreaLightList(mgr, mgr.GetWorld()->GetAreaAlways(GetCurrentAreaId()),
-                                        CAABox(center, center));
-      mEffectLights->BuildDynamicLightList(mgr, bounds);
+      if (visible && !mEffectLights.null()) {
+        const CVector3f center = bounds.GetCenterPoint();
+        mEffectLights->BuildAreaLightList(mgr, mgr.GetWorld()->GetAreaAlways(GetCurrentAreaId()),
+                                          CAABox(center, center));
+        mEffectLights->BuildDynamicLightList(mgr, bounds);
+      }
     }
   }
   SetPreRenderClipped(!visible);
   if (visible) {
     // Retail 0x80081A40: the two special render queues, keyed on mRenderOrder (a 2-bit field
     // at 0x2CA). Read through a reference rather than GetUniqueId(), which is the same
-    // by-value-argument temporary CScriptSkyRipple's fn_70_78C builds.
+    // by-value-argument temporary CScriptSkyRipple's fn_70_78C builds. The `kRO_Queue2` arm is
+    // written first because retail lays its body out at 0x80081A60, immediately after the
+    // `cmpwi r0,3` that guards it, with `kRO_Queue1`'s body reached by the `beq` at 0x80081A4C;
+    // the other order makes mwcceppc emit one extra `b` to jump over the first arm.
     const TUniqueId& id = *reinterpret_cast< const TUniqueId* >(
         reinterpret_cast< const uint* >(this) + 2);
     switch (mRenderOrder) {
     case kRO_Normal:
+      break;
+    case kRO_Queue2:
+      mgr.fn_80037984(id);
       break;
     case kRO_Queue1: {
       const TUniqueId copy = id;
       mgr.fn_80037A04(copy);
       break;
     }
-    case kRO_Queue2:
-      mgr.fn_80037984(id);
-      break;
     }
   }
 }
@@ -502,8 +509,13 @@ void CScriptEffect::SetGlobalTranslation(const CVector3f& translation) {
   }
 }
 
+// The two by-value parameters are spelled `const` (which the mangler ignores, so the symbol is
+// unchanged) because that is what makes mwcceppc put the epilogue's `lwz r0,36(r1)` first,
+// where retail has it: `lwz r0 ; lfd f31 ; lwz r31/30/29`. Without the qualifiers the reload is
+// emitted last, immediately before `mtlr`, and the function scores 92.31% on that one
+// instruction. 23 init-list and body spellings were measured before this one.
 CGameSplineDesc::CGameSplineDesc(const SLdrSpline& spline, CMotionSpline::ESplineType type,
-                                 float duration, bool closedLoop)
+                                 const float duration, const bool closedLoop)
 : mSpline(spline), mType(type), mDuration(duration), mClosedLoop(closedLoop) {}
 
 // Retail carries the deleting destructor out of line in this object (0x80080A80, 84 bytes).
