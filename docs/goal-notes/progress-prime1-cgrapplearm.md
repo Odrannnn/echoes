@@ -305,3 +305,187 @@ Near-misses (not counted as matched):
 Process lesson: a failed ninja build leaves the old .o, so a fast_try grep that filters FAILED lines shows stale numbers. Run `ninja <obj>` directly to see errors.
 
 NEW: docs/HANDOFF.md state block was rewritten by gate.sh (counts only), not by hand.
+
+---
+
+# Run 5 (lane 2, 2026-10-02) - re-measured, +5 functions
+
+Started from run 4's state (commit `1cb2b796`) and re-measured it on this tree first:
+`matched_functions` **40 / 64**, unit fuzzy 81.0783%, `matched_code` 4804 / 14772. The three
+`item.json` names were still `UpdateGrappleBeam` 99.9957%, `DoUserAnimEvent` 99.9864%,
+`DoUserAnimEvents` 99.0601%. Nothing below re-derives an earlier run.
+
+## Result
+
+`matched_functions` **40 -> 45 of 64**, unit fuzzy 81.0783% -> 81.5134%,
+`matched_code` 4804 -> 7368. Whole-DOL `matched_functions` **12437 -> 12442**, `linked`
+unchanged at 5863, `All:` 35.15% fuzzy / 28.92% matched / 12.90% linked.
+`./tools/goal_check.sh build/goal/item.json` exits 0, `PASS progress-prime1-cgrapplearm`
+(gate.sh incl. the DOL sha1, all 86 RELs, report diff, wiring, docs claims, port probe;
+`check_symbol_names.py`; target rose 40 -> 45 / 64; no asm added). No function regressed
+(checked against `build/goal/judge/report.base.json`). Only
+`src/MetroidPrime/Player/CGrappleArm.cpp` changed; no header changed.
+
+| function | before | after | spelling that did it |
+| --- | --- | --- | --- |
+| `AnimOver` | 75.36% | **100.00%** | pool fix + `const CAnimData* animData` local |
+| `DoUserAnimEvent` (named) | 99.9864% | **100.00%** | pool fix only |
+| `UpdateGrappleBeam` (named) | 99.9957% | **100.00%** | pool fix only |
+| `UpdateSwingAction` | 99.0155% | **100.00%** | pool fix + `const CAnimData* animData` local |
+| `ResetStateMachine` | 97.2791% | **100.00%** | `strcmp("Start", name)` argument order |
+| `__ct__` | 91.5771% | 92.7048% | `mGrappleGearModel(CModelData::CModelDataNull())` |
+
+Two of the three names `item.json` seeded are now matched. Prime 1's source was not used:
+nothing in `prime-ref` was consulted this run, because the gaps were data layout and one
+argument order, not logic.
+
+## The finding that unlocked four of them: the `.rodata` literal pool is ordered, and it is
+## source-controllable
+
+Run 4 recorded "WALL: string-literal relocations ... Not fixable from source". **That was
+wrong, and this is the measured correction.** Retail's `CGrappleArm.o` has no `.rodata`
+section at all - dtk moved it out - and refers to two lumps: `lbl_803AA7B4` (0x803aa7b4,
+274 bytes) and `lbl_803AAC40` (0x803aac40, which also holds CPlayerGun's strings). The eight
+strings this unit shares with CPlayerGun (`GrappleGear`, `grappleArm`, `SamusArmFSM`,
+`grappleSegment`, `grappleClaw`, `grappleHit`, `grappleMuzzle`, `grappleSwoosh`) all live in
+`lbl_803AAC40`: retail's linker deduplicated them out of this unit's pool. objdiff does not
+care about *which* lump, only about the immediate `addi rN,rX,<offset>` - so if our pool's
+**layout** matches retail's `lbl_803AA7B4` layout, the immediates match.
+
+Retail's `lbl_803AA7B4`, decoded with
+`objdump -s -j .rodata --start-address=0x803aa7b4` (this is the whole measurement):
+
+    +0 HoldGun  +8 AnimOver  +17 GunChanging  +29 FidgetActive  +42 GrappleActive
+    +56 Start   +62 DownAtSide  +73 HoldingGun  +84 WaitAnimOver  +97 WeaponChange
+    +110 Fidget +117 Grappling  +127 grapLocator_SDK  +143 LGBeam  +150 LGBeamLight
+    +162 "Whole Body"  +173 "??(??"  +180 L_wrist  +188 SamusArm  +198 LeftArm_Dark_CMDL
+    +216 LeftArm_Dark_CSKR  +234 LeftArm_Light_CMDL  +253 LeftArm_Light_CSKR  (pool ends +272)
+
+Rules, each measured by rebuilding one object (`.tmp/opencode/pool.sh` prints the pool in
+order with each string's retail offset; it is worth rebuilding this script):
+
+1. **mwcc emits the literals of file-scope arrays into `.rodata` in declaration order.** It is
+   not order-of-use: moving `kGrappleGear`'s declaration between `kSuitModels`,
+   `kTriggerFunctions` and `kStateFunctions` changed nothing, while moving `kBeamLocators`
+   from before `kTriggerFunctions` to after `kStateFunctions` moved `LGBeam`/`LGBeamLight`
+   from +0/+7 to +127/+134. So the front block is the file-scope `const char*[]` tables, in
+   declaration order.
+2. **Body literals come after that block, in reverse source order of the function that first
+   uses them.** `Whole Body` (first used in `AnimOver`, the last function in the file) is
+   first; `L_wrist` (`UpdateGrappleBeam`) is next; `__ct__`'s own literals (`grappleArm`,
+   `SamusArm`, `SamusArmFSM`, ...) follow.
+3. **A file-scope aggregate whose type has a constructor is not in the front block.** That is
+   why `kSuitModels` (a `rstl::pair` array) lands at the very end of the pool rather than in
+   declaration order.
+
+What this bought, and how (this is the actual diff, `CGrappleArm.cpp` lines 49-66):
+
+    static const char* const kGrappleLocator[] = {"grapLocator_SDK"};   // new, before kBeamLocators
+    static const char* const kBeamLocators[]   = {"LGBeam", "LGBeam", "LGBeamLight"};
+    struct SAssetName { const char* m_name; SAssetName(const char* n) : m_name(n) {} };
+    static const SAssetName kGrappleGear[] = {SAssetName("GrappleGear"),
+                                              SAssetName("GrappleGear"), SAssetName("")};
+
+- `rstl::string_l("grapLocator_SDK")` inside `__ct__` -> `rstl::string_l(kGrappleLocator[0])`
+  puts `grapLocator_SDK` in the front block at **+127**, exactly where retail has it.
+- `kGrappleGear` changes from a plain `const char*[]` to a 4-byte-stride aggregate **with a
+  constructor**, so its single literal moves out of the front block to the end of the pool
+  (+361) - standing in for retail's linker deduplicating it. The element type must stay 4
+  bytes wide: `rstl::pair<const char*, const char*>` also moves the literal but gives the
+  table an 8-byte stride, and `UpdateGrappleModel` then drops to 99.90% (retail's
+  `slwi r0,r0,2 / lwzx` needs the 4-byte stride). Measured, not guessed.
+
+The pool is now byte-for-byte retail's layout through `L_wrist` (+180): HoldGun 0, AnimOver 8,
+GunChanging 17, FidgetActive 29, GrappleActive 42, Start 56, DownAtSide 62, HoldingGun 73,
+WaitAnimOver 84, WeaponChange 97, Fidget 110, Grappling 117, grapLocator_SDK 127, LGBeam 143,
+LGBeamLight 150, "Whole Body" 162, "??(??" 173, L_wrist 180. `SamusArm` is then +199 (retail
++188) and `LeftArm_Dark_CMDL` +301 (retail +198) because the eight shared strings still
+occupy bytes here; that is the irreducible residue, and only `__ct__` reads them.
+
+## The second rule: retail loads the receiver before a call that takes a constructed argument
+
+`AnimOver` and `UpdateSwingAction` both call
+`mArmModel->GetAnimationData()->IsAnimTimeRemaining(t, rstl::string_l("Whole Body"))`.
+Retail does `lwz r31,60(r3)` *before* `bl string_l` and then `mr r3,r31`; ours did
+`mr r31,r3` (keeping `this`) and re-loaded `lwz r3,60(r31)` *after* the call - a
+rematerialisation mwcc is free to make because `this` is still live. Binding the receiver
+into a local removes the second load and mwcc has to hoist the first:
+
+    const CAnimData* animData = mArmModel->GetAnimationData();
+    if (!animData->IsAnimTimeRemaining(dt, rstl::string_l("Whole Body"))) { ... }
+
+`AnimOver` 75.36% -> 99.96% (the last 0.04% was the pool) and `UpdateSwingAction` 99.0155%
+-> 100.00%. Same shape, same fix. Note the type must be `const CAnimData*`;
+`CModelData::GetAnimationData()` returns a pointer to const (run-4 lesson again: a failed
+`ninja` leaves the old `.o` and every score reads stale).
+
+## The third rule: `strcmp`'s argument order is visible in the registers
+
+`ResetStateMachine` was 97.28% with the *string offset already correct* ("Start" at +56
+matched). The only difference was retail's four-instruction sequence
+`lis r4,base / addi r5,r4,lo / mr r4,r3 / addi r3,r5,56` against our two-instruction
+`lis r4,base / addi r4,r4,lo / addi r4,r4,56`: retail puts the **literal in r3 and the state
+name in r4**, ours the other way round. Swapping the arguments - `strcmp` is symmetric -
+gives the four instructions exactly. 97.2791% -> 100.00%.
+
+## `__ct__` 91.5771% -> 92.7048%
+
+One structural change: `mGrappleGearModel` was being default-constructed implicitly
+(`bl __ct__10CModelDataFv` straight onto the member). Retail builds a temporary first -
+`bl CModelDataNull__10CModelDataFv` into `1(r1)+208`, then
+`__ct__10CModelDataFRC10CModelData` into the member, then destroys the temporary - so the
+member was never in the initialiser list. Adding `, mGrappleGearModel(CModelData::CModelDataNull())`
+in member-declaration order reproduces it. This keeps a real initialisation (it does not drop
+work), and `CModelData::CModelDataNull()` is the spelling the rest of the tree already uses
+(`CWorldTransManager.cpp:93-97`, `CCollisionActor.cpp:23`).
+
+Still open in `__ct__` and **not** attempted: retail's frame is `-384(r1)`, ours `-320(r1)`
+(64 bytes of locals we do not have), and retail assigns `rstl::optional_object<CModelData>`
+through the out-of-line `fn_801C68CC` (`stb r0,76(r3)` then a tail call to `fn_8006F574`),
+whereas `optional_object(const T&)` as spelled in `include/rstl/optional_object.hpp:16` is
+inlined here into `li r0,1 / addic. r3,r31,44 / stb r0,120(r31) / beq / <copy ctor>`. Retail
+603 instructions against our 623.
+
+## Walls (measured this run)
+
+`WALL: DoUserAnimEvents__11CGrappleArmFR13CStateManager 99.06% - the last 3 of 133 slots are three independent constant loads (lfs f2 0.1f, lfs f3 150.f, lbz r9 CAudioSys::kMaxVolume) emitted in a different order before the second do_sound_event; 8 argument spellings tried (run 2's 7 plus const float fallOff/maxDistance declared inside the innermost block, measured 99.0601% this run), none changed it`
+
+The other `do_sound_event` in the same function - the `kPT_Sound` one, with
+`sound.GetFallOff()`/`GetMaxDistance()` instead of the two literals - matches at 100%, so the
+call and the signature are right and the order is decided by mwcc's scheduler, not by the
+argument list. `DoUserAnimEvents` was **not** moved by the pool fix: it reads `??(??)`, which
+is at the right offset now.
+
+Also measured and left alone:
+
+- `UpdateGrappleBeamFX` 58.6434% (976 B), `BuildBeamDependencyList` 64.8684% (912 B),
+  `Update` 70.3925% (1060 B). `Update` is 265 retail instructions against our 251 and its
+  frame is `-224` against `-208`; its first real difference is
+  `cmpw r4,r0` (retail) against `cmpw r0,r4` (ours) for
+  `state.GetCurrentBeam() != mBeamId`. Swapping that comparison's operands
+  (`mBeamId != state.GetCurrentBeam()`) was measured and changed nothing - 70.3925% either
+  way - so mwcc canonicalises it. `BuildBeamDependencyList`'s first loop is structurally
+  different from ours (retail `stwx`s the anim id into a buffer, i.e. a `push_back`, before
+  `GetAnimationPrimitives`; ours builds a `CAnimPlaybackParms` on the stack and calls it),
+  which is a rewrite, not a spelling.
+- The 14 `fn_*` at 0.00% are unchanged: STL instantiations
+  (`destroy_impl<rstl::vector<CToken>>`, `find<rstl::set<SObjectTag>>`, ...) plus
+  `fn_801C68CC`/`fn_801C6904`/`fn_801C6924`, which are the out-of-line
+  `optional_object<CModelData>` and `TStateMachineState` vtable glue. `fn_801C6924` (508 B)
+  builds a 20-entry function-pointer table at `lbl_803B6B90` from
+  `lbl_803AA7B4+197/198/216/234/253` - generated code, and pairing it is `symbols.txt` work,
+  not source work.
+
+## NEW
+
+None filed. The four open functions are 58-93% and each needs a structural rewrite rather
+than a spelling; I can name them and their sizes but not hand over a bounded change with a
+checkable target, and `NEW:` is meant for work whose success raises a count.
+
+Process note for the next run: `ga.sh` now fails loudly on a `ninja` error. That cost this
+run two misleading readings (a stale `.o` reported 99.96% for a build that had not compiled).
+The helpers worth keeping are `.tmp/opencode/ga.sh` (rebuild + every sub-100% function),
+`.tmp/opencode/pool.sh` (the literal pool with each string's retail offset),
+`.tmp/opencode/side.py` (instruction-level diff, one function) and `.tmp/opencode/bytes.py`
+(the same, ignoring relocation symbol names - use this one, `side.py`'s relocation stripping
+makes identical code look different).

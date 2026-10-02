@@ -23,8 +23,6 @@
 #include "MetroidPrime/Weapons/WeaponCommon.hpp"
 #include "MetroidPrime/Weapons/WeaponSound.hpp"
 
-static const char* const kBeamLocators[] = {"LGBeam", "LGBeam", "LGBeamLight"};
-static const char* const kGrappleGear[] = {"GrappleGear", "GrappleGear", ""};
 static const rstl::pair< const char*, const char* > kSuitModels[] = {
     rstl::pair< const char*, const char* >("", ""),
     rstl::pair< const char*, const char* >("LeftArm_Dark_CMDL", "LeftArm_Dark_CSKR"),
@@ -51,12 +49,29 @@ static const TStateMachineState< CGrappleArm >::SStateFunction kStateFunctions[]
     {"Fidget", &CGrappleArm::Fidget},
     {"Grappling", &CGrappleArm::Grappling}};
 
+// mwcc emits the literals of file-scope arrays into `.rodata` in declaration order, so this
+// block's order is fixed by retail's pool (lbl_803AA7B4): grapLocator_SDK, LGBeam and
+// LGBeamLight sit between "Grappling" and "Whole Body". The pool entries retail shares with
+// other translation units (GrappleGear, grappleArm, SamusArmFSM, grappleSegment,
+// grappleClaw, grappleHit, grappleMuzzle, grappleSwoosh) were deduplicated into another
+// pool (lbl_803AAC40), so they must not shift the ones this unit keeps here; declaring the
+// gear-name table as an aggregate with a constructor puts its literal outside this block.
+static const char* const kGrappleLocator[] = {"grapLocator_SDK"};
+static const char* const kBeamLocators[] = {"LGBeam", "LGBeam", "LGBeamLight"};
+struct SAssetName {
+  const char* m_name;
+  SAssetName(const char* name) : m_name(name) {}
+};
+static const SAssetName kGrappleGear[] = {SAssetName("GrappleGear"), SAssetName("GrappleGear"),
+                                          SAssetName("")};
+
 CGrappleArm::CGrappleArm(const CVector3f& scale, TUniqueId playerId, bool multiplayer)
 : CEntity(kInvalidUniqueId, CEntity::NullEntityInfo, rstl::string_l("SamusArm"), 0)
 , mCurrentSuit(CPlayerState::kPS_Varia)
 , mLoadedSuit(CPlayerState::kPS_Invalid)
 , mArmModel(
       CModelData(CAnimRes(NWeaponTypes::get_asset_id_from_name("grappleArm"), 5, scale, -1, false)))
+, mGrappleGearModel(CModelData::CModelDataNull())
 , mArmCharacter(gpSimplePool->GetObj("grappleArm"))
 , mBeamId(CPlayerState::kBI_Power)
 , mStateMachineToken(gpSimplePool->GetObj("SamusArmFSM"))
@@ -119,7 +134,7 @@ CGrappleArm::CGrappleArm(const CVector3f& scale, TUniqueId playerId, bool multip
   CAnimData& animData = *mArmModel->AnimationData();
   animData.SetPoseBuilt(false);
   animData.BuildPose();
-  mGrappleLocator = animData.GetLocatorSegId(rstl::string_l("grapLocator_SDK"));
+  mGrappleLocator = animData.GetLocatorSegId(rstl::string_l(kGrappleLocator[0]));
   for (int i = 0; i < 3; ++i) {
     mBeamLocators.push_back(animData.GetLocatorSegId(rstl::string_l(kBeamLocators[i])));
   }
@@ -221,7 +236,8 @@ void CGrappleArm::RenderGrappleBeam(const CStateManager& mgr, const CVector3f& p
 }
 
 void CGrappleArm::ResetStateMachine(CStateManager& mgr) {
-  if (!mStateMachine.HasCurrentState() || strcmp(mStateMachine.GetName(), "Start") != 0) {
+  // strcmp is symmetric; retail loads the literal into r3 and the state name into r4.
+  if (!mStateMachine.HasCurrentState() || strcmp("Start", mStateMachine.GetName()) != 0) {
     mStateMachine.SetState(mgr, *this, rstl::string_l("Start"));
   }
 }
@@ -345,7 +361,8 @@ void CGrappleArm::UpdateSwingAction(float dt, CStateManager& mgr) {
       mRumbleHandle = GetRumbleManager(mgr)->Rumble(mgr, kRFX_PlayerGrappleSwoosh, 1.f, kRP_Three);
     }
   }
-  if (!mArmModel->GetAnimationData()->IsAnimTimeRemaining(dt, rstl::string_l("Whole Body"))) {
+  const CAnimData* animData = mArmModel->GetAnimationData();
+  if (!animData->IsAnimTimeRemaining(dt, rstl::string_l("Whole Body"))) {
     switch (mAnimationState) {
     case kAS_IntoGrapple:
       SetAnimState(kAS_IntoGrappleIdle);
@@ -663,9 +680,9 @@ void CGrappleArm::UpdateGrappleModel(CStateManager& mgr, CPlayerState::EPlayerSu
   if ((suit != mLoadedSuit && (force || hasGrapple)) ||
       (hasGrapple && mGrappleGearModel.IsNull() && suit != CPlayerState::kPS_Light)) {
     mLoadedSuit = suit;
-    if (strlen(kGrappleGear[mLoadedSuit]) != 0) {
+    if (strlen(kGrappleGear[mLoadedSuit].m_name) != 0) {
       mGrappleGearModel = CModelData(
-          CStaticRes(NWeaponTypes::get_asset_id_from_name(kGrappleGear[mLoadedSuit]), mScale));
+          CStaticRes(NWeaponTypes::get_asset_id_from_name(kGrappleGear[mLoadedSuit].m_name), mScale));
     } else {
       mGrappleGearModel = CModelData();
     }
@@ -739,7 +756,8 @@ bool CGrappleArm::HoldGun(CStateManager& mgr, const float& arg) {
 }
 
 bool CGrappleArm::AnimOver(CStateManager& mgr, const float& arg) {
-  return !mArmModel->GetAnimationData()->IsAnimTimeRemaining(0.001f, rstl::string_l("Whole Body"));
+  const CAnimData* animData = mArmModel->GetAnimationData();
+  return !animData->IsAnimTimeRemaining(0.001f, rstl::string_l("Whole Body"));
 }
 
 bool CGrappleArm::GunChanging(CStateManager& mgr, const float& arg) {
