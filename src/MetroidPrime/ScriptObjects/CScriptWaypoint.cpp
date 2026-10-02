@@ -63,7 +63,33 @@ void CScriptWaypoint::Render(const CStateManager& mgr) const {}
 
 CEntity* LoadWaypoint(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   SLdrWaypoint sldrThis;
-#include "MetroidPrime/ScriptLoader/SLdrWaypoint.inc"
+  // `SLdrWaypoint.inc` written out by hand, the way `CScriptRelay.cpp` and `CUnknown90.cpp`
+  // do it: the generated file is produced by `scripts/generate_script_loaders.py`, and the
+  // one thing that has to differ is the type of the count below.
+  //
+  // The explicit `u16` conversion is redundant - `ReadUint16()` already returns `u16` - and
+  // it is the one thing in this function that decides where the `operator new` result lives.
+  // Without it mwcceppc hands that result the register the loop-invariant `0x255a4580` case
+  // constant held (r29); retail's is r28, the one the property count held. Declaring the type
+  // `u16` *without* the cast does not move it - only the extra conversion node does. Measured,
+  // not guessed: `static_cast< u16 >` on this read reproduces retail byte for byte, while
+  // `const int`/`const uint`/`const u16` alone all leave the four `mr`/`mr.` operands on r29.
+  // Same fix and the same measurement as `CUnknown90.cpp`; see `docs/research/missing_classes.md`.
+  const u16 propertyCount = static_cast< u16 >(input.ReadUint16());
+  for (int i = 0; i < propertyCount; ++i) {
+    const uint propertyId = input.Get< uint >();
+    const u16 propertySize = input.ReadUint16();
+
+    switch (propertyId) {
+    case 0x255a4580: {
+      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
+      break;
+    }
+    default:
+      input.ReadBytes(nullptr, propertySize);
+      break;
+    }
+  }
 
   return rs_new CScriptWaypoint(mgr.AllocateUniqueId(), sldrThis.editorProperties.name,
                                 LdrToEntityInfo(info, sldrThis.editorProperties),
