@@ -1253,6 +1253,35 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmUpdate.cpp
     src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmAi.cpp
     src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmBounds.cpp
+    # Module 3's .text 0x6250..0x6258 - fn_3_6250, the address of the sub-object at +0xC04. One
+    # addi and a blr on a local stand-in, no relocation at all, so the port's undefined count is
+    # unchanged.
+    src/MetroidPrime/ScriptObjects/CDarkCommandoMemberPtr.cpp
+    # Module 3's .text 0x648C..0x64AC - fn_3_648C, this class's AddToRenderer handing straight to
+    # a qualified CPatterned::AddToRenderer. Listed for the same reason as the
+    # CIngSnatchingSwarmBounds.cpp entry above: it defines neither RELMain nor RELExit, so
+    # check_files_cmake.py's MODULE_ENTRY exemption is not needed, and its only relocation outside
+    # itself - AddToRenderer__10CPatternedCFRC13CStateManager - is a DOL global
+    # src/MetroidPrime/Enemies/CPatterned.cpp already defines for the port.
+    src/MetroidPrime/ScriptObjects/CDarkCommandoRenderers.cpp
+    # Module 3's .text 0x91F0..0x9218 - fn_3_91F0, the address of the sub-object at +0x17C, and
+    # fn_3_91F8, this class's Render handing straight to a qualified CActor::Render. Listed for
+    # the same reason as the CIngSnatchingSwarmBounds.cpp entry above: it defines neither RELMain
+    # nor RELExit, so check_files_cmake.py's MODULE_ENTRY exemption is not needed, and its only
+    # relocation outside itself - Render__6CActorCFRC13CStateManager - is a DOL global that
+    # CIngSnatchingSwarmBounds.cpp already pulls in and the port already links, so the port's
+    # undefined count is unchanged.
+    src/MetroidPrime/ScriptObjects/CDarkCommandoRender.cpp
+    # Module 3's .text 0x9864..0x9890 - fn_3_9864, the flag-clearing accessor, and fn_3_9870, the
+    # module's copy of CVector3f::Up(). The same two instructions as the
+    # DigitalGuardianVecList.cpp entry below, from the same bytes: its only relocation outside
+    # itself is sUpVector__9CVector3f, which that file already pulls in and the port already
+    # links from src/Kyoto/Math/CVector3f.cpp.
+    src/MetroidPrime/ScriptObjects/CDarkCommandoVecList.cpp
+    # Module 3's .text 0x9970..0x99A8 - fn_3_9970 and fn_3_998C, each copying the three floats at
+    # +0x1B0 into the hidden return pointer. Three loads and three stores to members of a local
+    # stand-in and no relocation at all, so the port's undefined count is unchanged.
+    src/MetroidPrime/ScriptObjects/CDarkCommandoVecCopy.cpp
     src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmGenAccessors.cpp
     src/MetroidPrime/ScriptObjects/RipperAccessors.cpp
     src/MetroidPrime/ScriptObjects/CRipperForwarders.cpp

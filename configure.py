@@ -3054,6 +3054,46 @@ config.libs = [
         "DarkCommando",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CDarkCommandoRel.cpp"),
+            # Added 2026-10-02 (goal item `progress-vtctl-rel-darkcommando`). One function,
+            # .text 0x00006250..0x00006258: `fn_3_6250`, the address of the sub-object at +0xC04 -
+            # the same one-instruction `addi r3,r3,<off>` this module's own `fn_3_C8` and
+            # `fn_3_91F0` already are, and `CIngSnatchingSwarmBounds.cpp`'s `fn_33_39B8` in another
+            # module. In FORCEACTIVE, so nothing dead-strips it.
+            Object(Matching, "MetroidPrime/ScriptObjects/CDarkCommandoMemberPtr.cpp"),
+            # Added 2026-10-02 (goal item `progress-vtctl-rel-darkcommando`). One function,
+            # .text 0x0000648C..0x000064AC: `fn_3_648C`, this class's `AddToRenderer` handing
+            # straight to a **qualified** `CPatterned::AddToRenderer`
+            # (`AddToRenderer__10CPatternedCFRC13CStateManager`, no `Fv` suffix, so retail calls
+            # the base implementation rather than dispatching through the vtable). Same frame and
+            # same pass-through as `CIngSnatchingSwarmBounds.cpp`'s `fn_33_3A34` over the
+            # qualified `CActor::PreRender`. In FORCEACTIVE.
+            Object(Matching, "MetroidPrime/ScriptObjects/CDarkCommandoRenderers.cpp"),
+            # Added 2026-10-02 (goal item `progress-vtctl-rel-darkcommando`). Two functions,
+            # .text 0x000091F0..0x00009218: `fn_3_91F0`, the address of the sub-object at +0x17C,
+            # and `fn_3_91F8`, this class's `Render` handing straight to a **qualified**
+            # `CActor::Render` (`Render__6CActorCFRC13CStateManager`, no `Fv` suffix, so retail
+            # calls the base implementation rather than dispatching through the vtable). Both are
+            # in the module's `ldscript.lcf` FORCEACTIVE block, so nothing dead-strips. The
+            # spellings are IngSnatchingSwarm's `fn_33_39B8` / `fn_33_3A34` over the same two
+            # shapes, and that unit is Matching at 4/4.
+            Object(Matching, "MetroidPrime/ScriptObjects/CDarkCommandoRender.cpp"),
+            # Added 2026-10-02 (goal item `progress-vtctl-rel-darkcommando`). Two functions,
+            # .text 0x00009864..0x00009890: `fn_3_9864` clears the one-byte flag at +0xC and
+            # returns `this`; `fn_3_9870` returns `CVector3f::Up()` by value. **Both are
+            # byte-identical to `fn_14_1AB24` / `fn_14_1AB30`**, which
+            # `DigitalGuardianVecList.cpp` already decompiles at 2/2 - the store is the same
+            # `li r0,0 / stb r0,0xc(r3) / blr`, and the getter is the same `lfsu` on the first
+            # word of `sUpVector__9CVector3f` plus two `lfs`/`stfs` pairs. That comparison is
+            # measured off the two modules' own disassembly, not inferred from the family.
+            Object(Matching, "MetroidPrime/ScriptObjects/CDarkCommandoVecList.cpp"),
+            # Added 2026-10-02 (goal item `progress-vtctl-rel-darkcommando`). Two functions,
+            # .text 0x00009970..0x000099A8: `fn_3_9970` and `fn_3_998C`, byte-identical to each
+            # other, each copying the three floats at +0x1B0 into the hidden return pointer in r3.
+            # This is `CDarkCommandoRel.cpp`'s `fn_3_E0` (0xE0) again, against +0x1B0 instead of
+            # +0x54, so the three floats are written out as three element copies: retail reuses
+            # f0 across all three loads, and a `CVector3f` copy or a three-argument construction
+            # hoists into f0/f1/f2 instead. Both are in FORCEACTIVE.
+            Object(Matching, "MetroidPrime/ScriptObjects/CDarkCommandoVecCopy.cpp"),
         ],
     ),
     Rel(
