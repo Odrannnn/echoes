@@ -920,3 +920,239 @@ derived numbers itself; I did not hand-edit it.
   has to exist in the units `files.cmake` links, and `Kyoto/Math/CMatrix3f.cpp` being
   `Matching` means it cannot host one. `gate.sh`'s link-gap step is the only check that sees
   this; the DOL hash and the objdiff percentages are both perfectly happy without it.
+
+---
+
+# progress-unit-celementgen — attempt 5 (lane L6, 2026-10-02)
+
+**Two** more functions of `Kyoto/Particles/CElementGen` taken to 100%. The unit goes
+**84 -> 86 / 104** matched functions and stays `NonMatching`; project total matched
+**12228 -> 12230**, `linked` held at **5860**. Whole-project per-function diff against
+`build/goal/judge/report.base.json`, every function in every unit: **0 worse, 2 better (both
+at 100.00%), 0 new, 0 gone** — the check the judge does not print.
+
+Diff is **one file**, `src/Kyoto/Particles/CElementGen.cpp` (+21/-10): one added include and
+the bodies of the two scale setters. No header, no `asm`, nothing under `tools/` or
+`build/goal/`.
+
+| Function | Before | After | What changed |
+| --- | ---: | ---: | --- |
+| `SetGlobalScale__11CElementGenFRC9CVector3f` | 75.83% (380 B) | **100.00%** (380 B) | `CMath::Sign` + unrolled axis clamp + `Scale(x,y,z)` |
+| `SetLocalScale__11CElementGenFRC9CVector3f` | 75.83% (380 B) | **100.00%** (380 B) | same three changes |
+
+## 1. `fsel` is `CMath::Sign`, and it is already in the tree — **this supersedes attempt 4**
+
+Attempt 4 wrote: *"So MWCC 2.7 will not emit `fsel` for a float-valued condition here, and the
+next run should look for a different expression rather than more ways of writing the same one."*
+That conclusion was right about the spellings and wrong about the compiler. There is a
+different expression, and it is already in the tree.
+
+`include/Kyoto/Math/CMath.hpp:45-56`:
+
+```cpp
+static float Sign(float v) { return FastFSel(v, 1.f, -1.f); }
+#ifdef __MWERKS__
+static float FastFSel(register float v, register float h, register float l) {
+  register float out;
+  asm { fsel out, v, h, l }
+  return out;
+}
+#else
+static float FastFSel(float v, float h, float l) { return v >= 0.f ? h : l; }
+#endif
+```
+
+Retail `SetGlobalScale` (0x802DAA94) is exactly that:
+
+```text
+  lfs   f3,-15320(r2)     ; 0x8041E7E8 = -1.0f
+  lfs   f1,-15424(r2)     ; 0x8041E780 = +1.0f
+  fsel  f1,f2,f1,f3       ; f1 = x ? +1.0f : -1.0f
+  fmuls f0,f0,f1          ; f0 = 0.0001f (0x8041E7E4)
+  stfs  f0,248(r29)
+```
+
+The pool addresses were read out of the retail DOL (`python3 tools/dol_read.py 0x8041E770 0x90`),
+not recalled: `-15432 -> 0x8041E778 = 0.0f`, `-15324 -> 0x8041E7E4 = 0.0001f`,
+`-15320 -> 0x8041E7E8 = -1.0f`, `-15424 -> 0x8041E780 = +1.0f`.
+
+So the source line is `mGlobalScale[i] = 0.0001f * CMath::Sign(mGlobalScale[i]);` and the sign
+condition is `x != 0`, not `x < 0`. **75.83% -> 77.65%** on its own.
+
+### How to find an `fsel` in retail, and two tooling traps
+
+- Encoding: `(word & 0xFC00007F) == 0xFC00006E` (opcode 63, XO 55, `Rc`=0). A scan of the whole
+  retail `.text` gives **36** of them, in 23 symbols. Exactly three are in this unit, and all
+  three-per-function are in `SetGlobalScale`/`SetLocalScale` — so this lever cannot help
+  anything else here.
+- Cross-check that `CMath::Sign` is the right owner of those 36: the other `fsel` sites are in
+  `CMorphBall` (9), `CAABox::Closest/FurthestPointAlongVector` and `CAABox::InsidePlane` (3,
+  all **already at 100%** and spelled with `CMath::FastFSel`), `CBallCamera::ApplyColliders`
+  (100%), `CMath::EaseInOut` (100%, via `FastMin`/`FastMax`), and
+  `CEmitterElement.cpp:278` (`CMath::Sign`).
+- **`tools/dis.sh` is unreliable for any function with an FPR spill.** These objects decode
+  with `powerpc-eabi-objdump -d` picking a 64-bit ISA: MWCC's 32-bit `stfq f31,1624(r10)`
+  (`f3 e1 06 58`) prints as `xxsel vs31,vs1,vs0,vs55`, and a whole prologue of `stfd`/`stfq`
+  pairs prints as `stfd`/`xxsel`/`psq_st`. **Use `-m rs6000`**, which decodes both sides
+  correctly (`stfq`). The default `-m powerpc:common` has the same fault. This cost me a
+  wrong reading of `RenderParticles`'s prologue before I checked; `bytescmp.py`'s text column
+  inherits the fault (its *byte* comparison is unaffected, which is what it is for).
+- **`tools/bytescmp.py` aligns by instruction index and cannot see an insertion.** A missing
+  instruction makes every later instruction read as different, which reads like "the whole tail
+  is wrong" when in fact one instruction is missing. I wrote a throwaway
+  `.tmp/opencode/probe/seqdiff.py` that diffs the two streams with `difflib` and reports only
+  insert/delete/replace; that is what found the `RenderModels` cause below. Worth promoting
+  into `tools/` if another lane wants it.
+
+## 2. Unrolling the 3-axis clamp by naming the components (attempt 3's `AccumulateBounds` lever again)
+
+With `CMath::Sign` in place, ours was 344 bytes to retail's 380 — 9 instructions short, exactly
+3 per axis. mwcceppc unrolls `for (int i = 0; i < 3; ++i)` but **hoists the `0.f`, `1.f`,
+`-1.f` pool loads out of the unrolled body**; retail re-loads all three per axis. Writing the
+three axes out removes the hoist:
+
+```cpp
+if (close_enough(mGlobalScale[0], 0.f, 0.0001f)) { mGlobalScale[0] = 0.0001f * CMath::Sign(mGlobalScale[0]); }
+if (close_enough(mGlobalScale[1], 0.f, 0.0001f)) { ... }
+if (close_enough(mGlobalScale[2], 0.f, 0.0001f)) { ... }
+```
+
+**77.65% -> 97.26%, and the size becomes retail's 380 B exactly.** Same lever as attempt 3's
+`AccumulateBounds` (68.88% -> 100%); the lesson generalises: *mwcceppc's unrolled-loop
+constant hoisting is the thing to break, and naming the components breaks it.*
+
+## 3. `CTransform4f::Scale(const CVector3f&)` -> `Scale(x, y, z)`
+
+The last 17 differing instructions of 95 were the scale-transform call. Retail loads the three
+floats and calls `Scale__12CTransform4fFfff`; our vector overload passes `addi r4,r29,248` and
+calls `Scale__12CTransform4fFRC9CVector3f`. Switching to the three-float overload gives
+**97.26% -> 100.00%**. After it, `bytescmp` reports 17 differing instructions and every one of
+them is a relocation field (`lfs f1,0(0)` vs `lfs f1,-15332(r2)`, `bl 0` vs `bl <target>`).
+
+## Spellings tried and rejected for the sign (so the next run skips them)
+
+All measured inside the real `SetGlobalScale` body with `tools/fast_try.sh
+Kyoto/Particles/CElementGen`:
+
+- `0.0001f * (x < 0.f ? -1.f : 1.f)` — 75.83% (the pre-existing spelling)
+- `0.0001f * (x != 0.f ? 1.f : -1.f)` — `fcmpu cr0,f2,f3; beq`, no `fsel`
+- `0.0001f * (x == 0.f ? -1.f : 1.f)` — `fcmpu; bne`
+- `0.0001f * (x ? 1.f : -1.f)` — `fcmpu; beq`
+- `0.0001f * (x >= 0.f ? 1.f : -1.f)` — `fcmpo; cror`
+- `const bool neg = x < 0.f; 0.0001f * (neg ? -1.f : 1.f)` — `mfcr`/`rlwinm`/`xori`/`cntlzw`, worse
+- `const float sign = ...; 0.0001f * sign` — branch
+- `static_cast<int>(x) < 0 ? -1.f : 1.f` — branch
+- `x < 0.f ? -0.0001f : 0.0001f` — branch
+- `0.0001f * (x > 0.f ? 1.f : (x < 0.f ? 1.f : -1.f))` — branch
+- **`0.0001f * CMath::Sign(x)` — `fsel`** (kept)
+
+Ten spellings of the ternary, no `fsel` from any of them. **The lever is the helper, not the
+expression.**
+
+## Re-measured this run, unchanged, with the cause read off retail bytes
+
+Everything below was measured on this tree (`tools/fast_try.sh`, `tools/bytescmp.py`, and the
+difflib stream diff). Attempt 2/3/4's readings still hold; what follows is what I added.
+
+- **`RenderModels` (2332 B) 99.07% — the whole 8-byte shortfall is one CSE.** Ours is 2324 B,
+  retail 2332 B. Retail's tail is
+  `… IsIndirectTextured(); rlwinm. r0,r3,0,24,31; bne indirect; mr r3,r30; addi r4,1508(r31); bl EndModelRender; b merge; indirect: mr r3,r30; addi r4,1508(r31); bl EndIndirectModelRender;`.
+  We emit the argument setup **once**, at the top of the `!IsIndirectTextured()` arm, and CSE it
+  into the other arm — even though a call sits between them. That is the entire 8 bytes. The
+  remaining diffs are register numbering: retail uses `r26`/`r24`/`r27` for `sortItems`, the
+  loop counter and the particle where we use `r23`/`r26`/`r24` (one lower), and retail's
+  `cax r27,r3,r0; lwzx r3,0(r27)` follows the `sorted ? sortItems[i].mPartIdx : i` select while
+  ours computes it one slot earlier. So attempt 2/3's note is confirmed but now bounded: **one
+  CSE plus a 1-register offset, nothing else.**
+- **`RenderModelParticle` (796 B) 99.94%** — still only the `mBlendMode`/`mMatSetIdx` reload
+  order: retail `lbz r7,72(r1)` then `lbz r6,73(r1)`; we do 73 then 72. Identical multiset,
+  identical register assignment on the stores, 2 instructions of 199. The only lever I can see is
+  the initialiser list order in `CModelFlags(const CModelFlags&, uint)` in the **shared**
+  `Kyoto/Graphics/CModelFlags.hpp`; still not attempted.
+- **`EndModelRender` (140 B) 94.29%** — unchanged; I tried no new spellings, so no `WALL:`.
+  For the record, retail's head is `stw r0,20(r1); lbz r0,613(r3); stw r31,12(r1); mr r31,r4`
+  and ours is `stw r0,20(r1); stw r31,12(r1); mr r31,r4; lbz r0,613(r3)`.
+- **`GetBounds` (136 B) 81.59%** — the copy **is** the difference, and it is a block copy, not
+  a memberwise one. Retail: `li r0,1; lwz r3,744; stb r0,24(r30); lwz r0,748; stw r3,0; lwz r3,752;
+  stw r0,4; lwz r0,756; stw r3,8; …` — a flat 6-word move with a strict 2-deep `r3`/`r0`
+  pipeline. Ours: `stb r0,24; lwz r3,744; lwz r0,748; stw r3,0; stw r0,4; lwz r0,752; …` — the
+  same 6 words but memberwise (three to `min`, three to `max`, `r3` used once). `CAABox` has only
+  the implicit memberwise copy ctor, so `rstl::construct<CAABox>` is memberwise. A flat copy
+  needs `RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CAABox)` or a `construct_impl` specialisation, and
+  `rstl::construct<CAABox>` reaches `optional_object<CAABox>` and `CAABox::Include` all over the
+  game, so this is a shared-header change for a 136-byte target. **Not attempted** — attempt 4
+  reached the same conclusion and it still holds.
+- **`GetSystemCount` (132 B) 69.09% / `IsSystemDeletable` (164 B) 85.37%** — the *same 33 and 41
+  instructions* as retail, differing only in where the callee-save stores sit relative to the
+  first body loads. Ours: `st r0; st r31; st r30; st r29; l r5,596; l r0,652; …`. Retail:
+  `l r5,596; st r0; l r0,652; neg; st r31; sli; st r30; l r30,660; …`. Same prologue family as
+  attempt 4's table. Untouched.
+- **`RenderIndirectModelParticle` (808 B) 92.20%** — ours 199 instructions, retail 202. The 3 we
+  do not emit are `neg/or/srwi` double-normalisations of the `mINDM` half-size: retail computes
+  `rlwinm r7,r5,26,31,31` (already 0/1) and then still emits `neg r6,r7; or r6,r6,r7; srwi r31,r6,31`,
+  and again `neg r4,r31; or; srwi r6,r4,31` for the argument it passes to `GXSetTexCopyDst`. MW
+  folds those away. The other half of the diff is one extra `GXTexCoord2f32` pair per vertex
+  (attempt 2's note), which our source does not have.
+- **`RenderParticles` (6668 B) 66.82% — the biggest thing in the unit, and not a spelling.**
+  Ours is 1573 instructions, retail **1667**; retail also saves `f17`..`f31` (15 FPRs) where we
+  save `f23`..`f31` (9), and keeps `this` in `r30` where we use `r28`. So retail's body holds far
+  more live float state than ours — this is missing work, not allocation. There is at least one
+  concrete **logic** difference to start from: where we emit `rlwinm. r0,r26,0,24,31` on
+  `lbz rX,612(this)`, retail emits `cmpli 0,r24,0` — a bit-24 extraction against a plain `!= 0`
+  — and later one site has `li r6,0` where retail has `li r6,1`. Whoever takes this should
+  start by reading retail's whole particle loop (0x802D53E8..0x802D6DF4) rather than the
+  percentages.
+
+## Verification
+
+`./tools/goal_check.sh build/goal/item.json` in `wt-mp2-goal-L6`:
+
+```text
+goal_check: item progress-unit-celementgen (progress) target=Kyoto/Particles/CElementGen
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12228 -> 12230   linked 5860 -> 5860
+  ok    check_symbol_names.py
+  ok    All:  34.55% fuzzy, 27.89% matched, 12.89% linked (12230 / 28465 functions)
+  ok    target rose: main/Kyoto/Particles/CElementGen: 84 -> 86 / 104 functions
+  ok    no asm added
+goal_check: PASS progress-unit-celementgen
+```
+
+`python3 tools/check_decl_order.py --unit Kyoto/Particles/CElementGen` -> `ok: 1 unit(s) checked,
+none emits its functions out of retail order`. `python3 tools/check_raw_offsets.py` -> `ok: 167
+raw-offset site(s) in 71 file(s), all documented`. `sha1sum build/G2ME01/main.dol` =
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+
+`docs/HANDOFF.md`'s state block shows the new counts because `goal_check.sh` runs `gate.sh` with
+`MP_GATE_DOCS_WRITE=1`, which rewrites the derived numbers itself; I did not hand-edit it.
+
+## Lessons worth keeping (general, not GameCube-specific)
+
+- **Before writing off "the compiler will not do X", grep the tree for a helper that already
+  does it.** Ten spellings of one ternary cost attempts 3 and 4 most of their budget on this
+  unit, and the answer was a one-line call to `CMath::Sign`, an `fsel` wrapper that has been in
+  `include/Kyoto/Math/CMath.hpp` the whole time. A construct the compiler will not synthesise
+  from source syntax is exactly what an inline-`asm` helper exists for.
+- **Cross-check a hypothesis about a shared helper against other, already-matched uses of it.**
+  Counting `fsel` in retail (36, using `(w & 0xFC00007F) == 0xFC00006E`) and seeing that every
+  non-this-unit site is spelled `CMath::FastFSel` and already at 100% took one minute and made
+  the fix obvious rather than speculative.
+- **Read pool constants out of the DOL; do not reason about them.** `-15320` and `-15424` are
+  104 bytes apart, which looks wrong for two sign constants, and the answer (`-1.0f`, `+1.0f`)
+  is only visible at the address. Guessing would have kept the wrong sign.
+- **`CMath::Sign` is a semantics change, and the right one.** At exactly `x == 0` the `asm`
+  path returns `-1` and the host `#else` path returns `+1`; retail's `fsel` is the `asm` path.
+  So the new spelling is closer to retail than the `< 0 ? -1 : 1` it replaces, not further from
+  it — and `CElementGen.cpp` is not in the port's `files.cmake` at all, so nothing on the host
+  changes.
+- **Verify the disassembly target before reading a disassembly.** `-m rs6000` decodes MWCC's
+  32-bit `stfq` correctly where the default PowerPC decode silently switches to a 64-bit ISA
+  and prints `xxsel`. Every FPR-spilling function in this unit needs it.
+- **An index-aligned diff cannot see a missing instruction.** `bytescmp.py` is right about the
+  bytes and blind to insertions; a `difflib` pass over both mnemonic streams is what turns
+  "146 of 581 instructions differ" into "one CSE of `mr r3,r30`" for `RenderModels`.
+- **Unrolled-loop constant hoisting is a general hazard.** mwcceppc unrolls a fixed-count loop
+  and then hoists its constants out of the unrolled body, which is never what retail did; naming
+  the components breaks the hoist. Seen twice now in this file (`AccumulateBounds`,
+  `SetGlobalScale`/`SetLocalScale`).

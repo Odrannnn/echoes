@@ -5,6 +5,7 @@
 #include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Graphics/CModel.hpp"
 #include "Kyoto/Graphics/CModelFlags.hpp"
+#include "Kyoto/Math/CMath.hpp"
 #include "Kyoto/Math/CRelAngle.hpp"
 #include "Kyoto/Math/CUnitVector3f.hpp"
 #include "Kyoto/Math/CloseEnough.hpp"
@@ -332,12 +333,17 @@ const CColor& CElementGen::GetModulationColor() const { return mModuColor; }
 
 void CElementGen::SetGlobalScale(const CVector3f& scale) {
   mGlobalScale = scale;
-  for (int i = 0; i < 3; ++i) {
-    if (close_enough(mGlobalScale[i], 0.f, 0.0001f)) {
-      mGlobalScale[i] = 0.0001f * (mGlobalScale[i] < 0.f ? -1.f : 1.f);
-    }
+  if (close_enough(mGlobalScale[0], 0.f, 0.0001f)) {
+    mGlobalScale[0] = 0.0001f * CMath::Sign(mGlobalScale[0]);
   }
-  mGlobalScaleTransform = CTransform4f::Scale(mGlobalScale);
+  if (close_enough(mGlobalScale[1], 0.f, 0.0001f)) {
+    mGlobalScale[1] = 0.0001f * CMath::Sign(mGlobalScale[1]);
+  }
+  if (close_enough(mGlobalScale[2], 0.f, 0.0001f)) {
+    mGlobalScale[2] = 0.0001f * CMath::Sign(mGlobalScale[2]);
+  }
+  mGlobalScaleTransform = CTransform4f::Scale(mGlobalScale.GetX(), mGlobalScale.GetY(),
+                                              mGlobalScale.GetZ());
   mGlobalScaleTransformInverse = CTransform4f::Scale(
       1.f / mGlobalScale.GetX(), 1.f / mGlobalScale.GetY(), 1.f / mGlobalScale.GetZ());
   for (rstl::vector< CParticleGen* >::iterator it = mActivePartChildren.begin();
@@ -348,12 +354,17 @@ void CElementGen::SetGlobalScale(const CVector3f& scale) {
 
 void CElementGen::SetLocalScale(const CVector3f& scale) {
   mLocalScale = scale;
-  for (int i = 0; i < 3; ++i) {
-    if (close_enough(mLocalScale[i], 0.f, 0.0001f)) {
-      mLocalScale[i] = 0.0001f * (mLocalScale[i] < 0.f ? -1.f : 1.f);
-    }
+  if (close_enough(mLocalScale[0], 0.f, 0.0001f)) {
+    mLocalScale[0] = 0.0001f * CMath::Sign(mLocalScale[0]);
   }
-  mLocalScaleTransform = CTransform4f::Scale(mLocalScale);
+  if (close_enough(mLocalScale[1], 0.f, 0.0001f)) {
+    mLocalScale[1] = 0.0001f * CMath::Sign(mLocalScale[1]);
+  }
+  if (close_enough(mLocalScale[2], 0.f, 0.0001f)) {
+    mLocalScale[2] = 0.0001f * CMath::Sign(mLocalScale[2]);
+  }
+  mLocalScaleTransform =
+      CTransform4f::Scale(mLocalScale.GetX(), mLocalScale.GetY(), mLocalScale.GetZ());
   mLocalScaleTransformInverse = CTransform4f::Scale(
       1.f / mLocalScale.GetX(), 1.f / mLocalScale.GetY(), 1.f / mLocalScale.GetZ());
   for (rstl::vector< CParticleGen* >::iterator it = mActivePartChildren.begin();
