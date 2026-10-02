@@ -512,7 +512,7 @@ CWorldState::CWorldState(CBitStreamReader& in, CAssetId worldId,
   mDesiredAreaAssetId = in.ReadBits(32);
   mRelayTracker = rs_new CRelayTracker(in, saveWorld);
   mMapWorldInfo = rs_new CMapWorldInfo(in, saveWorld, mWorldId);
-  mLayerState = rs_new CWorldLayerState(in);
+  mLayerState = rs_new CWorldLayerState(in, saveWorld);
 }
 
 void CWorldState::PutTo(CBitStreamWriter& out, const CWorldSaveGameInfo& saveWorld) const {
@@ -520,7 +520,7 @@ void CWorldState::PutTo(CBitStreamWriter& out, const CWorldSaveGameInfo& saveWor
   out.WriteBits(mDesiredAreaAssetId, 32);
   mRelayTracker->PutTo(out, saveWorld);
   mMapWorldInfo->PutTo(out, saveWorld, mWorldId);
-  mLayerState->PutTo(out);
+  mLayerState->PutTo(out, saveWorld);
 }
 
 CAssetId CWorldState::GetWorldAssetId() const { return mWorldId; }

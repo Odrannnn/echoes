@@ -13,15 +13,18 @@
 
 class CBitStreamReader;
 class CBitStreamWriter;
+class CWorldSaveGameInfo;
 
 // Name from CWorldState; interface adapted from Prime's CScriptLayerManager.
 class CWorldLayerState {
 public:
   CWorldLayerState();
-  explicit CWorldLayerState(CBitStreamReader& in);
+  // Retail's callers pass the save game; neither body reads it (measured at 0x801722EC and
+  // 0x801721FC). It is kept in the signature because it is in the mangled name.
+  explicit CWorldLayerState(CBitStreamReader& in, const CWorldSaveGameInfo& saveWorld);
   ~CWorldLayerState();
 
-  void PutTo(CBitStreamWriter& out) const;
+  void PutTo(CBitStreamWriter& out, const CWorldSaveGameInfo& saveWorld) const;
   void SetLayerActive(TAreaId area, TLayerId layer, bool active);
   bool IsLayerActive(TAreaId area, TLayerId layer) const;
   const rstl::string& GetLayerName(TAreaId area, TLayerId layer) const; // Guessed name

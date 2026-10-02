@@ -15,7 +15,9 @@ static const rstl::string skEmptyString(rstl::string::literal_t(), "");
 
 CWorldLayerState::CWorldLayerState() {}
 
-CWorldLayerState::CWorldLayerState(CBitStreamReader& in) {
+// `saveWorld` is unnamed: retail never reads r5 in either body, and naming an unused
+// parameter only invites a future -Wunused-parameter edit.
+CWorldLayerState::CWorldLayerState(CBitStreamReader& in, const CWorldSaveGameInfo&) {
   const uint count = in.ReadBits(10);
   mSaveLayers.reserve(count);
   for (uint i = 0; i < count; ++i) {
@@ -23,7 +25,7 @@ CWorldLayerState::CWorldLayerState(CBitStreamReader& in) {
   }
 }
 
-void CWorldLayerState::PutTo(CBitStreamWriter& out) const {
+void CWorldLayerState::PutTo(CBitStreamWriter& out, const CWorldSaveGameInfo&) const {
   uint totalLayerCount = 0;
   const int areaCount = mAreaLayers.size();
   for (int i = 0; i < areaCount; ++i) {
