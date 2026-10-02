@@ -722,6 +722,22 @@ over four members**. **Kind A, opaque receiver**: free functions over a `void*`,
 `fn_3_19C` (0x19C, 0x33C), its own entity loader, needs before the other 167 class functions can
 move. When `CDarkCommando` gets a header these move into it.
 
+## `src/MetroidPrime/ScriptObjects/CCommandoPirateRel.cpp` (1 site)
+
+The one site the checker sees is `+0x54` (`fn_9_AC`'s three-float copy). **It understates the file
+in the same way as `CDarkCommandoRel.cpp` and `CGrenchlerRel.cpp` above**: `+0x928` (`fn_9_0`),
+`+0x754` (`fn_9_9C`), `+0x34C` (`fn_9_90`'s bit 3), `+0x448` (`fn_9_58`'s `skDamageHitTime`
+store) and `+0x44F` (`fn_9_68`'s byte) are reached through a plain `static_cast< char* >` or a
+subscript, which the checker does not key on, so the true count is **six sites over six members**.
+**Kind A, opaque receiver**: free functions over a `void*`, because `CCommandoPirate` has no header
+here, and `fn_9_C8` reaches the vtable through the thirteen-slot stand-in
+`CCommandoPirateDispatch` it needs. Its block is `CIngSpaceJumpGuardianRel.cpp`'s order, not the
+family's usual one, which is why `fn_9_90` is the +0x34c flag test rather than a
+`lbl_8041B758`-style accessor; `+0x928` and `+0x754` are the two member-address accessors. Blocker:
+the same CActor/CPatterned/CAi hierarchy module 34's needs, which is what module 9's own entity
+loader `fn_9_168` (0x168, 0x76C) must be written before the other 230 class functions can move.
+When `CCommandoPirate` gets a header these move into it.
+
 ## `src/MetroidPrime/ScriptObjects/CGrenchlerRel.cpp` (1 site)
 
 The one site the checker sees is `+0x54` (`fn_27_AC`'s three-float copy). **It understates the

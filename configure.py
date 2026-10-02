@@ -3003,6 +3003,48 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CPirateRagDollCross.cpp"),
         ],
     ),
+    Rel(
+        # CommandoPirate's head, .text 0x0..0x168: the seventeen functions above the module's class
+        # code. Module 9, and the same arrangement as IngSpaceJumpGuardian and MysteryFlyer above:
+        # fourteen head functions (thirteen accessors and the `fn_9_C8` vtable entry), RELExit,
+        # RELMain and the loader registration RELMain calls.
+        #
+        # **Its accessor block is `CIngSpaceJumpGuardianRel.cpp`'s order, read off the bytes
+        # rather than assumed from the family**: it opens with *two* leading accessors -
+        # `addi r3,r3,0x928` then `li r3,1` - and puts this module's own `.rodata` constant at
+        # 0x10 (`lbl_9_rodata_400`, `.float 50`) where module 34 puts `lbl_34_rodata_0`. The
+        # `lbl_8041B758` accessor module 34 carries at 0x90 is not here at all; 0x90 is the
+        # +0x34c bit-3 test, which is the one function whose *identity* differs from module 34's
+        # block. Every body below is one `CIngSpaceJumpGuardianRel.cpp` / `CMysteryFlyerRel.cpp`
+        # already reproduces at 100%, so no spelling had to be discovered. See the source's header
+        # for the full listing and the caveats on the two functions dtk renders misleadingly.
+        #
+        # `fn_9_1C` is the family's `optional_object<CAABox>` return and **not** a template problem:
+        # retail calls the converting constructor out of line at `fn_9_F9BC`, which stays
+        # unclaimed, so it is one call through a constructor declared by its dtk name. The
+        # registration's loader slot is `lbl_9_bss_28` (`.bss:0x28`, **eight** bytes, where module
+        # 34's is four) and the setter import is the plain DOL symbol `fn_802188B0` (0x802188B0,
+        # `stw r3, gLoader_CommandPirate@sda21(r0)`), which `CommandPirate.cpp` records is
+        # deliberately unclaimed because REL modules import it by its retail name - so **no
+        # `symbols.txt` rename and no DOL change** are needed, unlike FishCloud/AtomicAlpha.
+        #
+        # **No dead-strip hazard, measured off the module's own `ldscript.lcf`**: its FORCEACTIVE
+        # block lists all fourteen head functions from `fn_9_0` to `fn_9_C8`, `fn_9_138` is a
+        # direct `bl` from RELMain, and
+        # RELMain/RELExit are the entry points the wired `REL_Setup` unit reaches from
+        # `_prolog`/`_epilog`. Nothing needs a `force_active:` entry in `config/G2ME01/config.yml`.
+        #
+        # Everything from fn_9_168 (0x168, 0x76C), the module's own entity loader, is left
+        # unclaimed - behavioural class code that needs the CActor/CPatterned/CAi hierarchy this
+        # tree does not model - and so are the 230 members above it (231 functions in that range,
+        # `build/report.json`'s `auto_00_00000168_text`), so dtk fills both from retail and the
+        # module's sha1 still holds. Not in `files.cmake`, for the reason every other head
+        # measures: it calls `fn_9_168` and `fn_802188B0`, which the port cannot link.
+        "CommandoPirate",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CCommandoPirateRel.cpp"),
+        ],
+    ),
 ]
 
 
