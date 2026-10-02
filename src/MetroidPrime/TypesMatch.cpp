@@ -57,6 +57,8 @@
 #include "MetroidPrime/ScriptObjects/CScriptActorRotate.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptDebris.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptPickupGenerator.hpp"
+#include "MetroidPrime/CDamageVulnerability.hpp"
+#include "WorldFormat/COBBTree.hpp"
 
 // `CBeamProjectile`'s destructor, out of line, and it lives here. Retail's symbol table puts
 // `__dt__15CBeamProjectileFv` at 0x800974C0 - inside this unit's range (0x800972BC..0x8009D644) and
@@ -86,16 +88,9 @@ CBeamProjectile::~CBeamProjectile() {}
 // Classes without headers yet, declared just far enough to define their overrides. Each parent is
 // the class whose override the retail function calls.
 // Member types for the destructors below whose real types no source here names. Each stands in
-// only for what the retail destructor does with it: an out-of-line destructor (called with -1), or
-// for SPolyMember a virtual destructor in the fifth vtable slot.
-struct SOutOfLineMember {
-  ~SOutOfLineMember();
-  uchar x0_data[4];
-};
-
-struct SInlineWrapper {
-  SOutOfLineMember x0_member;
-};
+// only for what the retail destructor does with it: a virtual destructor in the fifth vtable slot
+// (SPolyMember) is all that is left of that set - the one member that was an out-of-line destructor
+// is a real class, see CScriptDamageableTrigger's x190_vulnerability.
 
 // What SRefHolder::x0_ptr points at: the retail Release makes a virtual call through its vtable
 // at +8 with the argument 1, and says nothing else about the type.
@@ -219,8 +214,6 @@ public:
   bool operator!=(const SUnknownItemIter& other) const { return x0_current != other.x0_current; }
 };
 
-void FreeUnknownItem(void* item, bool b);
-
 // Retail fn_8009D45C: walks [first, last) in 8-byte steps and hands every element whose flag
 // byte is set to fn_8024EC88. C linkage, so the definition below spells retail's own symbol name
 // rather than a mangled one, and the two cursors are by value - see SUnknownItemIter.
@@ -233,12 +226,12 @@ extern "C" void fn_8009D45C(SUnknownItemIter first, SUnknownItemIter last);
 // the unit is NonMatching, so this reference never reaches the link.
 extern "C" void fn_80032D88(void* self, int deletingFlag);
 
-// Retail's symbol table has no name for this class's destructor (0x8009D3D8 is `fn_8009D3D8`), and
-// mwcceppc mangles every destructor, so objdiff can never pair the two and this function scores
-// 0.00% whatever its body is. Writing it as the free function `fn_8009D3D8` instead does pair, and
-// measured: 67.61%, because a plain function gets none of the destructor's codegen - no
-// `mr. r3; beq` null guard and no `extsh.` deleting-flag tail. The body below is the destructor's
-// and is byte-identical to retail's 33 instructions.
+// Retail's DOL names no function at 0x8009D3D8, so config/G2ME01/symbols.txt had the dtk
+// placeholder `fn_8009D3D8` there and objdiff could not pair the two: mwcceppc mangles every
+// destructor, so nothing in C++ can emit a destructor under a `fn_` name. It is the D0 deleting
+// destructor of this class - retail's own `__dt__13CUnknownInnerFv` (0x8009D374) calls 0x8009D3D8
+// with `li r4,-1` - and the entry now reads `__dt__16CUnknownItemListFv`, which is the name
+// mwcceppc gives it, so the pair is made without touching the body.
 class CUnknownItemList {
 public:
   ~CUnknownItemList();
@@ -303,7 +296,12 @@ public:
 
 private:
   uchar x_pad0[0x190 - sizeof(CActor)];
-  SOutOfLineMember x190_member;
+  // Retail __dt__24CScriptDamageableTriggerFv (0x8009CF60) destroys this member with
+  // `addi r3,r30,0x190 / li r4,-1 / bl 0x800DBB80 <__dt__20CDamageVulnerabilityFv>`, so it is a
+  // CDamageVulnerability. Its size (0x30) is larger than retail's class, which does not matter
+  // here: nothing in this unit reads past the member, and the offset it is destroyed at - 0x190,
+  // the same `addi r3,r30,400` retail has - comes from x_pad0 above, not from this declaration.
+  CDamageVulnerability x190_vulnerability;
 };
 TYPES_MATCH_CLASS(CScriptDarkSamusBattleStage, CEntity)
 TYPES_MATCH_CLASS(CScriptDestructibleBarrier, CPhysicsActor)
@@ -982,15 +980,15 @@ SUnknownOuter::~SUnknownOuter() {
   delete x0_ptr;
 }
 CUnknownInner::~CUnknownInner() {}
-// Not paired by name: retail's symbol table calls this `fn_8009D3D8` and mwcceppc mangles every
-// destructor, so objdiff scores it 0.00% whatever the body is - the body below is byte-identical to
-// retail's 33 instructions, and the free-function spelling of the same body (`extern "C" void
-// fn_8009D3D8(CUnknownItemList*, int)`) pairs at only 67.61% because a plain function is not given
-// the destructor's null guard or its `extsh.` deleting-flag tail. The four stores are not a
-// spelling problem either: retail passes two by-value *class* cursors, and it is the class type
-// (SUnknownItemIter) that makes mwcceppc materialise each of them twice - once as a home, once as
-// the outgoing-argument copy. Spelled as `uchar**` locals they collapse to two stores and the frame
-// drops to 16 bytes.
+// Retail's symbol table had no name for this destructor and called it `fn_8009D3D8`; it is
+// `__dt__16CUnknownItemListFv` in config/G2ME01/symbols.txt now, so this pairs. The body is retail's
+// 33 instructions exactly. What the body is *not* is spellable any other way: the free-function
+// spelling of the same code (`extern "C" void fn_8009D3D8(CUnknownItemList*, int)`) measured 67.61%,
+// because a plain function gets neither the destructor's null guard nor its `extsh.`
+// deleting-flag tail. The four stores at 12/8/16/20(SP) are not a spelling problem either: retail
+// passes two by-value *class* cursors, and it is the class type (SUnknownItemIter) that makes
+// mwcceppc materialise each of them twice - once as a home, once as the outgoing-argument copy.
+// Spelled as `uchar**` locals they collapse to two stores and the frame drops to 16 bytes.
 CUnknownItemList::~CUnknownItemList() {
   fn_8009D45C(SUnknownItemIter(reinterpret_cast< SUnknownItem* >(xC_items)),
               SUnknownItemIter(reinterpret_cast< SUnknownItem* >(xC_items) + x4_count));
@@ -1006,7 +1004,11 @@ static inline void DestroyUnknownItems(SUnknownItemIter begin, SUnknownItemIter 
   for (; cur != end; ++cur) {
     SUnknownItem* item = &*cur;
     if (item != nullptr && item->x0_flag != 0) {
-      FreeUnknownItem(item->x4_ptr, true);
+      // fn_8024EC88 is __dt__8COBBTreeFv (config/G2ME01/symbols.txt line 10381), called with the
+      // deleting flag in r4 - retail 0x8009D498: `lwz r3,4(r30) / li r4,1 / bl 8024ec88`. So this is
+      // a plain `delete` of a COBBTree whose destructor is out of line, which is what emits the
+      // `li r4,1` and keeps the call a call.
+      delete reinterpret_cast< COBBTree* >(item->x4_ptr);
     }
   }
 }
