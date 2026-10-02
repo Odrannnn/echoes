@@ -165,8 +165,21 @@ typedef rstl::auto_ptr< uchar > CMovieBuffer;
 typedef rstl::vector< CMovieBuffer > CMovieBufferVector;
 typedef CMovieBufferVector::iterator CMovieBufferIterator;
 
-extern "C" void fn_80319CB4(CMovieBufferIterator* first, CMovieBufferIterator* last) {
-  rstl::destroy(*first, *last);
+// Retail's `fn_80319CB4` is `rstl::destroy` with the range's iterators taken **by value**, and
+// that is load-bearing: the MWCC ABI hands a non-POD class parameter by address, so the copies
+// land in the callee's frame (the two dead `stw`s retail has) and the bound is then held in a
+// register for the whole loop. Passing the iterators by pointer, or calling `rstl::destroy`
+// directly, leaves the bound in memory and re-reads it every iteration instead.
+template < typename It >
+static inline void mp_destroy_val(It begin, It end) {
+  It cur = begin;
+  for (; cur != end; ++cur) {
+    rstl::destroy(&*cur);
+  }
+}
+
+extern "C" void fn_80319CB4(CMovieBufferIterator begin, CMovieBufferIterator end) {
+  mp_destroy_val(begin, end);
 }
 
 extern "C" CMovieBuffer* fn_8031AA24(CMovieBuffer** first, CMovieBuffer** last,
@@ -193,16 +206,16 @@ extern "C" CMovieTexture* fn_8031A8F8(CMovieTexture** first, CMovieTexture** las
 
 template <>
 void CMovieTextureVector::clear() {
-  CMovieTextureIterator first(mItems);
   CMovieTextureIterator last(mItems + mCount);
+  CMovieTextureIterator first(mItems);
   fn_80317FF8(&first.x4_current, &last.x4_current);
   mCount = 0;
 }
 
 template <>
 CMovieTextureVector::~vector() {
-  CMovieTextureIterator first(mItems);
   CMovieTextureIterator last(mItems + mCount);
+  CMovieTextureIterator first(mItems);
   fn_80317FF8(&first.x4_current, &last.x4_current);
   mAllocator.deallocate(mItems);
 }
@@ -644,23 +657,28 @@ void CMoviePlayer::DecodeFromRead(const void* ptr) {
   }
   CTHPTextureSet& texture = mTextures[mDecodedTexSlot];
   const uint* sizes = static_cast< const uint* >(ptr) + 2;
-  const uchar* data = static_cast< const uchar* >(ptr) + 8 + mThpComponents.mNumComponents * 4;
+  const uchar* dataStart =
+      static_cast< const uchar* >(ptr) + 8 + mThpComponents.mNumComponents * 4;
   uint offset = 0;
+  const uchar* data = dataStart;
   texture.SetAudioSamplesConsumed(0);
   texture.SetAudioSamples(0);
   for (uint i = 0; i < mThpComponents.mNumComponents; ++i) {
     if (mThpComponents.mFrameComp[i] == 0) {
-      THPVideoDecode(const_cast< uchar* >(data + offset), texture.Y(), texture.U(), texture.V(),
+      THPVideoDecode(const_cast< uchar* >(data), texture.Y(), texture.U(), texture.V(),
                      alignedWork);
     } else if (mThpComponents.mFrameComp[i] == 1) {
       const uint samples = THPAudioDecode(static_cast< short* >(texture.Audio()),
-                                          const_cast< uchar* >(data + offset), 0);
+                                          const_cast< uchar* >(data), 0);
       const BOOL interrupts = OSDisableInterrupts();
       texture.SetAudioSamples(samples);
       texture.SetAudioSamplesConsumed(0);
       OSRestoreInterrupts(interrupts);
     }
+    // Re-forming `data` from the running offset (rather than advancing it directly) is what leaves
+    // the loop with the two induction variables retail has: the byte cursor and `offset`.
     offset += CBasics::SwapBytes(*sizes++);
+    data = dataStart + offset;
   }
   if (++mDecodedTexSlot == mTextures.size()) {
     mDecodedTexSlot = 0;
