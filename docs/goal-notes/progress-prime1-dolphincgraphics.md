@@ -119,6 +119,8 @@ instructions:
   dropping `left`/`bottom` and folding them into the arguments (42): all worse or equal
 - `const` vs plain `float` on every local: no difference at all (12 either way)
 
+**Superseded 2026-10-02 - not a wall; see "CalculatePerspectiveMatrix matched" at the end.**
+
 WALL: CalculatePerspectiveMatrix 96.42% - only the f7/f8/f9 assignment of t / (zfar-znear) /
 2*znear differs, and ~40 spellings this run (best 11 differing instructions, naming `twoZnear`)
 did not move it. Run 1's three spellings plus these; the next run should try the register
@@ -162,3 +164,26 @@ better. Also 16 bytes of frame difference in the tail, which is downstream of th
   per element. Where retail shows a bare `stw x,N(r1); stw y,N+4(r1)` into a fixed frame slot,
   the source is a plain C array. `ClipScreenQuadFromVS` was one instance; other units using
   `reserved_vector` locally are likely to have the same mismatch.
+
+## CalculatePerspectiveMatrix matched (2026-10-02, orchestrator) - the wall was a missing inline
+
+100.00%, 74 of 74 instructions, unit 100 of 102. The fix is not in the expression shape at all:
+retail calls `tan` through an **inline float wrapper** (MSL's `tanf`), and the value returned by an
+inlined function gets its own temporary, which is what moves `t` from f9 to retail's f7.
+
+```cpp
+static inline float tan_inline(float x) { return (float)tan((double)x); }
+...
+float t = tan_inline(CRelAngle::FromDegrees(fovy).AsRadians() / 2.f);
+```
+
+Measured as differing objdump lines against retail, same harness for each: bare `(float)tan(...)`
+20, `double t` 12, half angle as a named local 20, `top` declared first 38, `top` derived from a
+height local 52, the inline wrapper **0**. `libc/math.h` has `_MATH_INLINE` float wrappers for
+sin/cos/fabs/atan2/fmod/acos but only an extern `float tanf(float)`, which `Dolphin/mtx` really
+calls, so the wrapper is file-local rather than a header change.
+
+General lesson: when the only residual is which FPR holds the result of a libm call, look for a
+float wrapper the original went through before trying ~40 spellings of the caller.
+
+Still open in this unit: `EndScene` 81.08% (1468 B) and `ClipScreenQuadFromVS` 77.10% (1484 B).

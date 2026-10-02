@@ -701,8 +701,13 @@ CMatrix4f CGraphics::GetPerspectiveProjectionMatrix() {
   );
 }
 
+// MSL's inline `tanf`, which libc/math.h only declares (Dolphin/mtx calls the real one). Going
+// through an inline changes which FPR holds `t`: with a bare `(float)tan(...)` it lands in f9
+// instead of retail's f7.
+static inline float tan_inline(float x) { return (float)tan((double)x); }
+
 CMatrix4f CGraphics::CalculatePerspectiveMatrix(float fovy, float aspect, float znear, float zfar) {
-  float t = tan(CRelAngle::FromDegrees(fovy).AsRadians() / 2.f);
+  float t = tan_inline(CRelAngle::FromDegrees(fovy).AsRadians() / 2.f);
   float right = aspect * 2.f * znear * t * 0.5f;
   float left = -right;
   float top = znear * 2.f * t * 0.5f;
