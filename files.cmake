@@ -658,6 +658,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/Kyoto/Math/Carve80335AE0.c
     src/Kyoto/Math/Carve80335B10.c
     src/Kyoto/Math/Carve80335B38.c
+    src/Kyoto/Math/Carve80335B48.c
     src/Kyoto/Math/Carve80335B58.c
     src/Kyoto/Math/Carve80337198.c
     src/Kyoto/Math/Carve803371A4.c
