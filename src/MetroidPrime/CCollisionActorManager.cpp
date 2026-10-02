@@ -86,6 +86,12 @@ void CJointCollisionDescription::ScaleAllBounds(const CVector3f& scale) {
   mPivotPoint = CVector3f::ByElementMultiply(scale, mPivotPoint);
 }
 
+// `mgr.AddObject(*p)` below is retail's spelling: it calls
+// `AddObject__13CStateManagerFR7CEntity`, the **reference** overload, at all four sites
+// (0x80136454, 0x801365B4, 0x80136678, 0x80136BD8). `AddObject(CEntity*)` is only a forwarder
+// that adds a null test (src/MetroidPrime/CStateManager.cpp:1194), so passing the pointer costs a
+// reload and a compare retail does not have and puts the wrong symbol in the object. The pointers
+// come straight out of `rs_new` and are never null here.
 CCollisionActorManager::CCollisionActorManager(
     CStateManager& mgr, TUniqueId owner, TAreaId areaId,
     const rstl::vector< CJointCollisionDescription >& descriptions, bool active)
@@ -95,7 +101,11 @@ CCollisionActorManager::CCollisionActorManager(
     return;
 
   const CAnimData* animData = actor->GetAnimationData();
-  const CTransform4f& worldXf = actor->GetTransform();
+  // retail 0x801363EC copies the actor's transform into its own frame
+  // (`addi r3,r1,1476 ; addi r4,r31,36 ; bl __ct__12CTransform4fFRC12CTransform4f`), i.e. it is a
+  // by-value local and not a reference to `CActor::mTransform`; a reference emits no copy and
+  // leaves retail with one `__ct__12CTransform4f` call this source never makes.
+  const CTransform4f worldXf(actor->GetTransform());
   const CVector3f& scale = actor->GetModelData()->GetScale();
   const CTransform4f scaleXf = CTransform4f::Scale(scale);
   mJointDescriptions.reserve(descriptions.size());
@@ -134,7 +144,7 @@ CCollisionActorManager::CCollisionActorManager(
       } else {
         colActor->SetTranslation(pivotXf.GetTranslation());
       }
-      mgr.AddObject(colActor);
+      mgr.AddObject(*colActor);
       mJointDescriptions.push_back_unsafe(*it);
       (mJointDescriptions.end() - 1)->SetCollisionActorId(id);
       continue;
@@ -164,7 +174,7 @@ CCollisionActorManager::CCollisionActorManager(
         colActor->SetTransform(CTransform4f::LookAt(pivotXf.GetTranslation(),
                                                     pivotXf.GetTranslation() + direction, up));
       }
-      mgr.AddObject(colActor);
+      mgr.AddObject(*colActor);
       mJointDescriptions.push_back_unsafe(*it);
       (mJointDescriptions.end() - 1)->SetCollisionActorId(id);
       continue;
@@ -174,7 +184,7 @@ CCollisionActorManager::CCollisionActorManager(
     CCollisionActor* colActor =
         rs_new CCollisionActor(id, areaId, mOwnerId, active, desc.GetRadius(), desc.GetMass());
     colActor->SetTransform(pivotXf);
-    mgr.AddObject(colActor);
+    mgr.AddObject(*colActor);
     mJointDescriptions.push_back_unsafe(CJointCollisionDescription::SphereCollision(
         desc.GetPivotId(), CVector3f::Zero(), desc.GetRadius(), desc.GetName(), 0.001f));
     (mJointDescriptions.end() - 1)->SetCollisionActorId(id);
@@ -203,7 +213,7 @@ CCollisionActorManager::CCollisionActorManager(
       }
       newActor->SetTransform(
           CTransform4f::Translate(pivotXf.GetTranslation() + separation * direction));
-      mgr.AddObject(newActor);
+      mgr.AddObject(*newActor);
       (mJointDescriptions.end() - 1)->SetCollisionActorId(newId);
     }
   }

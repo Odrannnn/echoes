@@ -1516,6 +1516,12 @@ config.libs = [
             # them. A third contiguous claim, so it needs its own file and its own entry - one unit
             # cannot claim two discontiguous ranges.
             Object(Matching, "MetroidPrime/ScriptObjects/CIngSnatchingSwarmAi.cpp"),
+            # The bounds/collision run that sits directly above the state-table one, .text
+            # 0x383C..0x3AC0: the hit test against the actor's own box, the `1.0f` box around the
+            # swarm's position, the two `CActor` render hooks and `gpRender`'s `AddParticleGen`
+            # pair. A fourth contiguous claim, so it needs its own file and its own entry - one
+            # unit cannot claim two discontiguous ranges.
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngSnatchingSwarmBounds.cpp"),
             # Three leaf accessors of the CParticleGen subclass this module carries as a member
             # (vtable index 12 SetDrawFlags, 20 GetGeneratorRate, 22 GetDrawFlags of the table at
             # .data:0x2E0), .text 0x4F28..0x4F44. A second contiguous claim, so it needs its own
