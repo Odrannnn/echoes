@@ -2373,6 +2373,14 @@ address (`lostcmp`), not lost units.
 
 ## The carve vein, and what it taught about `linked` and about `PortLinkStubs`
 
+**Seeding carves (2026-10-02).** `python3 tools/goal_seed.py --only carve` plans carves so a lane
+only writes code: it reads `build/G2ME01/main.elf`, masks what the linker fills in (`bl` targets,
+`lis` immediates, r13/r2 displacements), and pairs each unsourced `fn_` function with an
+already-matched function of the same shape. An item is one run of up to four adjacent functions in
+one `auto_*` unit, twins or at most 64 bytes, with the range, each twin's name and source file and
+the directory of the nearest claimed range below. Runs stop at a real-named function, since that
+needs its own mangling and a `.cpp`. Opt-in while its pass rate is unmeasured; see `HANDOFF.md`.
+
 Carving one retail function out of a dtk `auto_*` range as its own `Matching` unit is the
 highest-yield thing in this tree: **11 units / 14 functions** in one batch, and 62 units / 188
 functions in another, all at 100.00%, all verified by `flip_test`. Three rules came out of it

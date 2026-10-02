@@ -30,6 +30,16 @@ Four kinds of candidate, in this order:
     when it is done the unit is proposed again with what is left, and a unit set aside in review
     is not. Last, so the kinds with a better pass rate are used up first.
 
+A fifth kind is **opt-in** (`--only carve`), on trial since 2026-10-02:
+
+  * **carve** (`match` items, `<Dir>/Carve<ADDR>`) - first-attempt work from the functions no
+    source file claims. A run of up to CARVE_MAX_FNS adjacent `fn_` functions in one dtk `auto_*`
+    unit, each either a byte-shape twin of an already-matched function (same instructions once
+    call targets, `lis` immediates and r13/r2 displacements are masked) or at most CARVE_TINY
+    bytes. The seeder does the planning - the exact range, each twin's name and source file, the
+    directory from the nearest claimed range below - so the lane only writes code. Needs
+    `build/G2ME01/main.elf` under --root. All-twin runs first.
+
 The **97% wall**: a unit whose *every* remaining function is at >=97% is not seeded. That residue is
 register allocation and scheduling, not a mistake an agent can find - `match-cfrustumplanes`,
 `match-cmetaanimsequence`, `match-dolphincaudiogroupset` and six others in the review queue are all
@@ -46,6 +56,7 @@ import argparse
 import json
 import os
 import re
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -72,6 +83,9 @@ UNIT_LIST_MAX = 10  # functions named in a `unit` item's reason
 # Units whose remaining functions are a documented blocker, not agent work (docs/HANDOFF.md:
 # both translation units are unsplit in G2ME01).
 UNIT_SKIP = {"MetroidPrime/Enemies/CPatterned", "MetroidPrime/Enemies/CAi"}
+CARVE_TINY = 64  # bytes: an unsourced function this small is first-attempt work without a twin
+CARVE_NAME_MAX = 70  # characters of a twin's mangled name quoted in the reason (rstl ones run to 500)
+CARVE_MAX_FNS = 4  # functions in one carve item; a longer run is proposed again with what is left
 PRIME_LIST_MAX = 12  # functions named in one item's reason; more makes the item a project
 
 
@@ -289,6 +303,134 @@ def unit_candidates(report: dict) -> list[dict]:
     return out
 
 
+def elf_text_reader(path: Path):
+    """`code(addr, size)` over the executable PROGBITS sections of a big-endian ELF32."""
+    elf = path.read_bytes()
+    shoff, = struct.unpack(">I", elf[0x20:0x24])
+    shentsize, shnum = struct.unpack(">HH", elf[0x2E:0x32])
+    secs = []
+    for i in range(shnum):
+        h = struct.unpack(">10I", elf[shoff + i * shentsize:shoff + i * shentsize + 40])
+        if h[1] == 1 and h[2] & 4:  # SHT_PROGBITS, SHF_EXECINSTR
+            secs.append((h[3], h[4], h[5]))
+
+    def code(addr: int, size: int):
+        for a, o, s in secs:
+            if a <= addr and addr + size <= a + s:
+                return elf[o + addr - a:o + addr - a + size]
+        return None
+    return code
+
+
+def code_shape(b: bytes) -> tuple:
+    """The instruction words with what the linker fills in masked out.
+
+    `bl` targets, `lis` immediates and r13/r2-relative displacements differ between two
+    compilations of the same source; everything else being equal is what makes two functions
+    twins. The low half of a `lis`/`addi` pair is deliberately *not* masked, so this
+    under-counts rather than pairing functions that only look alike.
+    """
+    out = []
+    for (w,) in struct.iter_unpack(">I", b):
+        op, ra = w >> 26, (w >> 16) & 31
+        if op == 18:
+            w &= 0xFC000003
+        elif op == 15 and ra == 0:
+            w &= 0xFFFF0000
+        elif op in (14, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54) and ra in (2, 13):
+            w &= 0xFFFF0000
+        out.append(w)
+    return tuple(out)
+
+
+def carve_candidates(report: dict) -> list[dict]:
+    """Runs of adjacent unsourced `fn_` functions that are twins of matched ones, or tiny."""
+    elf = ROOT / "build/G2ME01/main.elf"
+    if not elf.exists():
+        print(f"goal_seed: no {elf}; the carve kind needs the retail ELF", file=sys.stderr)
+        return []
+    code = elf_text_reader(elf)
+    twins, unsourced, claimed = {}, [], []
+    for u in report.get("units", []):
+        name = u.get("name") or ""
+        if not name.startswith("main/"):
+            continue
+        meta = u.get("metadata") or {}
+        src = meta.get("source_path") or ""
+        for f in u.get("functions") or []:
+            va = (f.get("metadata") or {}).get("virtual_address")
+            size = int(f.get("size") or 0)
+            if not va or not size:
+                continue
+            addr = int(va)
+            if meta.get("auto_generated"):
+                unsourced.append((addr, size, f.get("name") or "", name))
+                continue
+            if src:
+                claimed.append((addr, src))
+            if src and size > 4 and fuzzy(f) >= 100:
+                b = code(addr, size)
+                if b:
+                    twins.setdefault(code_shape(b), (f.get("name"), src))
+    unsourced.sort()
+    claimed.sort()
+
+    runs, cur = [], []
+    for addr, size, name, unit in unsourced:
+        b = code(addr, size)
+        twin = twins.get(code_shape(b)) if b else None
+        # A real name needs its own mangling and a `.cpp`; a run is `fn_` names only so that
+        # one item is one `.c` file with one set of rules.
+        easy = bool(b) and re.fullmatch(r"fn_[0-9A-F]{8}", name) and (twin or size <= CARVE_TINY)
+        joins = cur and cur[-1][0] + cur[-1][1] == addr and cur[-1][3] == unit
+        if easy and joins and len(cur) < CARVE_MAX_FNS:
+            cur.append((addr, size, name, unit, twin))
+            continue
+        if cur:
+            runs.append(cur)
+        cur = [(addr, size, name, unit, twin)] if easy else []
+    if cur:
+        runs.append(cur)
+
+    out = []
+    for run in runs:
+        start, end = run[0][0], run[-1][0] + run[-1][1]
+        before = [c for c in claimed if c[0] < start]
+        near = before[-1] if before else (claimed[0] if claimed else None)
+        if not near:
+            continue
+        d = str(Path(near[1].removeprefix("src/")).parent)
+        ntw = sum(1 for e in run if e[4])
+        listed = "; ".join(
+            f"{n} 0x{a:08X} {s} B, "
+            + (f"byte-shape twin of matched `{t[0][:CARVE_NAME_MAX]}` in {t[1]}" if t
+               else "no twin, tiny")
+            for a, s, n, _u, t in run)
+        out.append({
+            "id": f"carve-{start:08x}",
+            "kind": "match",
+            "target": f"{d}/Carve{start:08X}",
+            "reason": f"carve item: write {len(run)} unsourced function(s) at "
+                      f".text 0x{start:08X}..0x{end:08X} (now in dtk's {run[0][3]}) as the new "
+                      f"Matching unit src/{d}/Carve{start:08X}.c. Functions: {listed}. A twin has "
+                      "the same instructions apart from call targets and data addresses: read its "
+                      "source, write the same logic in C under the fn_ name, with the callees and "
+                      "data this copy uses (from build/G2ME01/asm) declared extern. Rules, all in "
+                      "docs/RUNNING_THE_DECOMP.md \"The carve vein\": a carve is four files "
+                      "(configure.py Object(Matching, ...) on one line, config/G2ME01/splits.txt, "
+                      "files.cmake, the source), each entry placed in address order; definitions "
+                      "DESCENDING by address; plain C so the fn_ names do not mangle; claim exactly "
+                      "this range and nothing else; remove any PortLinkStubs.cpp duplicate; check "
+                      "bytes with tools/carve_diff.sh; only tools/flip_test.sh decides. If one "
+                      "function will not match, carve the contiguous part that does and say so in "
+                      "the notes (keep the unit name). Copy the header comment style of "
+                      "src/Dolphin/Carve8038A7DC.c. Seeded by goal_seed.py",
+            "sort": (-(ntw == len(run)), -ntw, end - start),
+        })
+    out.sort(key=lambda c: c["sort"])
+    return out
+
+
 def rel_head_candidates(queue_dir: Path) -> list[dict]:
     """Retail REL modules with no object of our own code linked yet."""
     mods = all_modules()
@@ -319,8 +461,9 @@ def main() -> int:
     ap.add_argument("--queue-dir", default=None,
                     help="queue directory (default: $MP_GOAL_QUEUE_DIR, else ../wt-mp2-goal/build/goal)")
     ap.add_argument("--max", type=int, default=10, help="most items to seed in total (default: 10)")
-    ap.add_argument("--only", choices=("rel-head", "prime1", "match", "unit"), default=None,
-                    help="seed one kind of candidate only")
+    ap.add_argument("--only", choices=("rel-head", "prime1", "match", "unit", "carve"),
+                    default=None,
+                    help="seed one kind of candidate only; `carve` is seeded only when asked for")
     ap.add_argument("--prime1-min-same", type=int, default=0,
                     help="Prime 1 items need at least this many same-size shared functions")
     ap.add_argument("--apply", action="store_true",
@@ -354,8 +497,11 @@ def main() -> int:
              "prime1": lambda: [c for c in prime1_candidates(report)
                                 if -c["sort"][0] >= args.prime1_min_same],
              "match": lambda: match_candidates(report),
-             "unit": lambda: unit_candidates(report)}
-    cands = [c for k, f in kinds.items() if args.only in (None, k) for c in f()]
+             "unit": lambda: unit_candidates(report),
+             "carve": lambda: carve_candidates(report)}
+    opt_in = {"carve"}  # on trial: not part of a lane's automatic refill until its pass rate is known
+    cands = [c for k, f in kinds.items()
+             if (args.only == k if k in opt_in else args.only in (None, k)) for c in f()]
     seen_ids, picked = set(), []
     for c in cands:
         if len(picked) >= cap:

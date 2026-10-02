@@ -297,6 +297,17 @@ read a batch of them before seeding the remaining 26 zero-same-size units.
 The rules are in the repo `AGENTS.md`; `python3 tools/check_docs_claims.py` enforces the derivable
 ones. The longer form that used to be here is in `docs/history/handoff-to-2026-10-01.md`.
 
+**Carve seeding, on trial since 2026-10-02.** The `unit` kind ran dry too: 25 sourced DOL units
+were left unqueued and every cheap lane was taking failed-once items on their last attempt. The work
+that is left sits in the 333 unsourced `auto_*` DOL units (3,283 unmatched functions), so
+`goal_seed.py --only carve` now proposes carves from them: runs of up to four adjacent `fn_`
+functions, each a byte-shape twin of a matched function (631 measured) or at most 64 bytes. 612
+items, about 1,100 functions. It is **opt-in** and not part of a lane's automatic refill: ten items
+(`carve-*`: four 4-function twin runs, three single twins, three tiny no-twin) were seeded by hand
+and their pass rate is **unmeasured**. Read their verdicts in `build/goal/run-L*.log` and their
+notes before adding `carve` to the default kinds (drop it from `opt_in` in `main()`). Expect rstl
+template twins (`vector` dtors, `destroy_impl`) to be the hard ones in plain C.
+
 **Queue triage, 2026-10-01.** `goal_seed.py` has run dry ("nothing to seed"): its three kinds (REL
 heads, Prime 1 donors, near-done `match` units) do not cover a DOL unit that has source but is far
 from done. 94 such units (2,080 unmatched functions, 77 with a Prime 1 counterpart) were queued by
