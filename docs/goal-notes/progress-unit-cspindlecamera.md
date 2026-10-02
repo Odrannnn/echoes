@@ -302,3 +302,184 @@ expression reaches. Not fixed here.
 No `NEW:` line is owed: the two functions this item owed are now written (one at 100%), the header
 the previous run called wrong is right, and `Reset`'s remainder is one instruction of block layout,
 not a separate unit.
+
+---
+
+# Third run (lane 7, 2026-10-02) — 13/16 -> **14/16**
+
+`MetroidPrime/Cameras/CSpindleCamera`: **13 -> 14 matched functions** (unit still `NonMatching`, as the
+item requires). `Reset` reached **100.00%** (was 97.84%). `Think` (5356 B) and
+`GetScanObjectIndicatorPosition` (1836 B) still unwritten. No `asm`, no header or config change, no
+flip attempted, no commit.
+
+```
+goal_check: item progress-unit-cspindlecamera (progress) target=MetroidPrime/Cameras/CSpindleCamera
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12376 -> 12377   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    All:  34.96% fuzzy, 28.63% matched, 12.90% linked (12377 / 28465 functions)
+  ok    target rose: main/MetroidPrime/Cameras/CSpindleCamera: 13 -> 14 / 16 functions
+  ok    no asm added
+goal_check: PASS progress-unit-cspindlecamera
+```
+
+`build/report.json` for the unit after this run: `21.51% fuzzy, 21.17% matched (14 / 16 functions)`,
+`total_data 152 / 152 (100%)`.
+
+## The second run's `Reset` WALL was the wrong spelling, not the wrong function
+
+The previous run wrote `WALL: Reset ... every spelling that gets retail's block layout makes mwcc
+materialise the flag with extrwi.`, having tried four `if` shapes. It was right that every `if` shape
+fails, and wrong to conclude from that that the guard is unreachable: **no nested-`if` spelling of this
+guard can produce retail's bytes, because retail's bytes are not a nested-`if`.**
+
+The fix is one line, and it removes a whole `if`:
+
+```cpp
+// before - 97.84%, always
+if (GetActive()) {
+  if (hint) {
+    mInResetThink = true;
+    ...
+  }
+}
+// after - 100.00%
+if (!GetActive() || !hint) {
+  return;
+}
+mInResetThink = true;
+...
+```
+
+### How it was found: scan the DOL for retail's shape and read a matched function that has it
+
+Retail's `Reset` body is
+
+```
+801b6d24:  lbz     r0,32(r30)
+801b6d28:  rlwinm. r0,r0,25,31,31
+801b6d2c:  beq     801b6da4        <- !GetActive() -> END
+801b6d30:  cmplwi  r3,0
+801b6d34:  bne     801b6d3c        <- hint      -> BODY
+801b6d38:  b       801b6da4        <- !hint     -> END
+801b6d3c:  lbz     r0,588(r30)     <- BODY, reached only by the `bne`
+...
+801b6da4:  lwz     r0,20(r1)      <- END, also the epilogue
+```
+
+i.e. the body is **out of line**, entered only by the branch, with a redundant `b` over it. Every
+`if` (nested or `&&`) makes mwcc inline the body and drop the `b`; so the target shape is not an `if`
+shape at all. Rather than keep guessing (the previous run's dead end), I dumped every instruction of
+the linked DOL (`objdump -d build/G2ME01/main.elf`), scanned for that 4-instruction pattern, and
+looked up the owning function's `fuzzy_match_percent` in `build/report.json`.
+
+**That shape occurs in 18 functions in the DOL, and 7 of them are already at 100%** — so the answer
+was sitting in the tree:
+
+| retail site | function | score |
+| --- | --- | --- |
+| `0x8010a66c` | `CScriptActorRotate::Think` | 100.0% |
+| `0x8015110c` | `CPatterned::RotateToPoint` | 100.0% |
+| `0x80153434` | `CScriptColorModulate::Think` | 100.0% |
+| `0x801dde34` | `CPlayerGunBase::HolsterGun` | 100.0% |
+| `0x8027e490` | `CAuiEnergyBarT01::Draw` | 100.0% |
+| `0x8027f7f4` | `CAuiImagePane::Draw` | 99.8% |
+| `0x803252a0` | `CRumbleVoice::Deactivate` | 100.0% |
+
+The minimal one is `CRumbleVoice::Deactivate` (`src/Kyoto/Input/CRumbleVoice.cpp:24`), and its source
+is the template - an early-return guard written as a **short-circuit `||`** with the rest of the
+function after it:
+
+```cpp
+if (id == -1 || !OwnsSustained(id)) {
+  return;
+}
+if (mUsedChannels & (1 << GetChannelId(id))) {
+  mDeltas[GetChannelId(id)].mPhase = SAdsrDelta::kP_Release;
+}
+```
+
+which compiles to `cmpwi r0,-1 ; beq END ; bl OwnsSustained ; clrlwi. r0,r3,24 ; bne BODY ; b END ;
+BODY:` - the same six instructions as `Reset`, with the same redundant `b`.
+
+`CScriptColorModulate::Think` (`src/MetroidPrime/ScriptObjects/CScriptColorModulate.cpp:197`) is the
+same rule with bitfields, and its comment records the same discovery from the other direction: an
+`extrwi`-producing guard that only matched when the guard was written with a *redundant* re-test.
+
+## Generalisable codegen rule (MWCC 2.7, PowerPC)
+
+**A guard of two tests in front of the rest of a function is `if (!A || !B) { return; }`, not nested
+`if`s.** The `||`-with-early-return is the only spelling measured that lays the body out of line
+(`bne BODY ; b END ; BODY:`); every nested `if` and every `&&` measured emits `beq END ; beq END` and
+folds the body into the fall-through. The two spellings have the same CFG, so this is a block-ordering
+decision mwcc makes from the `return` edge, not from the condition.
+
+Corollary, and the thing that actually generalises: **when a function is at 97-99% and the only
+difference is block layout, find retail's byte shape elsewhere in the DOL and read a function that
+already matches it.** Guessing C++ shapes is unbounded; the DOL is a finite index of the answers, and
+`build/report.json` says which entries are already solved. 20 minutes of scanning beat the previous
+run's four spellings.
+
+## Every spelling measured this run (all on `Reset`, all against the same 51-instruction retail body)
+
+All of these give the identical 97.84% - `beq END ; cmplwi ; beq END ; BODY` - with the body's first
+instruction inline at `+0x44`:
+
+| spelling | score |
+| --- | --- |
+| `if (GetActive()) { if (hint) { body } }` (the previous run's spelling) | 97.84% |
+| `if (hint != nullptr)` inner test | 97.84% |
+| `if (nullptr != hint)` inner test | 97.84% |
+| inner `if (hint) { body } else {}` | 97.84% |
+| `if (!hint) {} else { body }` | 97.84% |
+| `if (GetActive() && hint)` | 97.84% |
+| `if (GetActive() && (hint != nullptr))` | 97.84% |
+| `if (hint) { body } else { return; }` | 97.84% |
+| `if (!hint) { return; }` early-return, body unindented | 97.84% |
+| two `goto end` guards, body between them | 97.84% |
+| `if (GetActive() && (hint != nullptr))` with the cast inline in the `&&` | 74.02% (calls get sunk inside the guard) |
+| `const bool bHasHint = hint != nullptr; if (GetActive() && bHasHint)` | 90.69% (adds `neg`/`or`/`srwi`) |
+| **`if (!GetActive() \|\| !hint) { return; }`** | **100.00%** |
+
+Standalone shape probes compiled with the unit's own cflags (76 distinct guard/loop shapes: `while`,
+`do/while`, `for(;;)`, `switch`, `goto`-into-label, `&&`, ternary, `else`-with-empty-statement,
+`break`-out-of-loop, nested scopes) produced the retail `bne BODY ; b END ; BODY:` shape **only** for
+`goto` into a label placed after the guard. Every `if`-family shape collapsed to `beq ; beq`. The
+`||`-with-`return` spelling is the one that is both natural and correct.
+
+## Traps hit while measuring (so nobody re-hits them)
+
+- **`build/report.json`'s `address` field is the object-relative offset, not the address.** For
+  `Reset` it is the string `"7560"` (0x1D98 into the unit object). The absolute VA is in
+  `metadata.virtual_address`. **Both are decimal strings, not hex** - `"2149281008"` is
+  `0x801B6CF0`. Parsing either as hex silently produces a nonsense address and every lookup returns
+  "no owner", which looks like "no matched function has this shape" and sends you back to guessing.
+- The scratch probes for this run were `build/probe/*` (gitignored; `git status` shows only the one
+  source file). `build/G2ME01/main.dis` (a ~1M-line dump of the DOL) is what the shape scan reads;
+  regenerating it takes about a minute. The previous runs' warning still stands:
+  `tools/probe_offsets.cpp` is tracked, and a scratch probe left there fails `goal_check.sh`'s
+  "no judge-owned path touched".
+- `tools/g2try.sh`'s range lookup from `splits.txt` fails for this unit (the unit's claim is
+  `0x801B4F68..0x801B730C`, not `+320` from a function start), so `cmp`-by-eye is easier:
+  retail via `tools/dis.sh 0x801b6cf0 0xcc`, ours via `nm` on
+  `build/G2ME01/src/MetroidPrime/Cameras/CSpindleCamera.o` (ours is at object offset `0x1bc`).
+
+## Facts carried forward, re-measured
+
+- `unit_fit.sh MetroidPrime/Cameras/CSpindleCamera.cpp` still reports the same 7 pre-existing
+  functions ours emits that the retail unit object does not (992 bytes: weak `CMayaSpline` /
+  `rstl::vector` / `rstl::string` template copies and `CActor::GetHealthInfo`). The previous run
+  measured these as pre-existing by reverting and rebuilding; this change adds no new ones.
+- The hint is still resolved and cast **before** the flag is tested - that ordering is unchanged from
+  the previous run and is not what this change fixes.
+
+## Files touched
+
+- `src/MetroidPrime/Cameras/CSpindleCamera.cpp:74-90` - `Reset`, one guard collapsed to
+  `if (!GetActive() || !hint) { return; }`, comment updated to record why.
+- `docs/HANDOFF.md` - **not edited by hand**; `gate.sh`'s `sync_state_block.py` rewrote the two
+  derived counts (12376 -> 12377, DOL units 10828 -> 10829). The driver discards it either way.
+
+No `NEW:` line is owed: the item's target moved 13 -> 14, and the one thing left to find was a codegen
+rule, which is a note rather than an item.

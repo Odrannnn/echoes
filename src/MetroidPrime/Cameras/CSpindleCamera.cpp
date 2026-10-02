@@ -72,21 +72,21 @@ CSpindleCamera::CSpindleCamera(TUniqueId uid, const CTransform4f& xf, bool activ
 CSpindleCamera::~CSpindleCamera() {}
 
 void CSpindleCamera::Reset(const CTransform4f& xf, CStateManager& mgr) {
-  // Retail resolves and casts the active hint before it tests the flag, and tests the two guards
-  // separately. See docs/goal-notes/progress-unit-cspindlecamera.md: this spelling reproduces
-  // retail's block layout exactly, but mwcc materialises the flag with `extrwi.` where retail
-  // tests the bit in place with `rlwinm.`.
+  // The two guards are one short-circuit `||` with an early return, not two nested `if`s: that
+  // is the only spelling of them MWCC lays out as retail's `beq end; test; bne body; b end;
+  // body:`, with the body reached only by the branch. Every nested / `&&` / `?:`-with-empty-else
+  // spelling measured 97.84% and lost that `b`. The hint is resolved before the flag is tested
+  // either way. See docs/goal-notes/progress-unit-cspindlecamera.md.
   CScriptCameraHint* hint =
       TCastToPtr< CScriptCameraHint >(fn_801B9480(CameraManager(mgr).HintManager(), mgr));
-  if (GetActive()) {
-    if (hint) {
-      mInResetThink = true;
-      CameraManager(mgr).BallCamera()->UpdateLookAtPosition(0.01f, mgr, false);
-      Think(0.01f, mgr);
-      mInResetThink = false;
-      mFixedPositionInitialized = false;
-    }
+  if (!GetActive() || !hint) {
+    return;
   }
+  mInResetThink = true;
+  CameraManager(mgr).BallCamera()->UpdateLookAtPosition(0.01f, mgr, false);
+  Think(0.01f, mgr);
+  mInResetThink = false;
+  mFixedPositionInitialized = false;
 }
 
 float CSpindleCamera::CalculateTargetSplineDistance(CStateManager& mgr) const {
