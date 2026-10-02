@@ -9,7 +9,9 @@
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   187 functions, 6 data objects (counted 2026-10-02, after the ninth upstream sync; before it 165 and 4, after `fn_801FEE88` was added by hand
+ *   187 functions, 6 data objects (counted 2026-10-02, after the ninth upstream sync; after
+ *   `fn_801FEA98`'s stub was retired for `Carve801FEA98.c` with `fn_801FEAE0`'s added in its
+ *   place - an exchange, so the total did not move; before it 165 and 4, after `fn_801FEE88` was added by hand
  *   below for `Carve801FEE40.c` and `fn_801FEE40`'s stub retired in its place - an exchange, so
  *   the total did not move; after `fn_801FD67C` was added by hand
  *   below for `Carve801FD638.c`, and after `fn_801FD8E0`'s stub was retired for
@@ -813,17 +815,44 @@ extern "C" void stub_182() {}
 //   fn_801FF838 (retail 0x801FF838) calls `fn_801FEA98` at 0x801FF868 - the 36-byte element's
 //     copy constructor, itself one `bl fn_801FEAB8` (0x20 bytes, `symbols.txt:8311`).
 //   fn_801FF7EC (retail 0x801FF7EC) calls `fn_801FD8E0` at 0x801FF810 - the same element's
-//     destructor, itself one `bl fn_801FD900` (0x24 bytes, `symbols.txt:8280`). This block's
-//     `fn_801FD8E0` half was **retired on 2026-10-02**: `src/MetroidPrime/ScriptObjects/Carve801FD8E0.c`
-//     now defines that symbol for the port's link as well, so the block stands for `fn_801FEA98`
-//     alone. The 293-undefined measurement above is left as it was written.
+//     destructor, itself one `bl fn_801FD900` (0x24 bytes, `symbols.txt:8280`).
 //
-// Same trade as `stub_178` and as the three `Carve801FF5A0.cpp` callees above: empty bodies, no
-// claim that it is decompiled (it is not), and carving it instead only moves the gap one function
-// along because it is a forwarder. `docs/research/port_link_gap_list.md` keeps `fn_801FEA98`
-// listed as still missing.
-extern "C" void stub_183() asm("fn_801FEA98");
-extern "C" void stub_183() {}
+// **Nothing here stands for a symbol any more - both halves are retired.** The `fn_801FD8E0` half
+// went on 2026-10-02, when `src/MetroidPrime/ScriptObjects/Carve801FD8E0.c` took that symbol for
+// the port's link as well (`stub_184` out, `fn_801FD924` in below); the `fn_801FEA98` half went the
+// same day, when `src/MetroidPrime/ScriptObjects/Carve801FEA98.c` took its symbol (`stub_183` out,
+// `fn_801FEAE0` in below). Each was an exchange, so the file's total does not move. The
+// 293-undefined measurement above is left as it was written.
+//
+// fn_801FEAE0 - retail 0x801FEAE0, 0x68 = 104 bytes (`config/G2ME01/symbols.txt:8313`), the
+// 0x24-byte script-object element's copy constructor: the `.data` vtable pair `lbl_803B7BCC` /
+// `lbl_803B7BF0` (0x803B7BCC, 0x803B7BF0) into +0x0, the `rstl::basic_string` at +0x4 copied
+// through `__ct__Q24rstl66basic_string<...>`, and the member at +0x14 built by `fn_801FE8B8`
+// (0x801FE8B8, 0xC4). Asked for by the port because
+// `src/MetroidPrime/ScriptObjects/Carve801FEA98.c` (Matching, 0x801FEA98..0x801FEAE0) reproduces
+// `fn_801FEAB8` byte for byte and that body's `bl fn_801FEAE0` at 0x801FEACC is in retail's bytes,
+// so the carve cannot drop the call. This block also **retires `stub_183`**: that stub stood in for
+// `fn_801FEA98`, which the new unit now defines for real, and leaving both would be two definitions
+// of one symbol in the port's flat link. One function stub out, one in - the total does not move.
+//
+// For the DOL nothing is needed: dtk's own `auto_03_801FDC88_text.o` still defines 0x801FEAE0 -
+// the claim splits that object into 0x801FDC88..0x801FEA98, this unit's 72 bytes and
+// 0x801FEAE0..0x801FEE40 - and this file is not in `configure.py`, so the stub cannot reach
+// main.dol. The port link does not carry those objects, which is why its gap grows by this symbol:
+// measured in this tree with the carve in and this block absent, `tools/link_check.sh` prints
+// `unique undefined symbols 288` (from 287), `duplicate definitions 0` and
+// `FAIL undefined went 287 -> 288`, and `python3 tools/link_gap.py --rebuild` exits 1 with
+// `282  MISSING` and `gap grew: fn_801FEAE0 is not in port_link_gap_list.md`; with the block in
+// place the link is back to `287 undefined, 0 duplicates` and link_gap.py prints `281  MISSING`,
+// all accounted for (the 282 was this symbol, and only it).
+//
+// This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
+// claim that fn_801FEAE0 is decompiled - it is not: no unit claims it, so its bytes stay dtk's in
+// the DOL. Claiming it instead only moves the same gap one function along: its 0x68 bytes need the
+// `.data` pair as well as that string copy and `fn_801FE8B8`'s body, none of them claimed. The same
+// trade `stub_196` and `stub_197` above make for their carves' callees.
+extern "C" void stub_225() asm("fn_801FEAE0");
+extern "C" void stub_225() {}
 
 // fn_801F9848 - retail 0x801F9848, 0x88 = 136 bytes / 34 instructions (`symbols.txt:8193`), the
 // copy constructor of the 0x40-byte element that `CCameraColliderGroup`'s vector holds: it stores
