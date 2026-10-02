@@ -1397,3 +1397,252 @@ build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
   `-m rs6000` decode, but read its pool against the wrong base; its numeric findings happened to
   survive because it also knew the answer from another route. When a number is quoted from a
   tool, record which base it used.
+
+---
+
+# progress-unit-celementgen — attempt 7 (lane L3, 2026-10-02)
+
+**Two** more functions of `Kyoto/Particles/CElementGen` taken to 100%. The unit goes
+**87 -> 89 / 104** matched functions and stays `NonMatching`; project total matched
+**12278 -> 12280**, `linked` held at **5863**. A third function, `UpdateChildParticleSystems`,
+went **77.25% -> 95.19%** in the same diff. Whole-project per-function diff of `build/report.json`
+against `build/goal/judge/report.base.json`, every function in every unit: **3 better
+(2 at 100.00%), 0 worse, 0 new, 0 gone** — the check the judge does not print.
+
+Attempts 1-6 worked on the functions the queue listed as closest and ran out of spellings.
+This run worked the four the notes never mention (`CreateNewParticles`, `UpdateChildParticleSystems`,
+`RenderParticlesIndirectTexture`, `RenderParticlesFlameThrower`) and the queue's own ordering was
+wrong: the closest function was the one nobody had opened.
+
+| Function | Before | After | What changed |
+| --- | ---: | ---: | --- |
+| `CreateNewParticles` | 85.43% (1544 B) | **100.00%** | three spellings: `push_back_unsafe` for the ADV fill, the velocity-source loop unrolled into four nested `if`s, and `newCount` as a separate variable from the `count` parameter |
+| `__ct__CElementGen` | 99.05% (3080 B) | **100.00%** | the `min_val(mMAXP, 256)` clamp written as a statement, and `mRandomSeed` made signed |
+| `UpdateChildParticleSystems` | 77.25% (2060 B) | 95.19% | `push_back_unsafe` at all six `mActivePartChildren` sites, and `description->mOPTS` named at the two `break` sites |
+
+Diff is two files: `src/Kyoto/Particles/CElementGen.cpp` (+49/-21) and
+`include/Kyoto/Particles/CElementGen.hpp` (+4/-1). No `asm`, no `.s`, nothing under `tools/` or
+`build/goal/`. `docs/HANDOFF.md`'s state block shows the new counts because `goal_check.sh` runs
+`gate.sh` with `MP_GATE_DOCS_WRITE=1`, which rewrites the derived numbers itself; I did not
+hand-edit it.
+
+## 1. `push_back` inside a loop that already has the capacity: use `push_back_unsafe`
+
+This is the same lever twice and it is worth 16 points and 20 instructions.
+
+`rstl::vector::push_back` is `if (mCount >= mCapacity) reserve(mCapacity ? mCapacity*2 : 4);
+construct(mItems + mCount, in); ++mCount;` (`include/rstl/vector.hpp:76`), and mwcceppc inlines
+all of it, growth test included. `push_back_unsafe` is the same minus the growth test.
+
+**`CreateNewParticles` (0x802D90BC..0x802D9140).** Our ADV fill is
+`while (mAdvValues.size() < mAdvValues.capacity()) mAdvValues.push_back(CAdvancedValues());`.
+Our body was 58 instructions to retail's 38, and the extra 20 were the growth test
+(`cmpi 0,r11,0 / cal r3,84(r27) / lil r4,4 / beq / sli r4,r11,1 / bl`). The `while` condition
+already guarantees `size < capacity`, so the growth branch is dead. `push_back_unsafe` is
+behaviour-identical: **85.43% -> 92.44%**, and the object drops to 365 instructions.
+
+**`UpdateChildParticleSystems` (0x802D8188, 0x802D8210, 0x802D8230.., 0x802D8...).** All six
+`mActivePartChildren.push_back(...)` sites have an immediately preceding `reserve` that
+guarantees capacity (`reserve(count + size)` before a loop that pushes at most `count` times,
+`reserve(size + 1)` before a single push), and retail's six copies of the site are
+`st mCount++ / stx child -> mItems[mCount]` with no test at all. All six changed:
+**77.25% -> 93.47%**.
+
+The general rule: **when retail's copy of a push site has no growth test, the source did not use
+`push_back`, and the site must already be capacity-safe.** Both loops here prove it in their own
+`while`/`for` header, so this is a spelling, not a deleted check.
+
+## 2. A fixed-4 loop over a short-circuit condition is four nested `if`s
+
+`CreateNewParticles`' velocity sources were
+
+```cpp
+for (int source = 0; source < 4 && mVELSources[source]; ++source) {
+  UpdateVelocitySource(source, 0, particle, scaledTranslation);
+}
+```
+
+which is a loop with an induction variable and a re-read of the array. Retail (0x802D9534..) is
+four straight-line blocks, each `l r0,632+4i(r27) / cmpli 0,r0,0 / beq 0x802d9574` followed by
+`mr r3,r27 / mr r6,r30 / cal r7,68(r1) / lil r4,i / lil r5,0 / bl`. All four `beq` go to the
+**same** target, which is the nested shape, not a flat four-`if` (that lands each test on its
+successor) and not a loop. The short-circuit order is unchanged, so this is the same idiom
+`UpdateExistingParticles` already uses for the same four sources — and that function is at 100%.
+**92.44% -> 99.44%**, size 1544 B = retail's.
+
+## 3. `int newCount = count;` — the parameter and the clamped copy are two registers
+
+The last 0.56% of `CreateNewParticles` was register numbering. Retail emits `mr r26,r4` (the
+parameter) **and** `mr r29,r26` at 0x802D9020, i.e. immediately after the copy, *before* the
+`mParticles.size() >= mMAXP` test, and then uses r26 only once more (0x802D9030). Ours held the
+parameter in one register and reassigned it at the first clamp, so we were one register short
+across the whole function.
+
+Prime 1's donor already has the answer (`int newCount = count;`,
+`prime-ref/src/Kyoto/Particles/CElementGen.cpp:653`): a separate variable initialised from the
+parameter, then clamped. Behaviour-identical, because the parameter is dead after the second
+clamp. **99.44% -> 100.00%**, and the instruction count becomes 386 = retail's.
+
+## 4. `mRandomSeed` is signed — `lha` where an unsigned member gives `lhz`
+
+`__ct__CElementGen` was 63 differing instructions of 771 with an identical multiset. Two were
+real:
+
+- `0x802DB17C` and `0x802DB684` are `lha r4,140(r31)` where we emit `lhz`. The word at 140 is
+  `mRandomSeed`, which this repo declared `ushort`; the store into it is `sth` on both sides, so
+  the *size* was never in question, only the signedness of the two reads. Prime 1 has
+  `short mRandomSeed;` (`prime-ref/.../CElementGen.hpp:172`). Changing the type (not the layout —
+  same size, same offset, 5 uses, all in this one .cpp) gives retail's `lha`. **99.84% -> 100%.**
+- the `mMAXP` clamp, below.
+
+Lesson: when a `lhz`/`lha`/`lwz`/`lwa` pair differs and everything else matches, read the
+*signedness* out of the opcode before looking for a source-level logic difference. The store
+instruction is the hint — `sth` on a member that is then loaded with `lha` is a signed `short`
+regardless of what the header says.
+
+## 5. `min_val(mMAXP, 256)` is a statement in retail, not a ternary
+
+`rstl::min_val(a,b)` is `(b < a) ? b : a` (`include/rstl/math.hpp:5`), and as an *assignment*
+mwcceppc hoists the constant: ours was `l r0,mMAXP / cal r3,&mParentMatrices / lil r29,256 /
+cmpi 0,r0,256 / bgt L / mr r29,r0 / L: mr r4,r29`. Retail keeps the `lil` inside the arm
+(`cmpi 0,r28,256 / ble L / lil r28,256 / L: mr r4,r28`, 0x802DBA68). Prime 1's donor is the
+statement form:
+
+```cpp
+int count = mMAXP;
+if (count > 256) { count = 256; }
+```
+
+Same value, same order of operations, and it is attempt 6's "assignment ternary = phi, statement
+= branch" rule applied to an integer. **99.05% -> 99.84%** (with change 4, 100.00%).
+
+## 6. Naming a 1-bit bitfield member forces the *value* form, not the record form
+
+`UpdateChildParticleSystems`' two `if (mEnableOPTS && description->mOPTS) break;` sites. We emit
+`rlinm. r0,r0,27,31,31` (the record form) and branch on CR0. Retail emits
+`lbz r3,50(r3) / rlinm r0,r3,27,31,31` (non-record, value into r0), hoisted **above** the
+`mEnableOPTS` test, and then `cmpli 0,r0,0; beq`. Naming it first — `const bool childOpts =
+description->mOPTS;` — reproduces that exactly at the ICTS site (that hunk is now byte-identical)
+and gets most of the way at the IDTS site: **93.47% -> 94.20% -> 95.19%** for the two sites.
+
+The IDTS site still differs by two instructions (our `rlinm.` stays on the record form there,
+because its `break` target is a different label from the skip target, so MW folds the test into
+the branch). Four spellings tried for that site: `const bool` (kept, best), nested
+`if (mEnableOPTS) { if (description->mOPTS) break; }` (94.20%, reverts), `childOpts &&
+mEnableOPTS` reordered (94.17%), `const int childOpts` compared `!= 0` (95.07%).
+
+## Re-measured this run, unchanged, with the cause restated or corrected
+
+- **`RenderParticlesIndirectTexture` (3220 B) 88.45%** — retail is **805** instructions to our
+  **787**, and the extra block is real work, not allocation: `sra r3,r3,r19 / l r18,-25548(r13) /
+  sra r0,r0,r19 / rlinm r3,r3,0,16,31 / rlinm r4,r0,0,16,31 / cmpl / ble` (0x802D69E0..) where we
+  emit a bare `cmpl 0,r3,r24; bgt`, i.e. retail does a signed shift-and-truncate round trip we do
+  not do at all, twice, and then stores 4 words (`stfs f22 / stfs f29 / stfs f21 / st r15`) to a
+  computed texture address we never build. This is the largest untouched target in the unit and
+  the one most likely to be reachable — it is missing work, so somebody has to read retail's loop
+  (0x802D3758..0x802D43EC) rather than its percentages.
+- **`RenderParticlesFlameThrower` (4092 B) 80.31%** — retail is **1021** instructions to our
+  **971**, with structural insertions at every vertex (`b / lil r0,0 / st r0,0(r17)` twice, where
+  ours has neither) and `st r0,868(r31)` where we store to 616. Same shape of problem as above:
+  missing work, ~50 instructions. Too big to start and abandon safely.
+- **`RenderIndirectModelParticle` (808 B) 92.20%** — 199 instructions to retail's 202, and
+  attempt 5's reading is **correct but incomplete**: retail does emit exactly the three
+  `GXTexCoord2f32` per vertex our source has (0x802D25A4..0x802D2698: two 2-float calls and one
+  3-float call per vertex, same as ours), so the "extra texcoord pair" in attempt 2's note is
+  **wrong** — the per-vertex texcoord count is not the difference. What is left is (a) retail's
+  redundant `neg/or/srwi` `!!` normalisation of `mINDM`, and (b) register pressure: retail keeps
+  *two* base registers for the uvs/clip and reloads nothing, we keep one and re-load
+  `0/4/8/12(r29)` for every vertex. Four signedness spellings of `halfSize` measured, none reach
+  it: `bool` 92.20% (kept), `int` 92.34%, `uint` 92.34%, `uchar` 92.20%. The win would come from
+  naming the two `SUVElementSet`s so both addresses stay live, not from the shift.
+- **`BuildParticleSystemBounds` (784 B) 97.09%** — attempt 3's "GPR numbering only" holds, and
+  the offset is global: retail keeps `this` in r27 and `accumulated` in r28, we use r28/r29, and
+  every `this`-relative store in the function moves with it. The one non-renumbering difference is
+  the load order of the two `mGlobalScale` floats (`lfs f1,252 / lfs f0,248` in retail vs
+  `lfs f1,252 / lfs f0,256` in us, i.e. xMin/xMax swapped) in `(mMaxSize * 0.5f) * mGlobalScale`.
+  Five spellings of that expression, none better than the base: named `halfMaxSize` 97.09%,
+  `(0.5f * mMaxSize)` 97.09%, `mGlobalScale * (mMaxSize * 0.5f)` 97.09%, `0.5` as a double
+  96.27%. Retail's own operand order is `f1 = mMaxSize`, `f0 = 0.5f` (the pool constant at
+  `-15420(r2)` = 0x8041E784 = **0.5f** — recomputed against `_SDA2_BASE_` 0x804223C0, see
+  attempt 6's warning) and ours is the mirror image, so this is an allocation consequence, not a
+  spelling.
+- **`EndModelRender` (140 B) 94.29%** — re-measured, unchanged. Three new spellings this run, all
+  94.29%: hoisting `const bool modulateAlpha = state.mModulateAlpha;` to the top of the body, and
+  `const bool useLights = mModelsUseLights;`. With attempt 2's ten that is thirteen. The diff is
+  still the single instruction `lbz r0,613(r3)`, which retail places between `st r0,20(r1)` and
+  `st r31,12(r1)` and we place after `mr r31,r4`; the instruction multiset and the 140 B size are
+  identical.
+- **`GetSystemCount` 69.09%, `IsSystemDeletable` 85.37%, `GetLight` 97.58%** — untouched this
+  run, still the prologue-store-interleaving family. I tried no new spellings, so I am not adding
+  a `WALL:` for them.
+- **`ConstructChildParticleSystem` 99.45%, `RenderModelParticle` 99.94%, `RenderModels` 99.07%,
+  `GetBounds` 81.59%** — untouched; attempts 3-6's readings stand unchanged and none of them
+  suggested a lever this run found.
+- **`fn_802DBE78` 0.00%** — attempt 4's dead end stands.
+
+WALL: EndModelRender 94.29% - thirteen spellings of the `mModelsUseLights` test across two runs
+all keep our `lbz r0,613(r3)` after `mr r31,r4` where retail has it before `st r31,12(r1)`;
+identical multiset, identical 140 B, so the remaining diff is where MW interleaves the callee-save
+store with the first body load.
+
+## Verification
+
+`./tools/goal_check.sh build/goal/item.json` in `wt-mp2-goal-L3`:
+
+```text
+goal_check: item progress-unit-celementgen (progress) target=Kyoto/Particles/CElementGen
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12278 -> 12280   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    All:  34.69% fuzzy, 28.14% matched, 12.90% linked (12280 / 28465 functions)
+  ok    target rose: main/Kyoto/Particles/CElementGen: 87 -> 89 / 104 functions
+  ok    no asm added
+goal_check: PASS progress-unit-celementgen
+```
+
+Whole-project per-function diff of `build/report.json` against
+`build/goal/judge/report.base.json`, all 28465 functions in all units: **3 better (2 at 100.00%),
+0 worse, 0 new, 0 gone** — worth stating explicitly because the `short mRandomSeed` header change
+recompiles every unit that includes `Kyoto/Particles/CElementGen.hpp` (21 files), and no function
+outside `CElementGen` moved at all.
+
+`python3 tools/check_decl_order.py --unit Kyoto/Particles/CElementGen` -> `ok: 1 unit(s) checked,
+none emits its functions out of retail order`. `python3 tools/check_raw_offsets.py` -> `ok: 167
+raw-offset site(s) in 71 file(s), all documented in raw_offsets.md`. `python3
+tools/check_symbol_names.py` -> `0 declared names are missing`. `sha1sum build/G2ME01/main.dol` =
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+
+Every score in this note was measured on this tree with `tools/fast_try.sh
+Kyoto/Particles/CElementGen`, one change at a time, on top of the previous one. Retail bytes were
+read with `objdump -D -EB -b binary -m rs6000` over a range carved straight out of
+`orig/G2ME01/sys/main.dol` (a throwaway helper in `.tmp/opencode/probe/`, not in `tools/`), and
+compared with a `difflib` stream diff of the two mnemonic streams normalised for branch targets
+and relocation fields. `tools/dis.sh` reads `build/G2ME01/main.elf`, which is *our* build, and
+returns nothing for a retail range; `tools/bytescmp.py` does read the DOL but aligns by
+instruction index and cannot see an insertion, which is exactly the failure mode that hid the
+20-instruction `push_back` growth test and the 21-instruction velocity-source loop below it.
+
+## Lessons worth keeping (general, not GameCube-specific)
+
+- **A container's own `push_back` is a growth test plus a construct, and retail's site tells you
+  which of the two you are looking at.** If the site has no test, the source used the unchecked
+  form, and the loop around it is what makes that safe. Ten previous attempts on this unit read
+  `push_back` as "the push".
+- **The next target is the one nobody has opened.** Attempts 1-6 spent their whole budget on the
+  queue's ten "closest" functions, eight of which the notes had already closed off; the largest
+  untouched gain on this unit was a function at 85% that the queue listed eleventh. Re-measure
+  the whole unit and sort by *tried-ness*, not by percentage.
+- **An index-aligned instruction diff is blind to the most common kind of mistake in a port**,
+  which is code that is present on one side and absent on the other. A `difflib` pass over the
+  two normalised mnemonic streams found all four structural differences here in seconds; the
+  percentages and the byte-compare counts both said "register allocation".
+- **`lha` vs `lhz` is a signedness bug in the header, and the store instruction names the type.**
+  A member that is `sth`-ed and `lha`-ed is a `short`; the header's `ushort` was wrong in a way
+  no percentage-based investigation would have found.
+- **When a donor source exists for the same engine, read its *variable declarations*, not just its
+  control flow.** `int newCount = count;` and `int count = mMAXP; if (count > 256)` were both in
+  Prime 1 and both account for a register each.
+- **A `&&` of two 1-bit bitfields is a value or a record depending on whether the load can be
+  hoisted**, and naming the member is what makes MW hoist it. That is a *source* lever for what
+  looks like a scheduling difference.

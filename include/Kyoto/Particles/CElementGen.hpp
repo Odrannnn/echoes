@@ -212,7 +212,9 @@ public:
   bool mParticleEmission;
   float mGeneratorRemainder;
   int mMAXP;
-  ushort mRandomSeed;
+  // Signed: retail reads this word with `lha` (0x802DB17C, 0x802DB684) where an unsigned
+  // halfword would give `lhz`. Same size, same offset; Prime 1 agrees.
+  short mRandomSeed;
   float mGeneratorRate;
   float mExternalVars[16];
   CVector3f mTranslation;

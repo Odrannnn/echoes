@@ -225,7 +225,12 @@ CElementGen::CElementGen(TToken< CGenDescription > description, EModelOrientatio
   if (mLoadedGenDesc->mMAXP) {
     mLoadedGenDesc->mMAXP->GetValue(mCurFrame, mMAXP);
   }
-  const int initialCapacity = rstl::min_val(mMAXP, 256);
+  // Retail clamps with a statement, not a ternary: `cmpi 0,r28,256; ble; lil r28,256`
+  // (0x802DBA68..0x802DBA74) keeps the `lil` inside the arm.
+  int initialCapacity = mMAXP;
+  if (initialCapacity > 256) {
+    initialCapacity = 256;
+  }
   mParticles.reserve(initialCapacity);
   if (mEnableADV) {
     mAdvValues.assign(initialCapacity);
@@ -679,28 +684,35 @@ void CElementGen::CreateNewParticles(int count) {
   if (!sStaticListInitialized) {
     Initialize();
   }
+  // A separate variable rather than reassigning the parameter: retail keeps `count` in
+  // r26 and the clamped value in r29 (`mr r29,r26` at 0x802D9020), so the copy is made
+  // before the mMAXP test, not at the first clamp.
+  int newCount = count;
   if (mParticles.size() >= mMAXP) {
     return;
   }
-  if (count + mParticles.size() > mMAXP) {
-    count = mMAXP - mParticles.size();
+  if (newCount + mParticles.size() > mMAXP) {
+    newCount = mMAXP - mParticles.size();
   }
-  if (count + sParticleAliveCount > 0xa00) {
-    count = 0xa00 - sParticleAliveCount;
+  if (newCount + sParticleAliveCount > 0xa00) {
+    newCount = 0xa00 - sParticleAliveCount;
   }
   CGlobalRandom random(mRandState);
-  mParticles.reserve(count + mParticles.size());
-  if (mEnableADV && mAdvValues.capacity() < count + mParticles.size()) {
-    mAdvValues.reserve(rstl::min_val(mMAXP, (count + mAdvValues.capacity()) * 2));
+  mParticles.reserve(newCount + mParticles.size());
+  if (mEnableADV && mAdvValues.capacity() < newCount + mParticles.size()) {
+    mAdvValues.reserve(rstl::min_val(mMAXP, (newCount + mAdvValues.capacity()) * 2));
+    // `push_back_unsafe`, not `push_back`: the loop condition already guarantees
+    // size < capacity, and retail's copy of the loop body carries no growth test
+    // (0x802D90BC..0x802D9140).
     while (mAdvValues.size() < mAdvValues.capacity()) {
-      mAdvValues.push_back(CAdvancedValues());
+      mAdvValues.push_back_unsafe(CAdvancedValues());
     }
   }
   CParticleGlobals::SetParticleAccessParameters(nullptr);
   const CVector3f scaledTranslation =
       (mGlobalScaleTransformInverse * mLocalScaleTransformInverse) * mTranslation;
 
-  for (int i = 0; i < count; ++i) {
+  for (int i = 0; i < newCount; ++i) {
     mParticles.push_back_unsafe(CParticle());
     const int particleIndex = mParticles.size() - 1;
     if (mOrientType == kMOT_One) {
@@ -759,8 +771,20 @@ void CElementGen::CreateNewParticles(int count) {
       }
     }
     if (mLoadedGenDesc->mVMPC) {
-      for (int source = 0; source < 4 && mVELSources[source]; ++source) {
-        UpdateVelocitySource(source, 0, particle, scaledTranslation);
+      // Unrolled, and nested rather than flat: all four tests branch to the *same*
+      // continuation (0x802D9574), which is what the loop and a flat four-`if` both fail
+      // to do. Same short-circuit order as `source < 4 && mVELSources[source]`.
+      if (mVELSources[0]) {
+        UpdateVelocitySource(0, 0, particle, scaledTranslation);
+        if (mVELSources[1]) {
+          UpdateVelocitySource(1, 0, particle, scaledTranslation);
+          if (mVELSources[2]) {
+            UpdateVelocitySource(2, 0, particle, scaledTranslation);
+            if (mVELSources[3]) {
+              UpdateVelocitySource(3, 0, particle, scaledTranslation);
+            }
+          }
+        }
       }
     }
     ++mCumulativeParticles;
@@ -900,10 +924,11 @@ void CElementGen::UpdateChildParticleSystems(double dt) {
     mActivePartChildren.reserve(count + mActivePartChildren.size());
     for (int i = 0; i < count; ++i) {
       TLockedToken< CGenDescription > description = mLoadedGenDesc->mICTS->GetToken();
-      if (mEnableOPTS && description->mOPTS) {
+      const bool childOpts = description->mOPTS;
+      if (mEnableOPTS && childOpts) {
         break;
       }
-      mActivePartChildren.push_back(ConstructChildParticleSystem(description, 'PART', sSeed));
+      mActivePartChildren.push_back_unsafe(ConstructChildParticleSystem(description, 'PART', sSeed));
     }
   }
 
@@ -913,7 +938,7 @@ void CElementGen::UpdateChildParticleSystems(double dt) {
     TLockedToken< CGenDescription > description = mLoadedGenDesc->mIITS->GetToken();
     if (!(mEnableOPTS && description->mOPTS)) {
       mActivePartChildren.reserve(mActivePartChildren.size() + 1);
-      mActivePartChildren.push_back(ConstructChildParticleSystem(description, 'PART', sSeed));
+      mActivePartChildren.push_back_unsafe(ConstructChildParticleSystem(description, 'PART', sSeed));
     }
   }
 
@@ -928,7 +953,7 @@ void CElementGen::UpdateChildParticleSystems(double dt) {
         CParticleGen* child = ConstructChildParticleSystem(
             *spawns[i].GetToken(), spawns[i].GetType(), mCurFrame + backupSeed + i);
         if (child) {
-          mActivePartChildren.push_back(child);
+          mActivePartChildren.push_back_unsafe(child);
         }
       }
       sSeed = backupSeed;
@@ -944,10 +969,11 @@ void CElementGen::UpdateChildParticleSystems(double dt) {
     mActivePartChildren.reserve(count + mActivePartChildren.size());
     for (int i = 0; i < count; ++i) {
       TLockedToken< CGenDescription > description = mLoadedGenDesc->mIDTS->GetToken();
-      if (mEnableOPTS && description->mOPTS) {
+      const bool childOpts = description->mOPTS;
+      if (mEnableOPTS && childOpts) {
         break;
       }
-      mActivePartChildren.push_back(ConstructChildParticleSystem(description, 'PART', sSeed));
+      mActivePartChildren.push_back_unsafe(ConstructChildParticleSystem(description, 'PART', sSeed));
     }
   }
 
@@ -960,7 +986,7 @@ void CElementGen::UpdateChildParticleSystems(double dt) {
     swoosh->SetOrientation(mOrientation);
     swoosh->SetParticleEmission(mParticleEmission);
     mActivePartChildren.reserve(mActivePartChildren.size() + 1);
-    mActivePartChildren.push_back(swoosh);
+    mActivePartChildren.push_back_unsafe(swoosh);
   }
 
   if (mLoadedGenDesc->mSELC && mPrevFrame != mCurFrame && mCurFrame == mSESD) {
@@ -972,7 +998,7 @@ void CElementGen::UpdateChildParticleSystems(double dt) {
     electric->SetOrientation(mOrientation);
     electric->SetParticleEmission(mParticleEmission);
     mActivePartChildren.reserve(mActivePartChildren.size() + 1);
-    mActivePartChildren.push_back(electric);
+    mActivePartChildren.push_back_unsafe(electric);
   }
 
   rstl::vector< CParticleGen* >::iterator it = mActivePartChildren.begin();
