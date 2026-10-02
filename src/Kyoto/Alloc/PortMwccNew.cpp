@@ -20,6 +20,7 @@
 #include "Kyoto/Alloc/CMemory.hpp"
 #include "Kyoto/CToken.hpp"
 #include "Kyoto/Text/CFontImageDef.hpp"
+#include "Kyoto/Text/CTextRenderBuffer.hpp"
 
 extern "C" void* __nw__FUlPCcPCc(unsigned long size, const char* /*fileAndLine*/,
                                  const char* /*type*/) {
@@ -61,6 +62,23 @@ extern "C" void __dt__6CTokenFv(void* self, short) {
 // instantiates as a weak symbol in this same link.
 extern "C" void __dt__13CFontImageDefFv(void* self, short) {
   static_cast< CFontImageDef* >(self)->~CFontImageDef();
+}
+
+// Retail's own mangled name for `CTextRenderBuffer::SFontPalette::~SFontPalette()`, reached the
+// same way.  `src/MetroidPrime/Carve80024F6C.c` (retail 0x80024F6C..0x80024FB0) is the unit that
+// needs it: that is `rstl::destroy_impl< SFontPalette >`, whose whole body is
+// `bl __dt__Q217CTextRenderBuffer12SFontPaletteFv` with `li r4,-1`.  Like
+// `__dt__13CFontImageDefFv` above, **no unit in this tree claims the bytes** - retail's
+// `__dt__Q217CTextRenderBuffer12SFontPaletteFv` (0x80024FB0, `symbols.txt:648`, 0xCC bytes,
+// `scope:weak`) sits in the same unclaimed `auto_*` range as the carve, one function above it, so
+// dtk's own object supplies them in the DOL link and this is only what a host link binds to.  The
+// 16-bit second argument is MWCC's deleting-destructor flag, which the host's C++ destructor does
+// not take; the only call site passes -1, so it is accepted and ignored and the work is the four
+// `rstl::auto_ptr< CGraphicsPalette >` members' own destruction (`mHas`/`mItem`, 8 bytes each,
+// `include/rstl/auto_ptr.hpp`), whose target destructor `Kyoto/Graphics/CGraphicsPalettePortStub.cpp`
+// already defines for the host - so no further undefined symbol appears.
+extern "C" void __dt__Q217CTextRenderBuffer12SFontPaletteFv(void* self, short) {
+  static_cast< CTextRenderBuffer::SFontPalette* >(self)->~SFontPalette();
 }
 
 // The other half of the same split. Retail's `operator delete` is `CMemory::Free`, and `Matching`
