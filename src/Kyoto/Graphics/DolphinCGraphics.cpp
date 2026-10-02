@@ -13,6 +13,7 @@
 
 #include "dolphin/types.h"
 #include "rstl/math.hpp"
+#include "Kyoto/Alloc/LockedCache.hpp"
 
 #include "dolphin/gx.h"
 #include "dolphin/vi.h"
@@ -408,21 +409,21 @@ GXTexRegion* CGraphics::TexRegionCallback(const GXTexObj* obj, GXTexMapID id) {
   static char nextTexRgnCI = 0;
   const GXTexFmt fmt = GXGetTexObjFmt(obj);
   if (id == GX_TEXMAP7) {
-    if (fmt == GX_TF_C4 || fmt == GX_TF_C8 || fmt == GX_TF_C14X2) {
-      return &mTexRegionsCI[0];
+    if (fmt != GX_TF_C4 && fmt != GX_TF_C8 && fmt != GX_TF_C14X2) {
+      return &mTexRegions[0];
     }
-    return &mTexRegions[0];
+    return &mTexRegionsCI[0];
   }
-  if (fmt == GX_TF_C4 || fmt == GX_TF_C8 || fmt == GX_TF_C14X2) {
+  if (fmt != GX_TF_C4 && fmt != GX_TF_C8 && fmt != GX_TF_C14X2) {
     do {
-      nextTexRgnCI = (nextTexRgnCI + 1) & 3;
-    } while (nextTexRgnCI == 0);
-    return &mTexRegionsCI[nextTexRgnCI];
+      nextTexRgn = (nextTexRgn + 1) & 7;
+    } while (nextTexRgn == 0);
+    return &mTexRegions[nextTexRgn];
   }
   do {
-    nextTexRgn = (nextTexRgn + 1) & 7;
-  } while (nextTexRgn == 0);
-  return &mTexRegions[nextTexRgn];
+    nextTexRgnCI = (nextTexRgnCI + 1) & 3;
+  } while (nextTexRgnCI == 0);
+  return &mTexRegionsCI[nextTexRgnCI];
 }
 
 void CGraphics::InitGraphicsVariables() {
@@ -846,28 +847,30 @@ void CGraphics::VideoPostCallback(u32 retraceCount) {
 }
 
 void CGraphics::EndScene() {
+  int& numBreakPt = mNumBreakpointsWaiting;
+  bool& gxAborted = sGXAborted;
   const OSTime start = OSGetTime();
-  if (!sGXAborted) {
+  if (gxAborted) {
+    GXAbortFrame();
+  } else {
     CStopwatch waitTimer;
-    while (mNumBreakpointsWaiting > 0 && !sGXAborted) {
+    while (numBreakPt > 0 && !gxAborted) {
       OSYieldThread();
       if (OSTicksToMilliseconds(OSGetTime() - start) > 250) {
-        const BOOL interrupts = OSDisableInterrupts();
+        const bool interrupts = OSDisableInterrupts() != FALSE;
         GXAbortFrame();
-        sGXAborted = true;
-        OSRestoreInterrupts(interrupts != FALSE);
+        gxAborted = true;
+        OSRestoreInterrupts(interrupts);
       }
     }
     const float elapsedMs = static_cast< float >(waitTimer.GetElapsedMicros() / 1000);
     const float framePeriod = sIs50Hz ? 20.f : 16.6666667f;
     sPreviousFrameWaitFraction = sFrameWaitFraction;
     sFrameWaitFraction = (framePeriod - elapsedMs) / framePeriod;
-  } else {
-    GXAbortFrame();
   }
-  if (sGXAborted) {
+  if (gxAborted) {
     mNumBreakpointsWaiting = 0;
-    sGXAborted = false;
+    gxAborted = false;
     mpFifoObj = GXInit(mpFifo, mFifoSize);
     InitGraphicsFifo(mpFifoObj, mpFifo, mFifoSize);
     SetDefaultVtxAttrFmt();
@@ -1025,7 +1028,7 @@ void CGraphics::DrawPrimitive(ERglPrimitive primitive, const float* pos, const C
 
 #define STREAM_PRIM_BUFFER_SIZE 240
 
-#define VTX_BUFFER_ADDR static_cast< uchar* >(LCGetBase())
+#define VTX_BUFFER_ADDR lcBase
 #define NRM_BUFFER_ADDR (VTX_BUFFER_ADDR + ((STREAM_PRIM_BUFFER_SIZE + 1) * sizeof(float)))
 #define TXT0_BUFFER_ADDR (NRM_BUFFER_ADDR + ((STREAM_PRIM_BUFFER_SIZE + 1) * sizeof(float)))
 #define TXT1_BUFFER_ADDR (TXT0_BUFFER_ADDR + ((STREAM_PRIM_BUFFER_SIZE + 1) * sizeof(Vec2)))
@@ -1036,6 +1039,7 @@ static const uchar kHasColor = 2;
 static const uchar kHasTexture = 4;
 
 void CGraphics::StreamBegin(ERglPrimitive primitive) {
+  uchar* lcBase = static_cast< uchar* >(GetLockedCacheAllocationBase());
   mVertexBuffer = reinterpret_cast< VecPtr >(VTX_BUFFER_ADDR);
   mNormalBuffer = reinterpret_cast< VecPtr >(NRM_BUFFER_ADDR);
   mTexCoordBuffer0 = reinterpret_cast< Vec2Ptr >(TXT0_BUFFER_ADDR);
