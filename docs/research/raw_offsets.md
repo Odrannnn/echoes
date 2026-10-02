@@ -38,11 +38,13 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **176 sites in 76 files** (`python3 tools/check_raw_offsets.py`
-prints `176 raw-offset site(s) in 76 file(s)`, and the 76 `##` headings below sum to 176; measured
-2026-10-02, after the `carve-80032774` item added `src/MetroidPrime/Factories/Carve80032774.cpp`
-(5 sites) - this line read 170 in 74 while the tool already measured 171 in 75 before that item,
-so the totals here are re-derived from the tool rather than accumulated by hand).
+the count here fails the gate. **185 sites in 79 files** (`python3 tools/check_raw_offsets.py`
+prints `185 raw-offset site(s) in 79 file(s)`, and the 79 `##` headings below sum to 185; measured
+2026-10-02, after the `progress-twin-rel-ingboostballguardian` item added module 30's accessor
+block - `CIngBoostBallGuardian194C.cpp` (1 site), `CIngBoostBallGuardianC6AC.cpp` (1) and
+`CIngBoostBallGuardianPredicates.cpp` (7), nine sites over three new files. This line read 176 in
+76 while the tool already measured 185 in 79 before the edit, so the totals here are re-derived
+from the tool rather than accumulated by hand).
 
 **This line has been wrong before, five times over, and the failure was always the same one.**
 `tools/check_raw_offsets.py` compares the *per-file* counts in the headings and never this
@@ -299,6 +301,32 @@ one-method local stand-in. **Kind A, opaque receiver**: free functions over a `v
 here, and the only object carrying the offsets is the module's own retail bytes. Blocker: the same
 CActor/CPatterned/CAi hierarchy that module 34's entity loader `fn_34_170` (0x170, 0x330) needs
 before its other 125 class functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian194C.cpp` (1 site)
+
+`+0x18`, the six-word block `fn_30_194C` writes between the two float groups. Free function over a
+`void*` for the reason in `CIngPuddleRel.cpp` above: it is module 30's structure initialiser and
+takes the object being built in r3, so there is no `this` and no class here. Blocker: the object is
+CIngBoostBallGuardian's own 0x38-byte sub-record and this tree models none of the module's entity
+code - the same job `fn_30_130`, the module's own entity loader, needs before any of it can move.
+
+## `src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianC6AC.cpp` (1 site)
+
+`+0x6B4`, the word `fn_30_C6B8` compares against 3. Free function over a `const void*` for the
+reason above. Blocker: the member is 0x6B4 bytes into the module's entity and this tree models none
+of it; `fn_30_C6AC`, its neighbour in the same unit, reaches the flag byte at `+0x11ED` through a
+subscript, which the checker does not key on.
+
+## `src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianPredicates.cpp` (7 sites)
+
+`+0x115C`, `+0x11C0`, `+0x083C`, `+0x1130` and the three `+0x0AE4` reaches behind `fn_30_C1B0`,
+`fn_30_C1D8`, `fn_30_C22C` and the equality predicates `fn_30_C1F0`/`C204`/`C218` - seven sites, one
+per function. Free functions over a `const void*` for the reason above. **It is the same debt as
+`CIngBoostBallGuardianRel.cpp` below and `CIngPuddleRel.cpp` above, now seven members wide**: the
+whole of module 30's accessor block, reached by offset because the class is not modelled. Blocker:
+`+0x1130` and `+0x115C` are past 0x1000 bytes into the object, so this cannot be written any other
+way until `fn_30_130` - the module's own entity loader - is decompiled and `CIngBoostBallGuardian`
+can be given a header.
 
 ## `src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianRel.cpp` (1 site)
 

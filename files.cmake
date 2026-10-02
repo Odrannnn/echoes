@@ -392,6 +392,19 @@ src/MetroidPrime/PortLinkStubs.cpp
     # configure.py `Matching` object to be in this list, and only a RELMain/RELExit unit is
     # exempt.
     src/MetroidPrime/ScriptObjects/CSandBossRelTail.cpp
+    # IngBoostBallGuardian's (module 30) five flag-byte accessors at 0xB788..0xB7E0. Its host
+    # branch is empty by design (the bodies are inside `#ifdef __MWERKS__`), for the reason the
+    # entry above gives: check_files_cmake.py requires every configure.py `Matching` object to be
+    # in this list and only a RELMain/RELExit unit is exempt.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianBits.cpp
+    # Five more ranges out of module 30's unclaimed gaps, seventeen functions in all; see the
+    # `Rel("IngBoostBallGuardian", ...)` block in configure.py for the ranges and the dead-strip
+    # measurement. Same empty host branch as the entry above.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian194C.cpp
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian2094.cpp
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianA91C.cpp
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianPredicates.cpp
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianC6AC.cpp
     # CRumbleManager::StopRumble. Its own file because CRumbleManager.cpp is a
     # `MatchingFor("G2ME01")` unit and must not be edited; see the file's header.
     src/MetroidPrime/CRumbleManagerStopRumble.cpp
