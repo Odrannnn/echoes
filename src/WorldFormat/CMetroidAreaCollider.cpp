@@ -842,8 +842,13 @@ bool CMetroidAreaCollider::MovingAABoxCollisionCheck_Edge(
   return ret;
 }
 
-CMetroidAreaCollider::COctreeLeafCache::COctreeLeafCache(const CAreaOctTree& octTree,
-                                                         TAreaId areaId)
+// retail `.text:0x80249034`, 0x20 = 32 bytes. The second parameter is a scalar, not a `TAreaId`:
+// retail stores the argument register straight through (`stw r5,0(r3)`) and its caller loads r5
+// out of the area object (`lwz r5,4(r31)` in `CGameCollision::BuildAreaCollisionCache`) rather
+// than materialising the caller-side temporary a by-value class would need. Written with a
+// `TAreaId` parameter the body starts `lwz r0,0(r5)` and scores 77.25%; written `int` it is
+// byte-exact. The reasons and the ABI note are at the declaration in the header.
+CMetroidAreaCollider::COctreeLeafCache::COctreeLeafCache(const CAreaOctTree& octTree, int areaId)
 : mAreaId(areaId), mOctTree(octTree), mOverflow(false) {}
 
 // `fn_80248FEC` - retail `.text:0x80248FEC`, 0x48 = 72 bytes, unnamed in `symbols.txt`. It is

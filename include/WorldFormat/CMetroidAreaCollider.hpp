@@ -118,7 +118,16 @@ public:
 
   class COctreeLeafCache {
   public:
-    COctreeLeafCache(const CAreaOctTree& octTree, TAreaId areaId);
+    // `areaId` is the raw `int`, not a `TAreaId`, and that is measured, not stylistic. mwcceppc
+    // passes a by-value 4-byte *class* as a pointer to a caller-side temporary (the same ABI noted
+    // at `fn_800B89FC` in src/MetroidPrime/CStateManager.cpp), so a `TAreaId` parameter makes this
+    // ctor `lwz r0,0(r5)` where retail has `stw r5,0(r3)` - 6 of its 8 instructions differ, 77.25%.
+    // Retail's caller agrees with retail's ctor: `CGameCollision::BuildAreaCollisionCache` does
+    // `lwz r5,4(r31)` and calls straight through, with no temporary on its frame, which is only
+    // possible if the second argument is passed in a register as a scalar. Spelled `int`, this
+    // ctor is byte-exact (32 bytes) and the same caller gains 4.94 points; see
+    // docs/goal-notes/progress-unit-cmetroidareacollider.md.
+    COctreeLeafCache(const CAreaOctTree& octTree, int areaId);
     void AddLeaf(const CAreaOctTree::Node& node);
     const CAreaOctTree::Node& GetLeaf(int i) const { return mNodeCache[i]; }
     int GetNumLeaves() const { return mNodeCache.size(); }

@@ -231,7 +231,9 @@ void CGameCollision::BuildAreaCollisionCache(const CStateManager& mgr, CAreaColl
   for (CGameArea::CConstChainIterator area = mgr.GetWorld()->GetChainHead(CWorld::kC_Alive);
        area != CWorld::skGlobalEnd; ++area) {
     const CAreaOctTree& tree = *area->GetPostConstructed()->mCollision;
-    CMetroidAreaCollider::COctreeLeafCache leaves(tree, area->GetId());
+    // `.Value()` because the cache's constructor takes the raw `int` - see the declaration in
+    // include/WorldFormat/CMetroidAreaCollider.hpp; retail passes the value in r5 here too.
+    CMetroidAreaCollider::COctreeLeafCache leaves(tree, area->GetId().Value());
     CMetroidAreaCollider::BuildOctreeLeafCache(fn_8012753C(tree), cache.GetCacheBounds(), leaves);
     cache.AddOctreeLeafCache(leaves);
   }
