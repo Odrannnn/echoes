@@ -664,6 +664,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/CAudioStateWinCtor.cpp"),
             Object(Matching, "MetroidPrime/Carve800E39D0.c"),
             Object(Matching, "MetroidPrime/Carve800E8E4C.c"),
+            Object(Matching, "MetroidPrime/Carve800E9C14.c"),
             Object(Matching, "MetroidPrime/Carve800EC508.c"),
             Object(Matching, "MetroidPrime/Carve800ED550.c"),
             Object(Matching, "MetroidPrime/Carve800ED604.c"),

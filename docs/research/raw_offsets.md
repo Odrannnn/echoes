@@ -38,27 +38,22 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **161 sites in 68 files** (`python3 tools/check_raw_offsets.py`
-prints `161 raw-offset site(s) in 68 file(s)`, and the 68 `##` headings below sum to 161; measured
-2026-09-30 after the `CMain::StreamNewGameState` body added `src/MetroidPrime/main.cpp` and one
-other file. **This line was already stale
-before that head, by 3 in 3** - it read 153 in 62 and the tool measured 156 in 65 - and the three
-lanes before it had each *appended* their own sentence to this line rather than replacing it, so
-it carried a triplicated, sentence-broken pair of totals that were each individually correct and
-none of them the whole paragraph. Their revision history is folded into the next paragraph
-instead of being repeated here a fourth time).
-**This total has gone stale before, and
-the doc already recorded how**: `tools/check_raw_offsets.py` measures **165 sites in 69 files**
-after the `CMorphBall` head that wrote out `fn_800C9380`/`fn_800C93B0` added a fourth Kind A site
-to `src/MetroidPrime/Player/CMorphBall.cpp` (that file's own heading is 3 -> 4; it read 1 -> 3 for
-`fn_800CD4B8`/`fn_800CD460` in the head before, and the file count was already 69 before that,
-the line above having been written at 68). Quoted from the tool, as above.
-**This total has gone stale before, and
-the doc already recorded how**: `tools/check_raw_offsets.py` compares the *per-file* counts in
-the headings and never this total, so a summary left behind by earlier heads goes unnoticed. It
-read 120 in 42 before the `CDarkTrooperRel` head, then 130 in 47 while the tool measured 139 in
-50, then 150 in 59 while the tool measured 152 in 61, and earlier 142 in 53 while the tool
-already measured 145 in 56. Run the tool and quote it; the headings are the part that is enforced.
+the count here fails the gate. **168 sites in 72 files** (`python3 tools/check_raw_offsets.py`
+prints `168 raw-offset site(s) in 72 file(s)`, and the 72 `##` headings below sum to 168; measured
+2026-10-02, after the `fn_800E9C14` carve added `src/MetroidPrime/Carve800E9C14.c`).
+
+**This line has been wrong before, five times over, and the failure was always the same one.**
+`tools/check_raw_offsets.py` compares the *per-file* counts in the headings and never this
+total, so a summary left behind by an earlier head goes unnoticed: it read 120 in 42, then
+130 in 47 while the tool measured 139 in 50, then 142 in 53 while the tool measured 145 in
+56, then 150 in 59 while the tool measured 152 in 61, then 161 in 68, then 165 in 69. Each
+was individually defensible when written and none of them was the whole paragraph, because
+every head *appended* its own sentence here instead of replacing the one before - which is how
+three different totals stood in this section at once (161 in 68, 165 in 69, and a narrative of
+the earlier drift), each of them once true and none of them the number the tool prints.
+**Superseded 2026-10-02:** all three are gone and the single line above is measured rather than
+accumulated. Run the tool and quote it; the headings are the part that is enforced, and a reader
+who needs the total should re-derive it instead of trusting this paragraph.
 
 **One head of this family is invisible to the checker entirely, and the reason is worth recording
 before the next one hits it.** `src/MetroidPrime/ScriptObjects/CMetroidRel.cpp` (module 40's head,
@@ -852,5 +847,34 @@ it, and the three instructions match. This is the whole blocker: the member is m
 accessor exists, so this is not an unmodelled member - it is a register allocation mwceppc only
 chooses when it cannot see through the access. **Kind B, unmodelled member** in the checker's
 taxonomy and the mildest case of it: the fix is a header change with no layout consequence, once
-`CAnimationSet` is repaired. It is 1 of 165 sites in 69 files (measured 2026-10-01, added with
-`progress-unit-canimcharacterset`).
+`CAnimationSet` is repaired. It is 1 of the 168 sites in 72 files measured at the top of this
+file; this section read 165 in 69 when it was written (2026-10-01, with
+`progress-unit-canimcharacterset`), and that figure is history rather than the current total.
+
+## `src/MetroidPrime/Carve800E9C14.c` (1 site)
+
+- `+0x2C8`, in `fn_800E9C14` (retail 0x800E9C14, `.text 0x800E9C14..0x800E9C1C`, 8 bytes, 1
+  function, 100.00% matched, `Object(Matching)` in `configure.py`). The whole carve is the
+  two instructions `lwz r3, 0x2c8(r3) / blr` - retail's ordinary out-of-line getter shape, and
+  one the asm is full of - returned as a pointer by
+  every one of its six `bl fn_800E9C14` sites (two in `MetroidPrime/CGroundMovement.s`, two in
+  `auto_03_80218E28_text.s`, one in `Player/CPlayerDynamics.s`, one in `Player/CPlayer.s`), each
+  null-testing the result and then handing it to a `CAABox`-shaped call with
+  `mskNullBox__6CAABox` as the argument (`mr. r28, r3 / beq` at 0x80186580, `cmplwi r3, 0x0` at
+  0x8012A488, `fn_80258A68` / `fn_80258970` at 0x8001391C / 0x8001392C).
+  **Kind B, unmodelled member, reached through a free function** - debt, not a pass. The receiver
+  is a `CPhysicsActor` and the member is retail's own `CPhysicsActor::unk2`, the lazily
+  heap-allocated 60-byte object retail constructs from `mskNullBox` (`__nw__FUl(0x3c, ...)`),
+  with its `x254_` flag byte at 0x2C4 and the pointer at 0x2C8; both offsets are measured in
+  `docs/goal-notes/progress-prime1-cphysicsactor.md:95-99`. The header has the member as a bare
+  `void* unk2` (`include/MetroidPrime/CPhysicsActor.hpp:249`) and no accessor for it, so a
+  `CAABox*`-typed accessor would delete this site.
+  Blocker, and it is the mild kind: **not** the per-class layout repair the other kind B entries
+  need - the member is already declared and `CHECK_SIZEOF(CPhysicsActor, 0x2d0)`
+  (`CPhysicsActor.hpp:252`) already holds, so a getter is a header edit with no layout
+  consequence. The one thing still unmeasured is the member's offset *in this build*: only the
+  class's total size is asserted, never its per-member offsets, so the accessor is worth landing
+  with `offsetof(CPhysicsActor, unk2)` checked first. The function is a `.c` carve taking
+  `void* self` rather than a C++ member because retail names none of it and the claim is a
+  standalone eight-byte range - the receiver is modelled, but nothing in this unit is a
+  `CPhysicsActor`, so the offset has to be spelled for now.
