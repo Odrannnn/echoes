@@ -858,3 +858,52 @@ is exact (not headroom), so defining callees is the way, not a gap-list entry.
 
 Not touched this run: `PathFind` 99.31 (pool order, needs `ApproachDest`), `Landed` 91.67,
 `PlayerSpot` 1.51, `ApproachDest` 0.39, `fn_80151920` (unnamed). Run 4's analysis of those stands.
+
+---
+
+# Run 6 (lane L9, 2026-10-02) - `PlayerSpot` matched, **36 -> 37 / 39**
+
+Re-measured first: clean tree was 36 / 39 (`PathFind` 99.31, `PlayerSpot` 1.51, `ApproachDest` 0.39 left),
+not `STALE`. Now **37 / 39**, unit 84.32% fuzzy, 75.40% matched code, whole-DOL `12480 / 28465`.
+`goal_check.sh`: PASS (`matched 12479 -> 12480`, no regression).
+
+| function | before | after | Prime 1 |
+|---|---|---|---|
+| `PlayerSpot` | 1.51 | **100** | none (Echoes-only); written from `tools/dis.sh 0x80151D90 0x174` |
+
+```cpp
+bool CPatterned::PlayerSpot(CStateManager& mgr, const CTriggerData&) const {
+  bool result = false;
+  if (mgr.GetPlayer(0)->GetMorphballTransitionState() == CPlayer::kMS_Unmorphed) {
+    if (IsOnScreen(mgr)) {
+      const CVector3f eye = mgr.GetPlayer(0)->GetAimPosition(mgr, 0.f);
+      CVector3f delta = GetBoundingBox().GetCenterPoint() - eye;
+      const float distance = delta.Magnitude();
+      delta *= 1.f / distance;
+      const CMaterialFilter filter = CMaterialFilter::MakeInclude(CMaterialList(SolidMaterial));
+      result = CGameCollision::RayStaticLineOfSightTest(mgr, eye, delta, distance, filter);
+    }
+  }
+  return result;
+}
+```
+
+Facts: `CPlayer+908` is `mMorphBallState` (==0 `kMS_Unmorphed`); the 5-word filter is
+`MakeInclude(CMaterialList(SolidMaterial))` - `lwz r5,-31104(r13)` is the TU-static `SolidMaterial`
+(`__shl2i(0,1,SolidMaterial)`), not a literal; the unit vector is `delta * (1.f / distance)`.
+Compiled first try at 98.63%: only the filter differed (frame 144 vs retail 160, retail has an extra
+`stw 1,72(r1)` temp). Spellings: inline `MakeInclude(CMaterialList(SolidMaterial))` as call arg -> 98.63;
+named `const CMaterialList solid` -> 98.63; direct `CMaterialFilter(list, CMaterialList(), kFT_Include)`
+-> 98.63; **a named `const CMaterialFilter filter = MakeInclude(...)` local, passed by reference -> 100**.
+(Rule: a by-const-ref filter argument built in the call expression gets a smaller frame than retail's;
+retail built a named local.)
+
+Port link: `CGameCollision::RayStaticLineOfSightTest(const CStateManager&, ...)` is the only new gap name
+(`CVector3f::Magnitude` is already defined). `CGameCollision.cpp` is NonMatching/not in the port, as for
+its listed siblings, so: `link_gap.py --rebuild --write-list` (+1 entry), `port_link_gap.md` row 213 -> 214
+and a dated section. `check_docs_claims.py` green. `docs/HANDOFF.md` derived counts were rewritten by
+`goal_check.sh`, not by hand.
+
+Not touched: `PathFind` 99.31 (pool order, needs `ApproachDest`'s 1.0f/FLT_EPSILON), `ApproachDest` 0.39
+(1020 B; run 4's analysis stands - needs `mFaceVec` as CQuaternion, body-controller `mBehaviourOrient`
+at +0x588, `CBodyController::HasBodyState`, `CBodyStateInfo::GetMaxSpeed`).

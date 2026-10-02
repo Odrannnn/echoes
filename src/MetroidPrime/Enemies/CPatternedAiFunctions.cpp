@@ -3,7 +3,9 @@
 #include "Kyoto/Math/CMath.hpp"
 #include "Kyoto/Math/CRelAngle.hpp"
 #include "MetroidPrime/BodyState/CBodyController.hpp"
+#include "Collision/CMaterialFilter.hpp"
 #include "MetroidPrime/CCameraManager.hpp"
+#include "MetroidPrime/CGameCollision.hpp"
 #include "MetroidPrime/CCameraShakeManager.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/Cameras/CFirstPersonCamera.hpp"
@@ -168,9 +170,19 @@ bool CPatterned::IsOnScreen(const CStateManager& mgr) const {
          screen.GetY() * screen.GetY() < 1.f;
 }
 
-bool CPatterned::PlayerSpot(CStateManager&, const CTriggerData&) const {
-  // TODO: Check the first player's morph state, screen projection and visibility ray.
-  return false;
+bool CPatterned::PlayerSpot(CStateManager& mgr, const CTriggerData&) const {
+  bool result = false;
+  if (mgr.GetPlayer(0)->GetMorphballTransitionState() == CPlayer::kMS_Unmorphed) {
+    if (IsOnScreen(mgr)) {
+      const CVector3f eye = mgr.GetPlayer(0)->GetAimPosition(mgr, 0.f);
+      CVector3f delta = GetBoundingBox().GetCenterPoint() - eye;
+      const float distance = delta.Magnitude();
+      delta *= 1.f / distance;
+      const CMaterialFilter filter = CMaterialFilter::MakeInclude(CMaterialList(SolidMaterial));
+      result = CGameCollision::RayStaticLineOfSightTest(mgr, eye, delta, distance, filter);
+    }
+  }
+  return result;
 }
 
 bool CPatterned::Landed(CStateManager&, const CTriggerData&) const {
