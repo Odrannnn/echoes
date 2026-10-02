@@ -804,3 +804,317 @@ starts from the measured shape rather than from the original one.
 - `AddLoopedSound` (28 lines) and `UpdateSfxEmitters` (25 lines) are both one register-allocation
   tie-break away; the *structure* is already reproduced by the spellings above, so a lane that has
   time for pure allocator experiments should start from those spellings, not from the file.
+
+---
+
+# progress-prime1-cactor - fifth run (lane 8, worktree `../wt-mp2-goal-L8`, 2026-09-30/10-01)
+
+**Result: FAILED on the judge's only check - `main/MetroidPrime/CActor` stayed at 78 / 98 matched
+functions.** `UpdateSfxEmitters` went **88.62% -> 99.35%**, i.e. **4 differing instructions out of
+124**, and stopped there. Everything else in the gate is clean:
+
+```
+tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11294 -> 11294   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.48% fuzzy, 25.14% matched, 11.94% linked (11294 / 28465 functions)
+  FAIL  target did not rise: main/MetroidPrime/CActor: 78 -> 78 / 98 functions
+  ok    no asm added
+goal_check: FAIL progress-prime1-cactor - 1 failing check(s)
+```
+
+`tools/report_diff.py .tmp/report.base.json build/report.json` over all 2066 units prints
+`matched 11294 -> 11294  linked 5507 -> 5507  (+0 functions at 100%, 0 units newly linked)` and
+**`no regression`** - no function anywhere lost a 100% match. One file changed,
+`src/MetroidPrime/CActor.cpp` (+18 -11), no `configure.py` / `config/` / `asm`, no `flip_test`
+(the item is `progress`), nothing under `tools/`, `docs/` or `build/goal/` touched except this file.
+The diff is semantically identical to what it replaces (same reads, same calls, same order of
+side effects); it is only re-spelled to make MWCC 2.7 emit retail's register assignment.
+
+**The previous four runs' notes were right that this is not a Prime 1 problem** - Prime 1's
+`CActor.cpp` has no `UpdateSfxEmitters`, no looping-sound system and no `CFluidHeightCompare`. The
+item's `reason` should stop suggesting it for this unit. What *is* reachable is MWCC 2.7's
+register allocator, and the recipe below is measured, not recalled.
+
+## `UpdateSfxEmitters`: 37 -> 4 differing lines. Three edits, each independently necessary
+
+Counted with `.tmp/fd.py` (branch displacements normalised relative to each function's own start;
+lower is better). Each was measured on top of the previous one:
+
+| # | edit | lines |
+|---|---|---|
+| 0 | baseline as committed | **37**/124 |
+| 1 | **unbind the element** in *both* loops: drop `const SSound& sound = ...` and spell `mNonLoopingSounds[i].mLocator` / `mLoopingSounds[i].second.mLocator` / `.mHandle` / `.mUseEchoVolume` at each use | 25 |
+| 2 | **hoist the loop-1 bound**: `for (uint i = 0, count = mNonLoopingSounds.size(); i < count; ++i)` | (in 1) |
+| 3 | loop 2 volume: `const uchar maxVol = mMaxVol;` + `const uchar volume = <ternary>` | 8 |
+| 4 | loop 2 volume: `uint volume = mMaxVol; if (mUseEchoVolume) { volume = GetVisorSoundVolume(mgr); }` | **4** |
+
+The unbind is the same lever run 4 used on `StopLoopedSounds`: a named reference gives MWCC an
+address it can keep in a callee-saved register and reuse, where retail re-derives it from the
+element base plus a constant offset. Retail's loop 2 body is `add r26,r27,r29; addi r5,r26,8;
+lbz r0,8(r26)` - base + i*12, then **+4 / +8 / +9** for `.second.mHandle / .mLocator /
+.mUseEchoVolume`. Spelling `mLoopingSounds[i].second` reproduces exactly that; binding
+`const SSound&` gives `+0 / +1 / +5` instead and MWCC re-allocates the whole function.
+
+**Loop 1 and loop 2 need *different* volume spellings, and that is not a typo.** Loop 1 wants
+
+```cpp
+const uchar maxVol = mMaxVol;
+const uchar volume = mNonLoopingSounds[i].mUseEchoVolume ? GetVisorSoundVolume(mgr) : maxVol;
+```
+
+and loop 2 wants
+
+```cpp
+uint volume = mMaxVol;
+if (mLoopingSounds[i].second.mUseEchoVolume) {
+  volume = GetVisorSoundVolume(mgr);
+}
+```
+
+Measured on top of the 25-line shape: loop 2 as `uchar maxVol` + ternary = 40 lines (MWCC then
+re-allocates the whole function - `this` moves from r30 to r28 and everything shifts); loop 2 as
+`uint maxVol` + ternary = 7; loop 2 as `uint volume = mMaxVol;` + `if` = **4**; loop 2 as
+`uchar volume = mMaxVol;` + `if` = 9; loop 2 as `uint volume` + ternary = 9; loop 2 as an explicit
+`if (!echo) { volume = mMaxVol; } else { volume = ...; }` = 9. Loop 1 is the mirror image: `uchar`
++ ternary is right (4 lines for loop 1 alone), `uint` + ternary = 22, `uint` + `if` = 5, `uchar` +
+`if` = 19.
+
+### The 4 lines that are left, exactly
+
+```
+    addi     r27,r30,140          ; same
+    addi     r28,r3,0            ; same
+-   li       r25,0                ; retail: loop-2 induction variable in r25
++   li       r24,0                ; ours:  in r24  (r24 held loop 1's bound, dead by here)
+    li       r29,0                ; same  (byte offset, strength-reduced += 12)
+...
+    mr       r4,r31
+    bl       GetVisorSoundVolume  ; same
+-   mr       r6,r3                ; retail: copy the uint result into the volume slot
++   clrlwi   r6,r3,24             ; ours:  mask it in place (redundant - r6 is masked again below)
+    lwz      r0,4(r26)            ; same
+...
+    clrlwi   r6,r6,24             ; same (the narrowing at the UpdateEmitter argument)
+-   addi     r25,r25,1
++   addi     r24,r24,1
+    addi     r29,r29,12           ; same
+    lbz      r0,340(r30)          ; same
+    rlwinm   r0,r0,31,29,31       ; same
+-   cmplw    r25,r0
++   cmplw    r24,r0
+```
+
+Three of the four are the induction variable's register. Spellings measured on this run that did
+**not** move it: `int` index in loop 1 (30) or loop 2 (20), `size_t` (4, no change), `unsigned`
+(4), `uint32_t` (4), `register uint i` in loop 1 or loop 2 or both (4), `i = i + 1` instead of
+`++i` (4), the loop variable declared outside the loop as a `while` (18), a hoisted
+`const uint total = mLoopingSoundCount` (14), a hoisted `const uint nonLoopingCount` in loop 1 (8),
+no count hoist in loop 1 at all (14), one shared `uint i` for both loops (does not compile as
+written), `uint i = 0; while (i < mLoopingSoundCount) { ... }` (18), and a `TLoopingSound& entry`
+binding in loop 2 instead of unbinding (25 at the 18-line stage). The 4th line
+(`mr r6,r3` vs `clrlwi r6,r3,24`) is MWCC narrowing a `uint` into the `uchar` argument one
+instruction early and then masking the same register again; `static_cast<uchar>(volume)` at the
+call, a `const uchar vol` temp, `static_cast<uchar>` on both ternary arms, and `register uint
+volume` were all measured and none changes it.
+
+WALL: UpdateSfxEmitters 99.35% - 4 differing lines out of 124 are all register allocation: the
+loop-2 induction variable (r25 vs r24, three instructions) and one redundant `clrlwi` on the
+volume; ~40 spellings of the index type, the bound, the loop form and the volume expression were
+measured this run and none reaches 0.
+
+## A real port discrepancy found, measured, not fixed: `CStateManager::GetObjectById`
+
+`CFluidHeightCompare::operator()` is **not byte-reachable in this tree today**, and the reason is
+not the comparator. `objdump -r` on dtk's retail object shows what the retail comparator calls:
+
+```
+4720: R_PPC_REL24  GetObjectById__13CStateManagerCF9TUniqueId   <- retail (const overload)
+48e8: R_PPC_REL24  ObjectById__13CStateManagerF9TUniqueId       <- ours (non-const overload)
+```
+
+Retail calls the **const** overload and hands its result straight to
+`TCastToPtr<12CScriptWater>__FP7CEntity`, which takes a **non-const** `CEntity*`. Our header
+declares `const CEntity* CStateManager::GetObjectById(TUniqueId uid) const;`
+(`include/MetroidPrime/CStateManager.hpp:160`), so our comparator is forced onto the non-const
+overload and the `bl` displacement can never match. Retail's const overload must return
+`CEntity*` (the same inference `src/MetroidPrime/Cameras/CCameraManager.cpp:315-320` already
+records in a comment for `SetPathCamera`). The mangled symbol is unchanged by the return type, and
+every existing caller keeps compiling (`TCastToConstPtr` and `static_cast<const T*>` both accept a
+`CEntity*`). I changed the header, the definition (`CStateManager.cpp:561`, needs a `const_cast`)
+and the comparator, measured `__cl__`, and **reverted all three**: with the callee fixed and the
+best body shape the function is still 20 of 60 lines away (see below), so the change buys no
+matched function and touches a header fifteen call sites depend on. **A `NEW:` item is not filed
+for it** - on its own it raises no count.
+
+### `__cl__` measured with the callee fixed: 41 -> 20, and the remaining 20 are also registers
+
+The finding worth keeping is that the **evaluation order** of the comparison is source-controlled
+here. Retail computes water A's plane first and keeps `this` in r29, waterA in r31 and waterB in
+r30 - three callee-saved registers, a 112-byte frame. Ours uses two and a 96-byte frame.
+
+| spelling | lines |
+|---|---|
+| as committed (one `<` over two full chains) | 41 |
+| `const float zA = ...; const float zB = ...; return zA < zB;` | **31** |
+| `const CVector3f zero;` + the two float locals | **20** |
+| `const CVector3f& zero = CVector3f::Zero();` + the two float locals | 31 |
+| `CVector3f()` instead of `CVector3f::Zero()` inline | 40 |
+| `const CVector3f zero = CVector3f::Zero();` | 29 |
+| `const CVector3f pointA = ...; pointB = ...; return pointA.GetZ() < pointB.GetZ();` | 31 |
+| `const CScriptWater* const waterA/waterB` (either spelling) | no change |
+| null test as two `if`s | 23 |
+| null test as `!waterA \|\| !waterB` | no change |
+| null test folded into the return: `waterA && waterB && zA < zB` | 24 |
+| a free `static float FluidSurfaceZ(const CScriptWater*)` helper | no change |
+| named `CEntity*` locals between the lookup and the cast | 29 |
+
+**The 20-line shape is not keepable and must not be copied**: `const CVector3f zero;` is a
+*default-constructed, uninitialised* vector passed by const reference to `GetClosestPoint`, which
+reads it. It is the only spelling that makes MWCC evaluate A before B, and it is undefined
+behaviour, so it is recorded here purely as a measurement. Retail passes the relocated
+`sZeroVector`, so the source uses `CVector3f::Zero()`, and with `Zero()` MWCC always evaluates the
+right operand of `<` first. The remaining ~14 lines after that are r29 vs r31 for `this` and the
+merged null-test shape (`beq/beq` in retail, `beq/bne/li/b` in ours) - again an allocator choice,
+not a missing expression.
+
+## `AddLoopedSound`: run 4's two edits re-measured, 41 -> 25, and it is a hard tie-break
+
+Run 4's recipe reproduces exactly, and it is the closest this function has ever been:
+
+```cpp
+  if (handle) {
+    mLoopingSounds[mLoopingSoundCount].first = sfxId;
+    mLoopingSounds[mLoopingSoundCount].second = SSound(handle, locator, useEchoVolume);
+    if (mEnablePitchBend) {
+      CSfxManager::PitchBend(handle, mPitchBend);
+    }
+    if (pitchDuration > 0.f) {
+      CSfxManager::AddPitchBend(CSfxPitchBend(handle, pitchStart, pitchEnd, pitchDuration));
+    } else if (!mEnablePitchBend) {
+      CSfxManager::PitchBend(handle, pitchStart);
+    }
+  }
+```
+
+After that the two objects are **instruction-for-instruction identical** and differ only in which
+callee-saved register each value got: retail `this`=r29, array base=r28, `nonEmitter`=r27,
+`area`=r26, `sfxId`=r25; ours `sfxId`=r29, `this`=r28, array base=r27, `nonEmitter`=r26,
+`area`=r25. A dozen spellings measured on top of it all leave it at exactly 25: a `const uint
+slot = mLoopingSoundCount` local (35), a `TLoopingSound* const array` local (does not compile),
+`static_cast<ushort>(sfxId)` (25), `const CSfxHandle& h = handle` (25), `const int areaId`
+(25), `const ushort pitch = pitchStart` (25), `mLoopingSoundCount = static_cast<uint>(...) + 1`
+(25), a `return;` before the closing brace (25), the two stores swapped (25), and the pitch arm
+flattened either way round (39 each). Run 4's note that "what is left is pure register numbering"
+is confirmed; there is no lever in `CActor.cpp`.
+
+## `PlayLoopedSound`: the `musyxFlags` expression is already the best spelling
+
+Retail computes the flags as `li r4,1; beq +0x80; ori r4,r4,8`; ours as `li r4,1; beq; li r4,9`.
+Every spelling that could produce the `ori` is worse: `(flags & 8) | 1` (37), `1 | (flags & 8)`
+(37), `(flags & 8) + 1` (37), `1 | ((flags & 8) << 0)` (37), all against a baseline of 31.
+The rest of the function is a **4-byte frame-layout shift** (every local and outgoing-argument slot
+is 4 lower than retail's) caused by one instruction I could not explain: retail materialises an
+**8-byte** temporary for `RemoveEmitter(mLoopingSounds[0].second.mHandle)` - `lwz r0,144(r22)`
+then `stw r0,20(r1)` **and** `stw r0,16(r1)`, the same 4-byte value into both halves of an 8-byte
+slot at `r1+16`. Our `CSfxHandle` is 4 bytes and we pass `&` of a 4-byte stack temp. Whatever
+retail's parameter type is, it is not expressible from this tree's headers.
+
+## Dead ends measured this run, so nobody repeats them
+
+- **`SetValidTarget` (81.90%) and `SetVisorOrbitableFlags` (83.75%)** - both differ from retail
+  only by a redundant `lbz` that MWCC CSEs (retail loads the 4-bit container byte twice, once for
+  the `clrlwi` mask and once as the `rlwimi` destination). The `&=` arm of `SetValidTarget` also
+  masks the shift with `clrlwi r4,r4,28` in retail only. Spellings measured: `&= ~((1 << i) & 0xF)`
+  (13), `= x & ~((1 << i) & 0xF)` (13), `^= x & (1 << i) & 0xF` (13), `static_cast<uint>` on the
+  whole expression (11), `1u << i` (11), `~static_cast<uint>(flags) & 0xF` (11),
+  `~(static_cast<uint>(flags) & 0xF)` (10). Nothing beats the committed spelling. The `~` is
+  already applied to the **masked** value in retail (`slw r4,r0,r4; clrlwi r4,r4,28; andc`), so
+  the source is masking - MWCC just deletes the redundant half.
+- **`GetRenderAlphaBufferAlpha` (98.15%) is provably blocked, not merely hard.** Retail's callee
+  is `_ZNK16CPlayerTargeting18GetScanTargetIndexERK13CStateManager9TUniqueId` - I read the mangled
+  name out of `src/MetroidPrime/PortReachStubs.cpp:1436` - so retail also passes `TUniqueId` **by
+  value**. Changing our parameter to `const TUniqueId&` (runs 2-4's suggestion) would change the
+  mangled symbol and lose a matched function elsewhere. Closed.
+- **`SSound::SSound` (98.75%)** is 2 of 8 instructions and nothing else: `lwz r4,0(r4)` vs
+  `lwz r7,0(r4)`, then `stw` of the same register to `0(r3)`. Both objects are 32 bytes with an
+  identical instruction set; MWCC coalesced the destination with the incoming parameter register.
+- **`__ct__reserved_vector<pair<ushort,SSound>,4>` (0.00%)** is unchanged: retail inlines the fill
+  loop (18 instructions, `mtctr`/`bdnz`, null guard included), we call an out-of-line
+  `uninitialized_fill_n`. Runs 2 and 3 reached the same conclusion.
+
+## The instrumentation, rebuilt (runs 2-4 all asked for it; this is the version that worked)
+
+All under `.tmp/`, throwaway, gitignored. **Building it cost about 25 minutes and then paid for
+itself** - about 70 spellings were measured this run at ~1.2 s each.
+
+1. `.tmp/rc.sh <out.o>` - single-unit recompile in **0.63 s**, using the real `cflags` out of
+   `build.ninja` (`tools/probe_cc.sh` is still missing `-i extern/musyx/include` and
+   `inline_max_size(125)` and fails on anything pulling in `CAudioSys.hpp`). Verified: the first
+   output was `cmp`-identical to `build/G2ME01/src/MetroidPrime/CActor.o`.
+2. `.tmp/fd.py [our.o] [retail.o] [name-substring] [-v]` - per-function instruction differ against
+   dtk's `build/G2ME01/obj/MetroidPrime/CActor.o`, with every branch displacement rewritten
+   relative to its own function's start. Prints one `differing/total` line per function and a
+   total; `-v` gives a unified diff. **Use the count, not objdiff's percentage** - it moved a
+   function from 37 to 4 while objdiff only went 88.62% -> 99.35%, and it is what made the
+   three-edit recipe above findable.
+3. `.tmp/bytes.py` - byte-exact per function. Necessary: `objdiff` reports section-level fuzzy
+   numbers, and `fd.py` can report a false difference when a `bl` target moves inside the same
+   function (its `<sym+0xNN>` annotation is objdump's, not the branch's).
+4. `.tmp/mdiff.py` - **opcode-multiset diff per function**. This is the one that should have been
+   built first: it separates "missing operations" (a real semantic gap) from "reallocation" in one
+   command. On this tree it says plainly that `SetInFluid` (34 missing instructions - the
+   un-inlined `RemoveInvalidFluidIds`, confirmed), `UpdateAnimation` (28 - the camera loop), the
+   `CActor` constructor and `PreRender` have **missing code**, while `AddLoopedSound`,
+   `PlayCustomSound`, `UpdateSfxEmitters` and `GetRenderAlphaBufferAlpha` have an **identical
+   opcode multiset** and are therefore pure allocator work.
+5. `.tmp/g.py <variants.json> [name-substring]` - batch variant runner. Applies each
+   `{name, find, replace}` to `CActor.cpp`, recompiles, diffs, and restores; ~1.2 s per spelling.
+   It asserts the `find` matched exactly once and prints `SKIP` if not, which is how a stale
+   variant list is caught. `.tmp/apply.sh <variants.json> <n>` applies one and leaves it, for
+   inspecting a diff interactively.
+
+## For the next run
+
+- **`UpdateSfxEmitters` is 4 instructions from done and the exact 3-edit recipe is above.** Start
+  from the committed source, not from the notes. The only untried lever I can think of is making
+  loop 2's induction variable *not* be a fresh `li` - e.g. a loop form where the counter is an
+  induction variable derived from the byte offset.
+- **The generalisable lesson, and it is the fourth run in a row to hit it: MWCC 2.7's register
+  allocator responds to *which names exist*, not to the work.** Binding an element reference,
+  hoisting a bound, and replacing a `?:` with an `if`-assignment each moved `UpdateSfxEmitters`
+  by 12, 12 and 4 instructions. Every function in the wall list above is instruction-complete;
+  the remaining diffs are naming.
+- **`mdiff.py` should be the first thing the next run builds.** It costs two minutes and it is
+  the only tool here that says whether a function is missing code or just misallocated.
+- The item's `reason` points at Prime 1's `CActor.cpp` for a fifth time and it has never helped:
+  Prime 1 has none of `UpdateSfxEmitters`, the looping-sound system, `CFluidHeightCompare`,
+  `SetInFluid`, `PreRender` or `ProcessSoundEvent`. **This unit is now an MWCC-codegen item, not a
+  Prime 1 item.**
+
+# progress-prime1-cactor - sixth run (lane 9, worktree `../wt-mp2-goal-L9`, 2026-10-02)
+
+**Result: `main/MetroidPrime/CActor` 78 -> 79 matched.** `goal_check.sh` PASS (gate, 86 RELs, no asm).
+Only `src/MetroidPrime/CActor.cpp` touched (`GetDistanceToCamera`).
+
+## `GetDistanceToCamera` 82.08% -> 100% (spellings measured, in order)
+| spelling | score |
+|---|---|
+| committed (`CVector3f - ` temp `.MagSquared()` inline, `int i`, `FLT_MAX`) | 82.08 |
+| manual `dx*dx+dy*dy+dz*dz` floats, `uint i` | 92.24 |
+| + literal `3.402823466e+38f` instead of `FLT_MAX` (macro loads via `__float_max`, retail reads sdata2 in place) | 90.69 (reloc now matches; other diffs remain) |
+| `int i` + `mgr.CameraManager(i)` (non-const accessor) | 98.47 (`uint i` lost retail's `mgr`-base pointer induction var + `lwz 5404(r31)`) |
+| + `(uint)i < (uint)mgr.GetNumPlayers()` (retail `cmplw`, with `int i` kept) | 99.49 |
+| sum-order permutations of dx/dy/dz | 98-99.29, none better |
+| **`const CVector3f d = camera->GetTranslation() - position; d.MagSquared()`** | **100%** |
+The last one: a *named* const CVector3f local makes MWCC scalarise the temp (no stack stores) and load
+y first like retail; the unnamed temp in one expression kept the stores.
+The three levers (int counter with unsigned compare, literal FLT_MAX, named vector local) are each necessary.
+
+## `SetActorLights` 91.30% - re-measured, still 2 of 23
+Retail: `stb 0,0(r4)` then `lwz r31,4(r4)`; ours hoists the `lwz` above the `stb`. Measured unchanged
+(all give the same hoisted order): `lights.mHas=false; p=lights.mItem`, `release(); get()`, comma form,
+`p=lights.mItem; mHas=false` (worse: 3-reg frame), temp `single_ptr` (worse), auto_ptr copy (worse).
+Not WALL-tagged by me: only ~8 spellings.

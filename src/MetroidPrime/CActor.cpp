@@ -1132,11 +1132,12 @@ void CActor::UpdatePortalSystemState(CStateManager& mgr) {
 }
 
 float CActor::GetDistanceToCamera(CStateManager& mgr) const {
-  float distanceSquared = FLT_MAX;
+  float distanceSquared = 3.402823466e+38f; // FLT_MAX spelled out: the macro loads through __float_max
   const CVector3f position = GetTranslation();
-  for (int i = 0; i < mgr.GetNumPlayers(); ++i) {
-    const CGameCamera* camera = mgr.GetCameraManager(i)->GetCurrentCamera(mgr, true);
-    const float cameraDistanceSquared = (camera->GetTranslation() - position).MagSquared();
+  for (int i = 0; (uint)i < (uint)mgr.GetNumPlayers(); ++i) {
+    const CGameCamera* camera = mgr.CameraManager(i)->GetCurrentCamera(mgr, true);
+    const CVector3f d = camera->GetTranslation() - position;
+    const float cameraDistanceSquared = d.MagSquared();
     if (cameraDistanceSquared < distanceSquared) {
       distanceSquared = cameraDistanceSquared;
     }
