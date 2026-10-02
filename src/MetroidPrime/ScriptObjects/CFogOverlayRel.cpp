@@ -34,8 +34,8 @@
 //     `config/G2ME01/symbols.txt` at 0x80232834 - immediately after `LoadFogOverlay__...` at
 //     0x80232808, which is 0x2C bytes and so ends exactly there. So it stores the *address* of
 //     a loader slot, not a loader, and the store below hands it `&lbl_23_bss_0`.
-//     `src/MetroidPrime/ScriptLoader/FogOverlay.cpp` is that thunk and already records why the
-//     setter stays unclaimed in the DOL: REL modules import it by its retail name. The import
+//     `src/MetroidPrime/ScriptLoader/FogOverlay.cpp` is that thunk, and the setter is its own
+//     DOL unit, `Carve80232834.c`, which keeps the imported name verbatim. The import
 //     name here is the plain `fn_80232834`, checked in the module's own
 //     `build/G2ME01/FogOverlay/FogOverlay.preplf` import table, so no mangled `SetLoader_*` name
 //     is needed and `config/G2ME01/symbols.txt` is untouched by that.
