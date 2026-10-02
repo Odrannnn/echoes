@@ -9,6 +9,9 @@ Sections:
 MetroidPrime/ScriptObjects/CPirateRagDollRel.cpp:
 	.text       start:0x00000000 end:0x0000010C
 
+MetroidPrime/ScriptObjects/CPirateRagDollLayout.cpp:
+	.text       start:0x00000C2C end:0x00000D80
+
 MetroidPrime/ScriptObjects/CPirateRagDollCross.cpp:
 	.text       start:0x00000D80 end:0x00000DC0
 

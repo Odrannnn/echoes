@@ -1397,6 +1397,20 @@ list(APPEND MP_GAME_SOURCES
     # `powerpc-eabi-nm -u` on its object prints nothing: one self-contained float function over
     # raw offsets, zero externals, so the port's undefined count is unchanged.
     src/MetroidPrime/ScriptObjects/CPirateRagDollCross.cpp
+    # Module 50's char-layout node lookups, .text 0xC2C..0xD80 - three functions, listed for the
+    # same CPirateRagDollCross.cpp reason (no RELMain/RELExit, so the MODULE_ENTRY exemption does
+    # not apply). Safe to list on the same measurement: the only call is `fn_50_C5C` ->
+    # `fn_50_D4C`, internal to this unit, and everything else is the tree's own inline code, so
+    # `powerpc-eabi-nm -u` on build/G2ME01/src/MetroidPrime/ScriptObjects/CPirateRagDollLayout.o
+    # prints nothing and the port's undefined count does not move.
+    src/MetroidPrime/ScriptObjects/CPirateRagDollLayout.cpp
+    # Module 50's char-layout node lookups, .text 0xC2C..0xD80 - three functions
+    # (fn_50_C2C, fn_50_C5C, fn_50_D4C), listed for the same CPirateRagDollCross.cpp reason: no
+    # RELMain/RELExit, so check_files_cmake.py's MODULE_ENTRY exemption does not cover it. Its
+    # calls are all internal to the unit (fn_50_C5C -> fn_50_D4C) and everything below the two
+    # mirror structs is the tree's own inline code, so `powerpc-eabi-nm -u` on its object prints
+    # nothing and the port's undefined count does not move.
+    src/MetroidPrime/ScriptObjects/CPirateRagDollLayout.cpp
     src/MetroidPrime/Player/CGunEffectTouch.cpp
     src/MetroidPrime/Player/CGunEffectTouchAll.cpp
 # CModelDataDefaultCtor.cpp is listed, and lane e6 measured that as net -1, which was

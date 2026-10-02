@@ -3458,6 +3458,36 @@ config.libs = [
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CPirateRagDollRel.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CPirateRagDollCross.cpp"),
+            # .text 0xC2C..0xD80, the char-layout node lookups: fn_50_C2C
+            # (`CQuaternion::BuildInverted`), fn_50_C5C
+            # (`CCharLayoutInfo::GetFromParentUnrotated`) and fn_50_D4C
+            # (`TSegIdMap<CCharLayoutNode>::ContainsDataFor`). A third claim in this module, and
+            # a third unit for the same reason the second one exists: 0xC2C..0xD80 is contiguous
+            # with nothing already claimed. Each of the three is written as a free function under
+            # the module's own `fn_50_*` name, because objdiff pairs by name and the module's
+            # symbols are `fn_50_*` - the mangled `CQuaternion::BuildInverted` would not pair, and
+            # the DOL's own CAnimData.cpp already defines it.
+            #
+            # **`mw_version="GC/2.7"` is load-bearing and measured**, the same per-object
+            # arrangement `CSandBossRelTail.cpp` and `CLumiteRelTail.cpp` use: under the
+            # module's default GC/1.3.2 this unit is 82.19%, 0/3, and the differences are all in
+            # fn_50_C5C's prologue - 1.3.2 sinks the argument setup (`lbz r0, 0x0(r5)` and the
+            # `lwz` of the node map) *behind* the `stw r31`/`stw r30`/`stw r29` saves, and
+            # retail interleaves them the other way round. 2.7 emits retail's order and all
+            # three go to 100.00%.
+            #
+            # **No `force_active:` entry is added to this module, and adding one is a trap**
+            # (2026-10-02, goal item `progress-twin-rel-pirateragdoll`). None of the three is
+            # in the module's ldscript.lcf FORCEACTIVE block, so this reads like the ScriptCoin
+            # dead-strip case - but a list added to module 50 in `config/G2ME01/config.yml`
+            # shifts module 50's string table by 52 bytes and **breaks DarkCommando,
+            # CommandoPirate, DarkTrooper and SpacePirate**, the four modules that
+            # `bl fn_50_1938` (module 50's only export), one byte each at file offset 0xAC5B.
+            # Nothing needs stripping here: dtk's `auto_00_0000010C_text` (0x10C..0xC2C) keeps
+            # undefined references to fn_50_C2C and fn_50_C5C, and fn_50_D4C is reached from
+            # fn_50_C5C's own `bl`. See the source's own header.
+            Object(Matching, "MetroidPrime/ScriptObjects/CPirateRagDollLayout.cpp",
+                   mw_version="GC/2.7"),
         ],
     ),
     Rel(
