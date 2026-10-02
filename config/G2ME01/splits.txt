@@ -1144,6 +1144,9 @@ MetroidPrime/ScriptObjects/CUnknown90.cpp:
 	.text       start:0x801F9050 end:0x801F9190
 	.rodata     start:0x803AC568 end:0x803AC570
 
+MetroidPrime/ScriptObjects/Carve801FDB5C.c:
+	.text       start:0x801FDBE0 end:0x801FDC88
+
 MetroidPrime/ScriptObjects/Carve801FEEF0.c:
 	.text       start:0x801FEEF0 end:0x801FEEF8
 

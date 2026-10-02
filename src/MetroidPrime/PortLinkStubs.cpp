@@ -9,9 +9,10 @@
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   147 functions, 4 data objects (counted 2026-10-01 after the eighth upstream sync, which
- *   retired `CDamageVulnerability::~CDamageVulnerability()` - upstream's `CDamageVulnerability.cpp`
- *   defines it and is listed in `files.cmake`).
+ *   148 functions, 4 data objects (counted 2026-10-02, after `fn_801FDC88` was added by hand
+ *   below; the count before that was 147, measured 2026-10-01 after the eighth upstream sync,
+ *   which retired `CDamageVulnerability::~CDamageVulnerability()` - upstream's
+ *   `CDamageVulnerability.cpp` defines it and is listed in `files.cmake`).
  *
  * Breakdown: 86 REL loader, 46 game method, 18 unmangled fn_/lbl_, 4 vtable/typeinfo.
  *
@@ -689,6 +690,24 @@ extern "C" void stub_175() {}
 // sum_fn_80255128(rstl::vector<SLdrConnection, rstl::rmemory_allocator> const&)
 extern "C" void stub_176() asm("_Z15sum_fn_80255128RKN4rstl6vectorI14SLdrConnectionNS_17rmemory_allocatorEEE");
 extern "C" void stub_176() {}
+
+// fn_801FDC88 - retail 0x801FDC88, 0x24 bytes, `destroy_impl<T*>` for this chain: it
+// materialises `li r4,-1` and calls fn_801FDCAC (retail 0x801FDCAC). Asked for by the port
+// because `src/MetroidPrime/ScriptObjects/Carve801FDB5C.c` (Matching, 0x801FDBE0..0x801FDC88)
+// matches `fn_801FDC68` byte for byte and that body is exactly one `bl fn_801FDC88` - the call
+// is in the bytes, so the carve cannot drop it. For the DOL nothing is needed: dtk's own
+// `auto_03_801FDC88_text.o` defines it and `configure.py` does not mention this file, so the
+// stub cannot reach main.dol. The port link does not have that object, which is why the gap
+// grew 291 -> 292 (measured, `build/gate-probe.log`).
+//
+// This is a stand-in with an empty body, like every other stub in this file, and like them it
+// is **not** a claim that fn_801FDC88 is decompiled - it is not, and
+// `docs/research/port_link_gap.md` keeps the symbol listed as still missing. The alternative is
+// carving 0x801FDC88..0x801FDCAC as well, which only moves the same gap one function along:
+// that body calls fn_801FDCAC, and the chain continues. The call is unavoidable to begin with -
+// the carve's `fn_801FDC68` is retail's byte for byte, and retail's is one `bl fn_801FDC88`.
+extern "C" void stub_178() asm("fn_801FDC88");
+extern "C" void stub_178() {}
 
 
 // Data objects. A vtable or typeinfo stub is zero-filled: harmless to take the
