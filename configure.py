@@ -1618,10 +1618,23 @@ config.libs = [
     # the same bytes instruction for instruction, only the two `bl` targets differ. Everything
     # from fn_49_D8 (0xD8) up is left unclaimed, so dtk fills it from retail and the module's
     # sha1 still holds.
+    #
+    # Added 2026-10-02 (lane 13, item `progress-twin-rel-plantscarabswarm`). A second unit,
+    # `.text 0x2C00..0x2F2C` out of that unclaimed middle: seven out-of-line instantiations the
+    # module emitted - two `rstl::single_ptr` deleting destructors, `CActorParameters`' and
+    # `CLightParameters`' implicit copy constructors, the 4- and 0x24-byte-element `reserve`s and
+    # the 0x24 block's `destroy_impl` forwarder. `mw_version="GC/2.7"` is load-bearing and
+    # measured - under the module default GC/1.3.2 the two copies are a load/store ladder where
+    # retail pipelines them (28 of fn_49_2D40's 31 words differ), and 2.7 reproduces retail byte
+    # for byte. The 0xD8..0x2C00 and 0x2F2C..0x32A0 bytes between and after the two ranges stay
+    # unclaimed, so dtk fills them from retail and the module's sha1 still holds. See the source's
+    # header for the per-function evidence.
     Rel(
         "PlantScarabSwarm",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CPlantScarabSwarmTail.cpp",
+                   mw_version="GC/2.7"),
         ],
     ),
     # AtomicAlpha's head, .text 0x0..0x13C: the fourteen-accessor block, fn_2_9C, RELExit, RELMain

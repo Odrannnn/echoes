@@ -286,6 +286,15 @@ modules:
   - object: files/RelProd/PlantScarabSwarm.rel
     hash: 67240808f42d66482dfaa11daa09a9994cd63e92
     splits: config/G2ME01/rels/PlantScarabSwarm/splits.txt
+    # PlantScarabSwarm's `CPlantScarabSwarmTail.cpp` (.text 0x2C00..0x2F2C) defines two
+    # functions nothing in the module calls: `fn_49_2C00` and `fn_49_2C54` are the only two
+    # members of that run with no `bl` anywhere, so mwldeppc dead-strips them and the module
+    # linked 0xAC = their 0x54 + 0x58 bytes short (.text 13208 against retail's 13380) with both
+    # at 100%. dtk 1.8.4 reads this list into the link script's FORCEACTIVE, the fix
+    # `docs/RUNNING_THE_DECOMP.md` records for an unreferenced function in a module.
+    force_active:
+      - fn_49_2C00
+      - fn_49_2C54
     symbols: config/G2ME01/rels/PlantScarabSwarm/symbols.txt
   # Module ID 50
   - object: files/RelProd/PirateRagDoll.rel

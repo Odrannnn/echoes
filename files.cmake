@@ -439,6 +439,13 @@ src/MetroidPrime/PortLinkStubs.cpp
     # 0x48AC..0x4910, the same shape as the AtomicAlpha entry above with this module's argument
     # (`__dt__8COBBTreeFv`). Its host branch is empty by design, for the same reason.
     src/MetroidPrime/ScriptObjects/CDestructibleBarrier48AC.cpp
+    # PlantScarabSwarm's (module 49) out-of-line template tail, .text 0x2C00..0x2F2C: seven
+    # functions. Its host branch is empty by design (the bodies are inside `#ifdef __MWERKS__`),
+    # for the reason the Lumite entry above gives: check_files_cmake.py requires every configure.py
+    # `Matching` object to be in this list and only a RELMain/RELExit unit is exempt. Two of its
+    # callees, `fn_49_2F2C` and `fn_49_2FBC`, are the module's unclaimed middle, so a host body
+    # would make the port link names it does not have.
+    src/MetroidPrime/ScriptObjects/CPlantScarabSwarmTail.cpp
     # CRumbleManager::StopRumble. Its own file because CRumbleManager.cpp is a
     # `MatchingFor("G2ME01")` unit and must not be edited; see the file's header.
     src/MetroidPrime/CRumbleManagerStopRumble.cpp
