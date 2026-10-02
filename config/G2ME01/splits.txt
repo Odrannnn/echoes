@@ -37,6 +37,9 @@ MetroidPrime/Player/CGameStateBlockDtor.cpp:
 MetroidPrime/Player/CGameStateBlockCopyCtor.cpp:
 	.text       start:0x80004AA0 end:0x80004B9C
 
+MetroidPrime/Player/Carve80004B9C.c:
+	.text       start:0x80004B9C end:0x80004C4C
+
 MetroidPrime/Player/Carve80004C4C.c:
 	.text       start:0x80004C4C end:0x80004D5C
 
