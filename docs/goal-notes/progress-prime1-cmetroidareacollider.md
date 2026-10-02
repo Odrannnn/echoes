@@ -729,3 +729,235 @@ temporaries, ours saves `f28..f31` and uses `f6..f13`, i.e. one more live float.
   `include/Kyoto/Math/CVector3f.hpp:106` had had one for years. That asymmetry is what kept
   `SBoxEdge()` at 0.00%, and it is worth grepping the other math headers for the same gap -
   `CVector2f`, `CPlane`, `CQuaternion` and friends may have unreferenced statics of their own.
+
+---
+
+# Attempt 4 - 2026-10-01, lane 4 (`wt-mp2-goal-L4`, tree 5459148b)
+
+Attempts 1-3 are still true; nothing in them was re-measured except where noted. That work all
+landed, so the unit started this run at **40 / 58 matched** with `fuzzy 40.04` - the numbers
+attempt 3 recorded. This attempt went after **the two functions every earlier attempt left as
+stubs**: `MovingSphereCollisionCheck_Cached(const COctreeLeafCache&, ...)` and
+`MovingAABoxCollisionCheck_Cached(const COctreeLeafCache&, ...)`, the two `COctreeLeafCache`
+overloads the item brief lists by name. Both were `return false;` with a TODO. **Neither is
+reached by Prime 1's source alone** - both need seven array accessors this repo's
+`CCollisionPrimitiveData` did not have, and that is where most of this run went.
+
+## Result, measured
+
+`build/goal/judge/report.base.json` against the regenerated `build/report.json`, unit
+`main/WorldFormat/CMetroidAreaCollider`:
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | 40 / 58 | **40 / 58 (unchanged - see below)** |
+| `matched_code` | 7104 | 7104 (unchanged) |
+| `fuzzy_match_percent` | 40.041122 | **56.989388** |
+| `total_code` | 24124 | 24124 (unchanged) |
+| `matched_data_percent` | 100.0 | 100.0 |
+
+Whole build: `All: 33.84% fuzzy, 26.98% matched, 12.64% linked (11956 / 28465 functions)`, matched
+count unchanged at 11956.
+
+**The item does not pass.** `./tools/goal_check.sh build/goal/item.json`:
+
+```
+goal_check: item progress-prime1-cmetroidareacollider (progress) target=WorldFormat/CMetroidAreaCollider
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11956 -> 11956   linked 5728 -> 5728
+  ok    check_symbol_names.py
+  ok    All:  33.84% fuzzy, 26.98% matched, 12.64% linked (11956 / 28465 functions)
+  FAIL  target did not rise: main/WorldFormat/CMetroidAreaCollider: 40 -> 40 / 58 functions
+  ok    no asm added
+goal_check: FAIL - 1 failing check(s): target did not rise
+```
+
+Everything else is clean. `sha1sum build/G2ME01/main.dol` =
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, `python3 tools/check_symbol_names.py` = `checked 516
+units; 0 declared names are missing`, `./tools/probe_sources.sh` = `probe: 748 files, 0 failed, 0
+errors; link: LINKED (323 undefined, 0 duplicates)`. Diff is `src/` + `include/` only, no `asm`,
+`configure.py` / `config/` / `files.cmake` / `build/goal/` untouched, unit stays `NonMatching`
+(`flip_test.sh` not run, as the item says).
+
+**Nothing anywhere got worse**, measured by diffing every function in both reports:
+`functions worse: 0`, `functions better: 2` (the two below). The diff is a strict improvement,
+just not a *complete* one - and `matched_functions` counts only 100%s.
+
+## What landed, per function
+
+### 1. `MovingAABoxCollisionCheck_Cached(COctreeLeafCache&)` - **1.51% -> 98.31%** (2420 B)
+
+Prime 1's implementation transcribed essentially verbatim. It is the larger of the two wins and
+the one that got closest; the remaining 1.7% is characterised below.
+
+### 2. `MovingSphereCollisionCheck_Cached(COctreeLeafCache&)` - **0.88% -> 42.77%** (4168 B)
+
+Prime 1's implementation likewise, plus Prime 1's file-scope `static inline TriangleEdgeNormal`
+(hoisted out of the class in this file). 42.77% on the first try is the score after one
+correction; see "what is still missing" for the 87-instruction block that accounts for the rest.
+
+Both went from a `return false;` stub to real implementations, so the behaviour of the port
+strictly improved even though neither counts as matched yet.
+
+## The infrastructure both needed (this is the reusable part)
+
+Neither function compiles without seven accessors that `CCollisionPrimitiveData` did not declare.
+Added to `include/WorldFormat/CCollisionPrimitiveData.hpp`, all inline, all reading a member at
+the offset the class already has:
+
+```cpp
+const CVector3f& GetVert(int idx) const { return mVertices[idx]; }
+const CCollisionEdge& GetEdge(int idx) const { return mEdges[idx]; }
+u64 GetVertMaterial(int idx) const { return mMaterials[mVertexMaterials[idx]]; }
+u64 GetEdgeMaterial(int idx) const { return mMaterials[mEdgeMaterials[idx]]; }
+u64 GetTriangleMaterial(int idx) const { return mMaterials[mSurfaceMaterials[idx]]; }
+void GetTriangleVertexIndices(ushort idx, ushort indicesOut[3]) const {
+  fn_80257540(this, idx, indicesOut);
+}
+const ushort* GetTriangleEdgeIndices(ushort idx) const { return &mSurfaceIndices[idx * 3]; }
+```
+
+Every offset is confirmed by the retail `lwz`/`lbzx` pairs in both functions (`mVertexMaterials`
+0x14, `mEdgeMaterials` 0x18, `mSurfaceMaterials` 0x1c, `mEdges` 0x20, `mSurfaceIndices` 0x24,
+`mVertices` 0x2c), so the class layout is untouched - as the item requires.
+
+**Two things I got wrong, both measured, so the next run does not repeat them:**
+
+* **The materials are `u64`, not `uint`.** Prime 1's accessors return `uint`
+  (`mMaterials[mPolyMats[idx]]` over a `const uint*`). This repo's `mMaterials` is a `const u64*`
+  and retail loads *two* words per material (`lwz r21,0(r22)` / `lwz r22,4(r22)`, 0x802498E8-0x802498EC).
+  The accessors return `u64` and the `CCollisionInfo` left-material is built from the full 64 bits.
+* **A pointer subscript needs a complete pointee in mwcceppc.** I assumed the inline bodies would
+  compile against the forward declarations already in that header, since a subscript on a
+  pointer-to-incomplete is only address arithmetic. It is not: `mEdges[idx]` fails with
+  `illegal type` and takes down every unit that includes the header - measured, both
+  `MetroidPrime/CGameCollision.cpp` and `MetroidPrime/CGameArea.cpp` stop on it. The fix is
+  `#include "Kyoto/Math/CVector3f.hpp"` and `#include "WorldFormat/CCollisionEdge.hpp"`. Both are
+  self-contained and already reached by most includers, and the whole-build matched count
+  (11956 -> 11956, nothing moved) is the evidence that the wider include costs nothing.
+
+**`fn_80257540`** - Echoes' out-of-line `GetTriangleVertexIndices(ushort, ushort[3])`, 0xA4 bytes,
+living in `auto_03_80255128_text` and already an undefined `U` in retail's
+`CMetroidAreaCollider.o`. Both functions reach it through a real `bl` (0x8024AB10, 0x802498B0), so
+it cannot be inlined. Declared `extern "C"` next to the existing `fn_80257A14` declaration and
+called by that name; it is the same winding-flag walk as `fn_80257A14`, writing indices instead of
+vertices. This is attempt 1's `NEW: progress-cmetroidareacollider` item, now closed for this unit -
+**`GetTriangle` itself is not needed**, because these two functions build their own
+`CCollisionSurface` from `GetVert` + `GetTriangleMaterial` rather than calling `GetTriangle`.
+
+## Three measured corrections to Prime 1's source, all confirmed in the bytes
+
+1. **The duplicate test is the positive form and there is no `gDupTrianglesProcessed` counter.**
+   Prime 1 spells `if (sDupPrimitiveCheckCount != sDupTriangleList[triIdx])`; the *other* functions
+   in this file (written by attempts 1-2) use the negative form with a `++gDupTrianglesProcessed`
+   in the else arm. Retail's box function touches `gTrianglesProcessed` exactly twice
+   (`lwz`/`stw -26272(r13)` at 0x80249868-0x80249870, i.e. one `++`) and never touches
+   `gDupTrianglesProcessed` at all. Switching to the positive form took the box function
+   **87.37% -> 96.79%**. This is worth knowing generally: **the duplicate-test convention is not
+   uniform across the unit**, and copying the neighbouring function's convention is wrong.
+2. **The vertex loop tests the material *before* the duplicate test, the edge loop after.**
+   Retail's vertex loop loads the vertex material and tests the winding bit first
+   (`lwz r3,20(r30)` / `lbzx` / the `and`/`xor`/`or.` pair / `bne`, 0x80249A60-0x80249A90) and only
+   then does the `spDupVertexList` `lwz`/`lbzx`/`cmplw`/`beq` (0x80249A94). The edge loop is the
+   other way round. Not a generalisation - read it per loop.
+3. **The `else` branch's six duplicate-list stores are unrolled.** Written as two `for (k < 3)`
+   loops mwceppc emits a loop; retail reloads `sDupPrimitiveCheckCount` and the list base before
+   each of the six stores (six `lbz -29752(r13)` and six `lwz -2625x(r13)` between 0x80249F00 and
+   0x80249F60). Spelling them out took the box function **96.79% -> 98.30%**.
+
+`point` and `normal` are declared `point` first (retail has `point` at the lower slot, `152(r1)`,
+and `normal` at `164(r1)`; the three `CVector3f::Zero()` inits at 0x802497FC-0x80249804 confirm it).
+This measured as 98.30 -> 98.31, i.e. it is the right shape but is not what closes the gap.
+
+## `MovingAABoxCollisionCheck_Cached`: what the last 1.7% actually is
+
+Ours is 2420 bytes, byte-for-byte the same size as retail, and the **mnemonic streams are
+identical** except two places (verified by diffing both streams instruction by instruction; 16
+hunks, all in the prologue or the one `Edge` call setup). The cause is a single extra 12-byte
+local:
+
+```
+retail  movedAABB at 200(r1)   frame 0x840   dir copies at 104(r1) and 92(r1), Edge gets r17
+ours    movedAABB at 212(r1)   frame 0x850   dir copies at 116(r1), 104(r1) and 92(r1)
+```
+
+Retail passes `dir` to `MovingAABoxCollisionCheck_Edge` **by register** (`mr r6,r17`, 0x80249C88 -
+no copy at all) and copies it only for the two calls that need a separate object. We make **three**
+copies, and the third is the extra local that shifts every slot above it by 12 and the frame by
+16. The prologue difference (`xsmaddmsp`/`xxsel` pairing and `stmw r14` at 2008 vs 1992) is a
+downstream effect of that shift, not a separate cause.
+
+**Three spellings tried, all measured, all worse - the next run should not repeat them:**
+
+| spelling | box function |
+|---|---|
+| bare `dir` at all three call sites (current source) | **98.31%** |
+| one named `CVector3f dirCopy(dir)` passed to all three | 97.14% |
+| one named copy passed to the two by-value calls, `Edge` left spelling `dir` | 96.00% |
+| a named copy bound only at the `BoxVertexTri` call site | 96.35% |
+
+Every one of them still produced three copies. **The conclusion is that this is not a source
+spelling problem at all** - mwceppc makes a fresh copy per *by-value* call argument regardless of
+how the argument is written, and the only way to stop it is to stop passing `CVector3f` by value.
+That means changing `MovingAABoxCollisionCheck_Edge`'s third parameter to a reference, **which its
+mangled name forbids** (`...12>9CVector3fRd...` is by value, and both the declaration in
+`include/WorldFormat/CMetroidAreaCollider.hpp` and the `MovingAABoxCollisionCheck_Edge` symbol in
+`config/G2ME01/symbols.txt` agree). So the 1.7% is very likely **not reachable from this
+translation unit's source at all**, and the next run should treat the box function as done at
+98.31% and spend its budget on the sphere function instead.
+
+## `MovingSphereCollisionCheck_Cached`: what is still missing
+
+At 42.77% with 834 instructions against retail's 1042. Two things, both measured:
+
+* **The prologue differs by four FPR-save instructions** - retail saves more of `f31`-`f24` and
+  pairs them differently (`stfd`/`psq_st`/`xsnmaddmsp` vs ours). That is a register-pressure
+  consequence of the body, not a source choice.
+* **One 87-instruction block at retail[180:267] has no counterpart in ours at all** (hunk #18, the
+  single largest divergence). That is a real missing piece of program, not scheduling. It sits
+  immediately after the `GetNormal__17CCollisionSurface` call and the `endHeight > radius` test, so
+  it is almost certainly the **`TriangleEdgeNormal` / `outsideEdges` computation**: retail's three
+  `bl 8001994c <Cross__9CVector3fFRC9CVector3fRC9CVector3f>` at 0x8024AC74, 0x8024AD04 and 0x8024AD94
+  are three separately-inlined copies of it, each followed by a `fcmpo cr0,f1,f0` against
+  `lfs f0,-18036(r2)` (0.0f), and each result is stored as a *byte* to `20(r1)`, `21(r1)` and
+  `22(r1)` rather than kept in a bool array. **Next run: spell `outsideEdges` as three separate
+  `bool` locals written straight through, not as `bool outsideEdges[3]`, and see whether the block
+  appears.** That is the single highest-value untried idea on this function and it is cheap.
+
+## Notes for the next run
+
+* **The seven accessors now exist.** Any other unit wanting to walk a
+  `CCollisionPrimitiveData`'s arrays can; `fn_80257540` resolves at link time and
+  `include/WorldFormat/CCollisionPrimitiveData.hpp` is the place to look.
+* **`GetTriangle` is no longer the blocker for this unit** - attempt 1's `NEW:` item can be closed.
+  The binding constraint on the remaining functions is the missing `CCollisionCache` class
+  (attempt 3's finding, unchanged), not the triangle accessor.
+* **`MovingSphereCollisionCheck_Cached` is the best remaining target in the unit**: 4168 B, real
+  Prime 1 source already in place, one identified 87-instruction hole, and it needs no new
+  infrastructure. It is the only item-listed function in this unit that is neither matched nor
+  diagnosed as unreachable.
+* **Attempt 2's `fn_` technique does not apply here** - all thirteen of those are matched, and the
+  one that is not (`fn_80248E04`, 92 B) attempt 2 proved unreachable.
+* Two attempt-3 measurements re-confirmed unchanged on this tree and still not chased:
+  `AABoxCollisionCheck` 65.28% (by-value and by-reference `min`/`max` measure identically),
+  `MovingAABoxCollisionCheck_Edge` 78.31%, `__ct__CMovingAABoxComponents` 23.25%.
+
+## Attempt 5 (lane 9) — PASS by goal_check: 40 -> 41 / 58, unit fuzzy 49.75 -> 49.95
+
+Per function (before% -> after%):
+- MovingAABoxCollisionCheck_Cached(CCollisionCache const&-leaf variant, COctreeLeafCache) : 0.9 stub -> 100.0. Prime 1 body needed edits (below).
+- MovingAABoxCollisionCheck_Edge : 78.31 -> 78.31 (unchanged; signature changed, see config note).
+- AABoxCollisionCheck 65.28, AABoxCollisionCheck_Cached(leaf) 74.41, MovingSphereCollisionCheck_Cached 0.88: not touched this run.
+
+Edits to Prime 1's source that made it match:
+1. CCollisionInfo ctor needs a trailing `static_cast<ushort>(-1)`.
+2. `extent` = `(max-min)*0.5f` inline; GetHalfExtent() makes an out-of-line call retail lacks (84.09 -> 90.44).
+3. Vertex loop tests `vertMat & (1ull << kMT_NoEdgeCollision)` BEFORE the duplicate-vertex check (90.44 -> 98.31).
+4. `dir` copy: Edge must take `const CVector3f& dir` (not by value). Removes the third by-value copy (98.31 -> 99.98).
+5. Declare `normal` before `point` (stack slots 152/164 were swapped) (99.98 -> 100.0).
+New accessors in CCollisionPrimitiveData.hpp (GetVert, GetEdge, Get*Material, GetTriangleVertexIndices via fn_80257540, GetTriangleEdgeIndices).
+
+CONFIG CHANGE REQUIRED (already applied in this tree, gate.sh + goal_check pass with it): config/G2ME01/symbols.txt line 10325, the Edge mangling's 4th arg `9CVector3f` -> `RC9CVector3f`. The old by-value mangling was a project label. Without it Edge goes unpaired and the box function stays at 99.98.
+
+Measured NOT to help (earlier attempts, still valid): bare dir x3 98.31; one named dirCopy 97.14; one copy for two by-value calls 96.00; named copy only at BoxVertexTri 96.35.

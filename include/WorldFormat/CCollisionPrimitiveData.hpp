@@ -3,11 +3,12 @@
 
 #include "types.h"
 
-class CCollisionEdge;
+#include "Kyoto/Math/CVector3f.hpp"
+#include "WorldFormat/CCollisionEdge.hpp"
+
 class CCollisionSurface;
 class CCollisionPrimitiveData;
 class CTransform4f;
-class CVector3f;
 
 // retail fn_80257A14: the unit's out-of-line `GetTriangle(ushort)`, with the hidden return
 // pointer of a 48-byte `CCollisionSurface` spelled out as the first parameter - r3 is the
@@ -25,6 +26,10 @@ extern "C" void fn_80257A14(CCollisionSurface* out, const CCollisionPrimitiveDat
 // `src/MetroidPrime/main.cpp`'s `__dt__18CGameGlobalObjectsFv`. C linkage, so the name is the one
 // `config/G2ME01/symbols.txt` declares.
 extern "C" void* __dt__23CCollisionPrimitiveDataFv(CCollisionPrimitiveData* self, int flag);
+
+// retail `fn_80257540` (0xA4 bytes, in `auto_03_80255128_text`): the out-of-line
+// `GetTriangleVertexIndices(ushort, ushort[3])`. Both `Moving*Check_Cached` bodies reach it by `bl`.
+extern "C" void fn_80257540(const CCollisionPrimitiveData* self, ushort index, ushort* indicesOut);
 
 // Shared collision-array view. COBBTree owns its arrays through SIndexData instead.
 class CCollisionPrimitiveData {
@@ -46,6 +51,16 @@ public:
 
   CCollisionSurface GetTriangle(ushort index) const;
   CCollisionSurface GetTriangle(ushort index, const CTransform4f* xf) const;
+
+  const CVector3f& GetVert(int idx) const { return mVertices[idx]; }
+  const CCollisionEdge& GetEdge(int idx) const { return mEdges[idx]; }
+  u64 GetVertMaterial(int idx) const { return mMaterials[mVertexMaterials[idx]]; }
+  u64 GetEdgeMaterial(int idx) const { return mMaterials[mEdgeMaterials[idx]]; }
+  u64 GetTriangleMaterial(int idx) const { return mMaterials[mSurfaceMaterials[idx]]; }
+  void GetTriangleVertexIndices(ushort idx, ushort indicesOut[3]) const {
+    fn_80257540(this, idx, indicesOut);
+  }
+  const ushort* GetTriangleEdgeIndices(ushort idx) const { return &mSurfaceIndices[idx * 3]; }
 
 protected:
   int mMaterialCount;

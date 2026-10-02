@@ -593,11 +593,129 @@ bool CMetroidAreaCollider::MovingAABoxCollisionCheck_Cached(
 
 bool CMetroidAreaCollider::MovingAABoxCollisionCheck_Cached(
     const COctreeLeafCache& leafCache, const CAABox& aabb, const CMaterialFilter& filter,
-    const CMaterialList& matList, CVector3f dir, float d, CCollisionInfo& infoOut, double& dOut) {
-  dOut = d;
+    const CMaterialList& matList, CVector3f dir, float mag, CCollisionInfo& infoOut,
+    double& dOut) {
+  dOut = mag;
   ResetInternalCounters();
-  // TODO: test swept box faces, vertices and edges against cached triangles.
-  return false;
+
+  CVector3f moveVec = mag * dir;
+  CMovingAABoxComponents components(aabb, dir);
+
+  CAABox movedAABB = components.mAabb;
+  movedAABB.AccumulateBounds(aabb.GetMinPoint() + moveVec);
+  movedAABB.AccumulateBounds(aabb.GetMaxPoint() + moveVec);
+
+  CVector3f center = movedAABB.GetCenterPoint();
+  CVector3f extent = (movedAABB.GetMaxPoint() - movedAABB.GetMinPoint()) * 0.5f;
+  bool ret = false;
+
+  CVector3f normal(CVector3f::Zero());
+  CVector3f point(CVector3f::Zero());
+
+  for (int i = 0; i < leafCache.GetNumLeaves(); ++i) {
+    const CAreaOctTree::Node& node = leafCache.GetLeaf(i);
+    if (movedAABB.DoBoundsOverlap(node.GetBoundingBox())) {
+      CAreaOctTree::TriListReference list = node.GetTriangleArray();
+      const CAreaOctTree& owner = node.GetOwner();
+      int listSize = list.GetSize();
+      for (int j = 0; j < listSize; ++j) {
+        ushort triIdx = list.GetAt(j);
+        if (sDupPrimitiveCheckCount != spDupTriangleList[triIdx]) {
+          spDupTriangleList[triIdx] = sDupPrimitiveCheckCount;
+          ++gTrianglesProcessed;
+          u64 matValue = owner.GetTriangleMaterial(triIdx);
+          CMaterialList triMat(matValue);
+          if (filter.Passes(triMat)) {
+            ushort vertIndices[3];
+            owner.GetTriangleVertexIndices(triIdx, vertIndices);
+            CCollisionSurface surf(owner.GetVert(vertIndices[0]), owner.GetVert(vertIndices[1]),
+                                   owner.GetVert(vertIndices[2]), matValue);
+
+            if (CollisionUtil::TriBoxOverlap(center, extent, surf.GetVert(0), surf.GetVert(1),
+                                             surf.GetVert(2)) == true) {
+              bool triRet = false;
+              double d = dOut;
+              if (MovingAABoxCollisionCheck_BoxVertexTri(surf, aabb, components.mVertIdxs, dir,
+                                                         d, normal, point) &&
+                  d < dOut) {
+                triRet = true;
+                infoOut = CCollisionInfo(point, matList, triMat, normal, static_cast< ushort >(-1));
+                ret = true;
+                dOut = d;
+              }
+
+              for (int k = 0; k < 3; ++k) {
+                int vertIdx = vertIndices[k];
+                u64 vertMatValue = owner.GetVertMaterial(vertIdx);
+                if (!(vertMatValue & (1ull << kMT_NoEdgeCollision))) {
+                  if (sDupPrimitiveCheckCount != spDupVertexList[vertIdx]) {
+                    spDupVertexList[vertIdx] = sDupPrimitiveCheckCount;
+                    const CVector3f& vtx = owner.GetVert(vertIdx);
+                    if (movedAABB.PointInside(vtx)) {
+                      d = dOut;
+                      if (MovingAABoxCollisionCheck_TriVertexBox(vtx, aabb, dir, d, normal,
+                                                                 point) &&
+                          d < dOut) {
+                        CMaterialList vertMat(vertMatValue);
+                        triRet = true;
+                        infoOut = CCollisionInfo(point, matList, vertMat, normal,
+                                                 static_cast< ushort >(-1));
+                        ret = true;
+                        dOut = d;
+                      }
+                    }
+                  }
+                }
+              }
+
+              const ushort* edgeIndices = owner.GetTriangleEdgeIndices(triIdx);
+              for (int k = 0; k < 3; ++k) {
+                int edgeIdx = edgeIndices[k];
+                if (sDupPrimitiveCheckCount != spDupEdgeList[edgeIdx]) {
+                  spDupEdgeList[edgeIdx] = sDupPrimitiveCheckCount;
+                  u64 edgeMat = owner.GetEdgeMaterial(edgeIdx);
+                  if (!(edgeMat & (1ull << kMT_NoEdgeCollision))) {
+                    d = dOut;
+                    const CCollisionEdge& edge = owner.GetEdge(edgeIdx);
+                    if (MovingAABoxCollisionCheck_Edge(owner.GetVert(edge.GetVertIndex1()),
+                                                       owner.GetVert(edge.GetVertIndex2()),
+                                                       components.mEdges, dir, d, normal,
+                                                       point) &&
+                        d < dOut) {
+                      triRet = true;
+                      infoOut = CCollisionInfo(point, matList, CMaterialList(edgeMat), normal,
+                                           static_cast< ushort >(-1));
+                      ret = true;
+                      dOut = d;
+                    }
+                  }
+                }
+              }
+
+              if (triRet) {
+                moveVec = static_cast< float >(dOut) * dir;
+                movedAABB = components.mAabb;
+                movedAABB.AccumulateBounds(aabb.GetMinPoint() + moveVec);
+                movedAABB.AccumulateBounds(aabb.GetMaxPoint() + moveVec);
+                center = movedAABB.GetCenterPoint();
+                extent = (movedAABB.GetMaxPoint() - movedAABB.GetMinPoint()) * 0.5f;
+              }
+            } else {
+              const ushort* edgeIndices = owner.GetTriangleEdgeIndices(triIdx);
+              spDupEdgeList[edgeIndices[0]] = sDupPrimitiveCheckCount;
+              spDupEdgeList[edgeIndices[1]] = sDupPrimitiveCheckCount;
+              spDupEdgeList[edgeIndices[2]] = sDupPrimitiveCheckCount;
+              spDupVertexList[vertIndices[0]] = sDupPrimitiveCheckCount;
+              spDupVertexList[vertIndices[1]] = sDupPrimitiveCheckCount;
+              spDupVertexList[vertIndices[2]] = sDupPrimitiveCheckCount;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return ret;
 }
 
 bool CMetroidAreaCollider::MovingAABoxCollisionCheck_TriVertexBox(const CVector3f& vert,
@@ -639,7 +757,7 @@ bool CMetroidAreaCollider::MovingAABoxCollisionCheck_BoxVertexTri(
 
 bool CMetroidAreaCollider::MovingAABoxCollisionCheck_Edge(
     const CVector3f& ev0, const CVector3f& ev1, const rstl::reserved_vector< SBoxEdge, 12 >& edges,
-    CVector3f dir, double& d, CVector3f& normal, CVector3f& point) {
+    const CVector3f& dir, double& d, CVector3f& normal, CVector3f& point) {
   bool ret = false;
 
   // Measured: retail builds `ev0d` at `464(r1)`, `ev1d` at `440(r1)` and `delta = ev0d - ev1d` at

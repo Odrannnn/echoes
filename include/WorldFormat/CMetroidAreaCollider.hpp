@@ -226,7 +226,7 @@ private:
                                                      double&, CVector3f&, CVector3f&);
   static bool MovingAABoxCollisionCheck_Edge(const CVector3f&, const CVector3f&,
                                              const rstl::reserved_vector< SBoxEdge, 12 >&,
-                                             CVector3f, double&, CVector3f&, CVector3f&);
+                                             const CVector3f&, double&, CVector3f&, CVector3f&);
 };
 
 NESTED_CHECK_SIZEOF(CMetroidAreaCollider, SBoxEdge, 0x70)
