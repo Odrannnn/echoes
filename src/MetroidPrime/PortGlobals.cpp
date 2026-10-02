@@ -972,6 +972,17 @@ extern "C" const float lbl_8041C500 = 1.0f;
 extern "C" const float lbl_8041C504 = 0.375f;
 extern "C" const float lbl_8041C508 = 0.25f;
 
+// `lbl_8041A920` - `.sdata2:0x8041A920`, `size:0x8`, `data:float` (`symbols.txt:21860`). It is in
+// the same unclaimed `.sdata2` region as the constants above, so the DOL link gets it from dtk's
+// `auto_11_8041A900_sdata2.o` and only the port needs it defined. `MetroidPrime/Carve800534BC.c`
+// declares it and loads it: retail's `fn_800534BC` is `lfs f1,lbl_8041A920@sda21(r0) ; blr`, and
+// the word it loads is `3f800000` = 1.0f (`objdump -s -j .sdata2 build/G2ME01/main.elf`; the
+// object's other four bytes are a 0.f pad, which is why `symbols.txt` sizes it 0x8).
+// **The carve cannot write `return 1.f;`:** a literal of its own gives that translation unit a
+// `.sdata2` section `config/G2ME01/splits.txt` does not claim for it, which is exactly the
+// `lbl_8041C398` failure above.
+extern "C" const float lbl_8041A920 = 1.0f;
+
 // ---------------------------------------------------------------------------
 // rstl free functions
 // ---------------------------------------------------------------------------

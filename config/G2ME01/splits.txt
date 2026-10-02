@@ -172,6 +172,9 @@ MetroidPrime/CArchMsgParmControllerStatus.cpp:
 MetroidPrime/Carve800534B0.c:
 	.text       start:0x800534B0 end:0x800534B4
 
+MetroidPrime/Carve800534BC.c:
+	.text       start:0x800534BC end:0x800534C4
+
 MetroidPrime/Carve80053594.c:
 	.text       start:0x80053594 end:0x8005359C
 
