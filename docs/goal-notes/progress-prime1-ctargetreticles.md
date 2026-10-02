@@ -985,3 +985,282 @@ to the remaining 0-2% functions** - the two at 1.10% (`DrawCrosshairs`) and 0.79
 - Files: `src/MetroidPrime/CTargetReticles.cpp`, `src/MetroidPrime/Cameras/CGameCameraGetPerspectiveMatrix.cpp` (new), `src/Kyoto/Graphics/CGraphicsCalculatePerspectiveMatrix.cpp` (new), `files.cmake`.
 - Verified: `goal_check.sh` PASS (counts 12441 -> 12443, gate.sh ok, no asm added).
 - Lesson: a new callee that is undefined in the port link needs its whole undefined chain carved out, not just its first hop.
+
+---
+
+# Seventh run (2026-10-02), lane 8 (wt-mp2-goal-L8) — PASS, 27 -> 30 / 44
+
+Re-measured first with `tools/fast_try.sh MetroidPrime/CTargetReticles`, as the third run's
+lesson requires: the tree is at the **sixth run's** state, **27/44, 23.019% fuzzy**. `git status`
+was clean at HEAD `c62e4d25`. So the tree agrees with the last section of this file, and the two
+reverted bodies the earlier runs mention (`CalculateRadiusWorld` at 99.375%,
+`Draw__17CTargetingManager` at 58.88%) are **still not in it**.
+
+## Result, measured
+
+`build/report.json`, `main/MetroidPrime/CTargetReticles`:
+
+| | before | after |
+| --- | --- | --- |
+| `matched_functions` | 27 | **30** |
+| `total_functions` | 44 | 44 |
+| `fuzzy_match_percent` | 23.019 | **25.927** |
+
+Whole build: `All: 35.23% fuzzy, 29.03% matched, 12.90% linked (12464 / 28465 functions)`;
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`build/gate-diff.log`:
+
+```
+matched  12461 -> 12464   linked 5863 -> 5863   (+4 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/CTargetReticles :: DrawCrosshairs__22CCompoundTargetReticleCFRC9CMatrix3fRC13CStateManager
+  +100%    main/MetroidPrime/CTargetReticles :: Draw__17COrbitPointMarkerCFRC13CStateManager
+  +100%    main/MetroidPrime/CTargetReticles :: Draw__22CCompoundTargetReticleCFRC13CStateManagerb
+  +100%    main/MetroidPrime/CTargetReticles :: Update__17COrbitPointMarkerFfRC13CStateManager
+  RENAMED  main/MetroidPrime/CTargetReticles :: DrawCrosshairs__22CCompoundTargetReticleCFRC9CMatrix3f
+           -> DrawCrosshairs__22CCompoundTargetReticleCFRC9CMatrix3fRC13CStateManager (100.00% -> 100.00%)
+no regression
+```
+
+`probe: 756 files, 0 failed, 0 errors; link: LINKED (291 undefined, 0 duplicates)` — unchanged
+at the recorded baseline, so **no gap-list edit was needed**;
+`check_symbol_names.py` -> `checked 525 units; 0 declared names are missing from their object`;
+`check_decl_order.py --unit MetroidPrime/CTargetReticles` -> `ok`;
+`./tools/goal_check.sh build/goal/item.json` -> **PASS**
+(`target rose: main/MetroidPrime/CTargetReticles: 27 -> 30 / 44 functions`, `no asm added`).
+
+| function | before | after | what it took |
+| --- | --- | --- | --- |
+| `Draw__22CCompoundTargetReticle` | 98.84% | **100.00%** | **a `symbols.txt` rename** - the first run's wall, resolved. See below. |
+| `DrawCrosshairs__22CCompoundTargetReticleCFRC9CMatrix3fRC13CStateManager` | 100% (as `...CFRC9CMatrix3f`) | **100.00%** | same rename; the body is unchanged and still 100% under the new name. |
+| `Update__17COrbitPointMarker` | 0.47% | **100.00%** | the third run's byte-exact body, **first try**, plus the port carve-out it was blocked on. |
+| `Draw__17COrbitPointMarker` | 99.18% | **100.00%** | hoist the quotient into a named local in **both** arms of the `if`, and let the `else` arm assign it - see the spelling table. |
+
+## The first run's `DrawCrosshairs` wall was a wrong symbol name, not a codegen wall
+
+The first run established the fact and stopped there: *"retail's `Draw` does `mr r3,r29;
+mr r5,r30; addi r4,r1,92; bl DrawCrosshairs` (0x800B0AA4) - it passes the state manager to a
+two-parameter function that never reads `r5`... Declaring our `DrawCrosshairs` as
+`(const CMatrix3f&, const CStateManager&)` does produce 100%, **but it renames our symbol** and
+`report_diff.py` reports `GONE`... So the real answer is upstream: either `config/G2ME01/symbols.txt`'s
+two-parameter name for `DrawCrosshairs` is wrong, or retail's source spelled the call differently."*
+
+**The first branch is the right one, and fixing it is a three-line change.** Re-measured here:
+
+- `include/MetroidPrime/CTargetReticles.hpp:77` literally carries `// Guessed name` on this
+  declaration. `symbols.txt:3350` was that guess:
+  `DrawCrosshairs__22CCompoundTargetReticleCFRC9CMatrix3f = .text:0x800AE33C`.
+- Retail's `Draw` passes `mr r5,r30` to **all six** draw calls in the `!hideLockOn` block
+  (0x800b0a84..0x800b0ae0), so it is not a stray move on one of them.
+- Inside 0x800AE33C..0x800AE4A8 the incoming `r5` is **never read**: the five writes to `r5` are
+  `addi r5,r29,320`, `addi r5,r1,40`, `li r5,0`, `stb r5,21(r1)`, `stb r5,33(r1)`. A dead
+  parameter is exactly what a source `(const CMatrix3f&, const CStateManager&)` produces.
+
+So: rename the `symbols.txt` line, add the parameter to the header, pass `mgr` at the call site.
+Both `Draw` **and** `DrawCrosshairs` reach 100% and the rename is reported as `RENAMED ... (100.00%
+-> 100.00%)` by `report_diff.py`, which is the case that tool was written for.
+
+Checked before doing it, because `check_symbol_names.py`'s docstring warns that a rename that does
+not match the object breaks all 86 REL links:
+
+- no REL has `DrawCrosshairs` in its undefined list
+  (`powerpc-eabi-nm -u` over all of `orig/G2ME01/files/RelProd/*.rel`, zero hits), so the DOL symbol
+  name is not a link input for any of them;
+- no source outside `src/MetroidPrime/CTargetReticles.cpp:317` calls it;
+- the address and `size:0x16C` are untouched, so nothing in the DOL's byte layout moves.
+  `sha1sum build/G2ME01/main.dol` still `6ef9b491...`.
+
+**The general form, for the next run in any unit: when retail's caller passes an argument a callee
+never reads, do not conclude that the *body* is unreachable. Check whether `symbols.txt`'s name for
+that callee is a guess, and if it is, rename it.** The first run spent its wall here.
+
+## `COrbitPointMarker::Update`: the third run's body landed first try, and its blocker is closed
+
+The third run wrote this body byte-exact and then reverted it because
+`CEulerAngles::FromQuaternion` opened in the port's link (`251 undefined` against the
+judge-owned baseline of 250 at the time; the baseline is now **291**). The body is in the third
+section of this file verbatim and is unchanged here - `GetInFreeLook()` already existed in
+`CPlayer.hpp`, so the only new accessor is `EPlayerOrbitState GetOrbitState() const { return
+mOrbitState; }` (methods only, no layout change).
+
+**With the body in, the link reads `292 undefined` and exactly one new name**:
+`CEulerAngles::FromQuaternion(CQuaternion const&)`. The probe's own diff also listed five other
+`NEW` lines, but those are pre-existing baseline drift, not from this change - the count moved by
+one.
+
+The sixth run's fix applies directly, and it is **the whole chain, not the first hop**:
+
+```cmake
+# CEulerAngles::FromQuaternion (with FromMatrix / sqrt / msl_sqrtf), which
+# COrbitPointMarker::Update calls; same carve-out, and the whole chain is in one file
+# because defining only the first hop trades one undefined symbol for two others.
+src/MetroidPrime/CEulerAnglesFromQuaternion.cpp
+```
+
+Measured: `291 -> 292` with the body alone, `292 -> 291` with the carve-out. **Net zero**, and
+`link: LINKED (291 undefined, 0 duplicates)`, which is what `--strict` asks.
+
+One thing the sixth run's pair of files does not have to worry about and this one does: the port
+builds with **GCC**, not MWCC, and retail's `msl_sqrtf` uses `__frsqrte` (a MW builtin with no host
+spelling) and defines `float sqrt(float)`, which collides with the `<math.h>` overload. So
+`src/MetroidPrime/CEulerAnglesFromQuaternion.cpp` carries the two retail bodies verbatim with one
+substitution - `sqrtf(...)` from libm where MSL's `sqrt` shim stood. It is a **port-only** file:
+`files.cmake` is included by `CMakeLists.txt` only, no `configure.py` unit claims it, and the DOL's
+own `src/MetroidPrime/CEulerAngles.cpp` is untouched.
+
+## `COrbitPointMarker::Draw`: 99.18% -> 100.00% is a named local in the *second* arm too
+
+Third run's `WALL:` on this function is **resolved**. Its ten spellings all left one thing
+unmoved, and the opcode diff says exactly what it is: after the `SetPerspective` call both `f29`
+(width) and `f30` (height) are dead, and retail reuses **f29** for `scale` while we used **f30**.
+That in turn cost the second int-to-double temporary pair, and with it 16 bytes of frame
+(336 against retail's 320).
+
+The fix is the "name the value a computation produces" rule, applied to **both** arms:
+
+```cpp
+float scale;
+if (mLastFreeOrbit) {
+  const float t = mInterpolationTimer / gpTweakTargeting->GetOrbitPointInterpolateInTime();
+  scale = 1.f - t;
+} else {
+  const float t = mInterpolationTimer / gpTweakTargeting->GetOrbitPointInterpolateOutTime();
+  scale = t;
+}
+```
+
+Retail's two arms are not mirror images, and that is the whole point:
+
+| arm | retail | what it means |
+| --- | --- | --- |
+| `if` | `fdivs f1,f2,f1` / `fsubs f29,f0,f1` (0x800abfa8) | quotient into a scratch register, `1.f -` straight into `scale` |
+| `else` | `fdivs f0,f0,f1` / `fmr f29,f0` (0x800abfc0) | quotient into `f0`, **copied** into `scale` |
+
+Written inline, both arms write `scale` directly and MW folds the copy away. The
+`scale = t` in the `else` arm is load-bearing and must stay.
+
+Measured this run, all with the surrounding code unchanged:
+
+| # | spelling | `Draw__17COrbitPointMarker` |
+| --- | --- | --- |
+| 1 | as the third run left it (inline in both arms) | 99.18% |
+| 2 | width local declared before height local | 99.11% |
+| 3 | `const CViewport& viewport = CGraphics::GetViewport();` then the two locals | 87.16% |
+| 4 | same, width first | 87.16% |
+| 5 | `float scale` written as one ternary | 99.18% (identical code) |
+| 6 | **hoist the quotient in the `if` arm only** | **99.41%** - register and frame both fixed |
+| 7 | (6) + `float scale = 0.f;` initialiser | 99.41% (identical code) |
+| 8 | (6) + `const float scale` declared at the `if` | 99.41% (identical code) |
+| 9 | (6) + parentheses round the `else` quotient | 99.41% (identical code) |
+| 10 | **hoist in both arms, `scale = t` in the `else`** | **100.00%** (kept) |
+| 11 | `scale = mInterpolationTimer; scale /= ...;` | 98.25% |
+
+Row 6 is the informative one: it already puts `scale` in f29 **and** restores retail's 320-byte
+frame and spill layout exactly (verified instruction by instruction - the prologue is now
+byte-identical, `stfd f31,304 / stfd f30,288 / psq_st f30,296 / stfd f29,272 / psq_st f29,280`
+and the `r1` offsets used are the same set as retail's). What it leaves is retail's one extra
+`fmr f29,f0`. So the lesson is not "hoist a quotient" - it is **hoist in every arm, and let the arm
+that retail copies go through the copy.**
+
+## Files changed
+
+- `src/MetroidPrime/CTargetReticles.cpp` - `COrbitPointMarker::Update` written (the third run's
+  byte-exact body); `DrawCrosshairs` given the dead `const CStateManager&`; `Draw`'s call site;
+  `Draw__17COrbitPointMarker`'s `scale` block; `#include "MetroidPrime/CEulerAngles.hpp"`.
+- `include/MetroidPrime/CTargetReticles.hpp` - one declaration, plus the comment saying why the
+  parameter is dead.
+- `include/MetroidPrime/Player/CPlayer.hpp` - one inline accessor, `GetOrbitState()`. Methods only,
+  no member added, no layout change.
+- `src/MetroidPrime/CEulerAnglesFromQuaternion.cpp` (new) - port-only carve-out, see above.
+- `files.cmake` - that one file listed, with the reason.
+- **`config/G2ME01/symbols.txt`, one line**, the change the first run asked for:
+  `DrawCrosshairs__22CCompoundTargetReticleCFRC9CMatrix3f` ->
+  `DrawCrosshairs__22CCompoundTargetReticleCFRC9CMatrix3fRC13CStateManager`
+  (same address `.text:0x800AE33C`, same `size:0x16C`). Not copied from anywhere; typed here.
+- No `asm`, no `configure.py`, no `splits.txt`, no gap-list entry, and **no new port symbol**
+  (291 before and after). `docs/HANDOFF.md` / `docs/RUNNING_THE_DECOMP.md` carry only the gate's
+  own derived-count rewrite, which the driver discards.
+
+`unit_fit.sh`: 15 extra symbols, 1904 bytes, against 10 at HEAD. The five new ones are the implicit
+destructors that a real body pulls in - `__dt__17COrbitPointMarkerFv` (104),
+`__dt__21TCachedToken<6CModel>Fv` (88), `__dt__Q24rstl77vector<...SOuterItemInfo...>Fv` (132) and
+friends. They are COMDAT weak copies that the retail linker and `mwldeppc` both discard, which is
+what the tool's own "harmless causes first" note describes; they are recorded here so the next run
+does not read them as a regression. This unit stays `NonMatching` and the flip is out of reach for
+now regardless.
+
+## Not attempted, and why (all re-measured or read this run)
+
+- **`DrawGrapplePoint` (572 B, 0.70%)** - Prime 1 has a direct ancestor
+  (`prime-ref/src/MetroidPrime/CTargetReticles.cpp:673`), and retail's body maps cleanly onto it
+  except for one thing: `TCastToPtr<19CScriptGrapplePoint>__FR7CEntity` at 0x800b0594 and then
+  `lbz r0,388(r3); rlwinm. r0,r0,25,31,31` - **bit 7 of a byte at 0x184**, i.e.
+  `CGrappleParameters::LockSwingTurn`. This repo has **no `CGrappleParameters` at all**
+  (`CScriptGrapplePoint` is `class CScriptGrapplePoint : public CActor {};` with the comment
+  "carries no members of its own that anything in this repo reaches"), and `CActor` here is
+  `CHECK_SIZEOF(CActor, 0x158)`, so placing that bit means inventing a member in another class at
+  an offset this tree does not model. The item says **do not** change class layouts to Prime 1's,
+  so this needs a real layout investigation first. Everything else in that body is available:
+  `GetGrappleIconScale/ScaleInactive/MinRadiusViewport/MaxRadiusViewport/Color/ColorInactive`,
+  `GetLockedGrapplePointColor`, `CColor::White()`, `CColor::Lerp` all exist, and the default case's
+  constant is `lfs f3,-29416(r2)` = `0x8041B0B8` = `0x3F490FDB` = **0.7853982f**, not Prime 1's
+  `1.f/6.f`.
+- **`CalculateRadiusWorld` (576 B, 1.35%)** - not re-applied. The second run's body is still in this
+  file and still worth 99.375%, but (a) it is not 100%, so it adds nothing to the count the judge
+  reads, and (b) it calls `TCastToPtr<12CSandwormEye>__FR7CEntity` (0x800ad0dc), whose definition
+  is in `src/MetroidPrime/TypesMatch.cpp` - a file `files.cmake` does not list - so it would need a
+  **third** carve-out. Its residual, re-read off retail this run, is still only the accumulator
+  register: retail case 0 is `fsubs f1,f27,f30`(dy) / `fsubs f0,f26,f29`(dz) /
+  `fcmpo cr0,f1,f0` / then `fsubs f2,f28,f31`(dx) / `fcmpo cr0,f1,f2`, against ours with `dy` in f2
+  and `dx` in f1. Retail's case 1 is the mirror image (`fcmpo cr0,f0,f1` then `fcmpo cr0,f2,f1`),
+  which is why Prime 1's single line with `min_val`/`max_val` swapped is the right shape. 12
+  spellings, none moved it; see the second run's table.
+- **`CalculateOrbitZoneReticlePosition` (380 B, 81.00%)** and **`Draw__17CTargetingManager`
+  (336 B, 22.04%)** - unchanged; the second run's bodies (82.20% and 58.88%) are in this file and
+  are re-appliable, but neither reaches 100% and both raise only the fuzzy average. The residual
+  in both is register allocation again (retail holds `this`/`mgr`/`lag` in `r28`-`r30` with
+  `stmw`/`lmw r27` where we spill individually; the two int-to-double results land in `f2`/`f3`
+  where retail has `f31`/`f30` then `fmr f2,f30; fmr f3,f31`).
+- **`__ct__22CCompoundTargetReticleFRC13CStateManageri` (2280 B, 59.40%)** - the largest single
+  unmatched function in the unit and the highest percentage. Read this run: retail's top is 320
+  bytes of frame against our 368, and it seeds the constructor from a **`.rodata` table at
+  0x803A0000** (twelve `lfs`/`stfs` into `mLagTargetPosition`..) plus a vtable call returning a
+  `CPlayerControlsTweak*` whose `+16` it copies into two word stores. Our top reads the same table,
+  so the body is close, but 2280 bytes is more than one item's budget from 59% to 100%.
+- `Update` / `UpdateCurrLockOnGroup` / `UpdateNextLockOnGroup` / `DrawCurrLockOnGroup` /
+  `DrawSeeker` / `DrawScanTargetGroup` / `DrawNextLockOnGroup` / `DrawOrbitZoneGroup`:
+  Echoes-specific (seeker missiles, radar paint, charge gauge, quarter-curve texture) - the first
+  run's classification, unchanged. `UpdateNextLockOnGroup` does have a Prime 1 ancestor
+  (`prime-ref:531`, ~45 lines) and every tweak it needs would have to be found as an accessor
+  first; not started.
+
+## Codegen rules learned (not `NEW:` items)
+
+- **A dead parameter in retail's call is evidence about the callee's declaration, not an
+  unreachable function.** If a caller sets an argument register that the callee never reads, the
+  retail source declared that parameter; check whether `symbols.txt`'s name for the callee is a
+  guess (this repo labels many of them `// Guessed name`) and rename it. `report_diff.py` reports a
+  rename as `RENAMED` when the size matches and the score does not fall, so the swap is free.
+- **Hoist a computed value into a named local in *every* branch of an `if`, not just the branch
+  that seems to need it.** Retail's `else` arm copies its result into the destination
+  (`fdivs f0,f0,f1 / fmr f29,f0`) where its `if` arm does not (`fdivs f1,f2,f1 / fsubs f29,f0,f1`);
+  spelling the `else` arm as `scale = t` is what reproduces the copy. Naming it in the `if` arm
+  alone already fixes the register and the frame (99.41%), and only the copy is left.
+- **A float register swap can cost a stack frame.** f29/f30 for `scale` decided whether the second
+  int-to-double conversion reused the first one's temporary pair or allocated a fresh one, and that
+  moved the whole spill region by 16 bytes. When a function is 99.x% with one register pair
+  swapped, diff the *prologue* before theorising about the body.
+- **`unit_fit.sh`'s "extra symbols" count rises by the implicit destructors a real body pulls in**
+  (5 here, all COMDAT weak). Not a regression, and not a flip blocker for a `NonMatching` unit.
+- The eighth run's `tools/probe_cc.sh` is stale for a source that pulls `musyx/musyx.h`: it has no
+  `-i extern/musyx/include` and no `MUSY_TARGET` defines, so it fails on `CAudioSys.hpp`. The flags
+  to use are the `cflags`/`mw_version` lines of the unit's own block in `build.ninja`.
+
+## What the next run should do
+
+Everything still unmatched here is either an Echoes-specific function with no Prime 1 ancestor, a
+0-2% function whose shape has to be discovered rather than ported, or a 99.x% register-allocation
+residual. The cheapest next target by distance is `CalculateRadiusWorld` (99.375% is already written
+down in the second section of this file; it needs the third carve-out, for
+`TCastToPtr<CSandwormEye>`, before it can be measured at all). The cheapest by size is
+`DrawOrbitZoneGroup` (724 B) or `UpdateNextLockOnGroup` (860 B), both of which need Echoes'
+`gpRender`/tweak accessor names identified from retail before any body can be written.

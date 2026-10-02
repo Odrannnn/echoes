@@ -12,6 +12,7 @@
 #include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/CEulerAngles.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/TCastTo.hpp"
@@ -314,7 +315,7 @@ void CCompoundTargetReticle::Draw(const CStateManager& mgr, bool hideLockOn) con
     if (!hideLockOn) {
       DrawCurrLockOnGroup(rot, mgr);
       DrawSeeker(rot, mgr);
-      DrawCrosshairs(rot);
+      DrawCrosshairs(rot, mgr);
       DrawScanTargetGroup(rot, mgr);
       DrawNextLockOnGroup(rot, mgr);
       DrawOrbitZoneGroup(rot, mgr);
@@ -350,7 +351,13 @@ void CCompoundTargetReticle::DrawSeeker(const CMatrix3f& rotation, const CStateM
   // TODO: scan/next-target seeker rendering.
 }
 
-void CCompoundTargetReticle::DrawCrosshairs(const CMatrix3f& rotation) const {
+// `mgr` is a dead parameter - retail passes it (0x800b0aa8 `mr r5,r30` ahead of the
+// `bl` at 0x800b0ab0, same shape as the five sibling draw calls around it) and the
+// body never reads the incoming r5 anywhere in 0x800AE33C..0x800AE4A8, so the
+// declaration carries it and `config/G2ME01/symbols.txt` is renamed to the two-
+// argument spelling to match.
+void CCompoundTargetReticle::DrawCrosshairs(const CMatrix3f& rotation,
+                                           const CStateManager& mgr) const {
   if (mNoDrawTicks <= 0 && mCrosshairsDrawScale > 0.f) {
     const_cast< TCachedToken< CModel >& >(mCrosshairs).IsLoaded();
     if (CModel* model = mCrosshairs.GetObject()) {
@@ -570,7 +577,66 @@ COrbitPointMarker::COrbitPointMarker(int playerIndex)
 bool COrbitPointMarker::CheckLoadComplete() { return mOrbitPointModel.IsLoaded(); }
 
 void COrbitPointMarker::Update(float dt, const CStateManager& mgr) {
-  // TODO: free-orbit state, target lag, azimuth and interpolation.
+  mCurrentTime += dt;
+  const CPlayer* player = mgr.GetPlayer(mPlayerIndex);
+  CPlayer::EPlayerOrbitState orbitState = player->GetOrbitState();
+  const CGameCamera& curCam = *mgr.GetCameraManager(mPlayerIndex)->GetCurrentCamera(mgr, true);
+
+  const bool freeOrbit =
+      (orbitState == CPlayer::kOS_OrbitPoint || orbitState == CPlayer::kOS_OrbitCarcass);
+
+  if (mLastFreeOrbit != freeOrbit) {
+    if (orbitState == CPlayer::kOS_OrbitPoint || orbitState == CPlayer::kOS_OrbitCarcass) {
+      ResetInterpolationTimer(gpTweakTargeting->GetOrbitPointInterpolateInTime());
+      mLagTargetPosition = !mCameraRelativeZ
+                               ? player->GetHUDOrbitTargetPosition() + CVector3f(0.f, 0.f, mZOffset)
+                               : CVector3f(player->GetHUDOrbitTargetPosition().GetX(),
+                                           player->GetHUDOrbitTargetPosition().GetY(),
+                                           mZOffset + curCam.GetTranslation().GetZ());
+      mLagAzimuth = CMath::Deg2Rad(45.f) +
+                    CEulerAngles::FromQuaternion(CQuaternion::FromMatrix(curCam.GetTransform()))
+                        .GetZ();
+    } else if (orbitState == CPlayer::kOS_NoOrbit) {
+      ResetInterpolationTimer(gpTweakTargeting->GetOrbitPointInterpolateOutTime());
+    } else {
+      ResetInterpolationTimer(0.01f);
+    }
+    mLastFreeOrbit = !mLastFreeOrbit;
+  }
+
+  if (mInterpolationTimer > 0.f) {
+    mInterpolationTimer = rstl::max_val(0.f, mInterpolationTimer - dt);
+  }
+
+  if (!mCameraRelativeZ) {
+    const CVector3f orbitPos = player->GetHUDOrbitTargetPosition();
+    const float targetZ = mZOffset + orbitPos.GetZ();
+    const float delta = targetZ - mLagTargetPosition.GetZ();
+    if (delta < 0.1f) {
+      mLagTargetPosition = orbitPos + CVector3f(0.f, 0.f, mZOffset);
+    } else if (delta < 0.f) {
+      mLagTargetPosition = CVector3f(orbitPos.GetX(), orbitPos.GetY(),
+                                    mLagTargetPosition.GetZ() - 0.1f);
+    } else {
+      mLagTargetPosition = CVector3f(orbitPos.GetX(), orbitPos.GetY(),
+                                    mLagTargetPosition.GetZ() + 0.1f);
+    }
+  } else {
+    mLagTargetPosition = CVector3f(player->GetHUDOrbitTargetPosition().GetX(),
+                                   player->GetHUDOrbitTargetPosition().GetY(),
+                                   mZOffset + player->GetHUDOrbitTargetPosition().GetZ());
+  }
+
+  if (mLastFreeOrbit) {
+    const CEulerAngles euler =
+        CEulerAngles::FromQuaternion(CQuaternion::FromMatrix(curCam.GetTransform()));
+    const float newAzimuth = CMath::Deg2Rad(45.f) + euler.GetZ();
+    const float aziDelta = newAzimuth - mAzimuth;
+    if (player->GetInFreeLook()) {
+      mLagAzimuth += aziDelta;
+    }
+    mAzimuth = newAzimuth;
+  }
 }
 
 void COrbitPointMarker::Draw(const CStateManager& mgr) const {
@@ -586,11 +652,22 @@ void COrbitPointMarker::Draw(const CStateManager& mgr) const {
       gpRender->SetPerspective(curCam.GetFov(), vpWidth, vpHeight, curCam.GetNearClipDistance(),
                                curCam.GetFarClipDistance());
 
+      // Both arms hoist their quotient into a named local, and the `else` arm's
+      // `scale = t` is load-bearing, not noise: retail's else arm is
+      // `fdivs f0,f0,f1 / fmr f29,f0` (0x800abfc0) while its `if` arm is
+      // `fdivs f1,f2,f1 / fsubs f29,f0,f1` (0x800abfa8) - the quotient is computed into a
+      // scratch register and copied into `scale` only in that arm. Written inline the two
+      // arms both write `scale` directly and MW puts `scale` in f30 instead of f29, which
+      // also costs a 16-byte frame (336 against retail's 320) because the second int-to-double
+      // conversion then needs its own temporary pair. Hoisting only the `if` arm gets the
+      // register and the frame right and scores 99.41%; hoisting both is 100%.
       float scale;
       if (mLastFreeOrbit) {
-        scale = 1.f - mInterpolationTimer / gpTweakTargeting->GetOrbitPointInterpolateInTime();
+        const float t = mInterpolationTimer / gpTweakTargeting->GetOrbitPointInterpolateInTime();
+        scale = 1.f - t;
       } else {
-        scale = mInterpolationTimer / gpTweakTargeting->GetOrbitPointInterpolateOutTime();
+        const float t = mInterpolationTimer / gpTweakTargeting->GetOrbitPointInterpolateOutTime();
+        scale = t;
       }
 
       const CColor& color = gpTweakTargeting->GetOrbitPointModelColor();

@@ -341,6 +341,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Cameras/CGameCameraSetAspectRatio.cpp
     # CGameCamera::GetPerspectiveMatrix, which CalculateClampedScale calls; same carve-out.
     src/MetroidPrime/Cameras/CGameCameraGetPerspectiveMatrix.cpp
+    # CEulerAngles::FromQuaternion (with FromMatrix / sqrt / msl_sqrtf), which
+    # COrbitPointMarker::Update calls; same carve-out, and the whole chain is in one file
+    # because defining only the first hop trades one undefined symbol for two others.
+    src/MetroidPrime/CEulerAnglesFromQuaternion.cpp
     src/MetroidPrime/ScriptObjects/CScriptCameraMarkViewed.cpp
     src/MetroidPrime/ScriptObjects/CScriptActorCheckActorRenderOnly.cpp
     # FogOverlay's (module 23) two empty virtual overrides, `fn_23_624` and `fn_23_628` - each a

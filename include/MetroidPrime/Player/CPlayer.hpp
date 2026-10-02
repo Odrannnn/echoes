@@ -315,6 +315,10 @@ public:
   // `lbz r0,1522(r3)` on the CPlayer pointer, i.e. the free-look state pair at 0x5F1/0x5F2.
   // No layout change: inline readers of the two existing members.
   bool GetInFreeLook() const { return mInFreeLook; }        // 0x5f1
+  // `COrbitPointMarker::Update` reads the orbit state as a plain `lwz` from 0x3a4
+  // (retail 0x800ac1c4), i.e. it is a 4-byte enum and not a bitfield. Inline reader
+  // of the existing member; no layout change.
+  EPlayerOrbitState GetOrbitState() const { return mOrbitState; } // 0x3a4
   bool GetLookButtonHeld() const { return mLookButtonHeld; } // 0x5f2
   bool IsOnGround() const;
   CTweakPlayerControls* GetTweakPlayerControls() const;

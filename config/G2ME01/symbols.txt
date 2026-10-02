@@ -3347,7 +3347,7 @@ UpdateTargetParameters__22CCompoundTargetReticleFR25CTargetReticleRenderStateRC1
 DrawOrbitZoneGroup__22CCompoundTargetReticleCFRC9CMatrix3fRC13CStateManager = .text:0x800AD258; // type:function size:0x2D4 align:4
 DrawNextLockOnGroup__22CCompoundTargetReticleCFRC9CMatrix3fRC13CStateManager = .text:0x800AD52C; // type:function size:0x9B4
 DrawScanTargetGroup__22CCompoundTargetReticleCFRC9CMatrix3fRC13CStateManager = .text:0x800ADEE0; // type:function size:0x45C
-DrawCrosshairs__22CCompoundTargetReticleCFRC9CMatrix3f = .text:0x800AE33C; // type:function size:0x16C
+DrawCrosshairs__22CCompoundTargetReticleCFRC9CMatrix3fRC13CStateManager = .text:0x800AE33C; // type:function size:0x16C
 DrawSeeker__22CCompoundTargetReticleCFRC9CMatrix3fRC13CStateManager = .text:0x800AE4A8; // type:function size:0x494
 DrawCurrLockOnGroup__22CCompoundTargetReticleCFRC9CMatrix3fRC13CStateManager = .text:0x800AE93C; // type:function size:0x1BD8
 DrawGrapplePoint__22CCompoundTargetReticleCFRC19CScriptGrapplePointfRC13CStateManagerRC9CMatrix3fb = .text:0x800B0514; // type:function size:0x23C
