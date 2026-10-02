@@ -46,11 +46,16 @@
 //
 // The two differing callees are each the MWCC `destroy<T>(T*)` / element-copy forwarder shape, 0x20
 // bytes (`symbols.txt:8316` for `fn_801FEC64`, `:8285` for `fn_801FDAA4`), and each is one `bl` to
-// the body it forwards to (`fn_801FEC84`, `fn_801FDAC4`).  Neither is claimed by anything in this
-// tree (measured: `grep -rn "fn_801FEC64\|fn_801FDAA4" src/ include/` is empty), so both need a
-// stand-in in `src/MetroidPrime/PortLinkStubs.cpp` - see `stub_189`/`stub_190` there.  Carving
-// either would only move the port's link gap one function along, which is the trade those stubs
-// record.
+// the body it forwards to (`fn_801FEC84`, `fn_801FDAC4`).  **Superseded in part**: this paragraph
+// used to read that neither is claimed by anything in this tree (measured then:
+// `grep -rn "fn_801FEC64\|fn_801FDAA4" src/ include/` empty), so both need a stand-in in
+// `src/MetroidPrime/PortLinkStubs.cpp` - `stub_189` and `stub_190` there.  `fn_801FDAA4` and
+// `fn_801FDAC4` have since been claimed for real by `ScriptObjects/Carve801FDAA4.c` (a `Matching`
+// unit, 0x801FDAA4..0x801FDAE8, both functions 100.00%), so `stub_190` is **deleted** and the
+// call this unit makes at 0x801FF990 now resolves to a real body rather than a stand-in.  What is
+// still true is the half about `fn_801FEC64`: it remains unclaimed and still needs `stub_189`,
+// because `fn_801FEC84` behind it is a real body and claiming either would only move the port's
+// link gap one function along - which is the trade those stubs record.
 //
 // The internal call edges line up one for one as well: `fn_801FF8A0` calls `fn_801FF9B8` at
 // 0x801FF908 and `fn_801FF94C` at 0x801FF91C, `fn_801FF94C` calls `fn_801FF96C` at 0x801FF958.

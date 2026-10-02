@@ -959,23 +959,6 @@ extern "C" void stub_188() {}
 extern "C" void stub_189() asm("fn_801FEC64");
 extern "C" void stub_189() {}
 
-// fn_801FDAA4 - retail 0x801FDAA4, 0x20 bytes (`config/G2ME01/symbols.txt:8285`), the destructor of
-// the same 0x2C-byte element `Carve801FF8A0.cpp` destroys. It is itself a forwarder:
-// `stwu`/`mflr`/`stw` / `bl fn_801FDAC4` / `mtlr`/`addi`/`blr`, the same trade as `stub_189` above.
-//
-// Asked for by the port because `src/MetroidPrime/ScriptObjects/Carve801FF8A0.cpp` (Matching,
-// 0x801FF8A0..0x801FFA20) reproduces `fn_801FF96C` byte for byte, and that body's `bl fn_801FDAA4`
-// at 0x801FF990 is in retail's bytes, so the carve cannot drop the call. For the DOL nothing is
-// needed: dtk's own auto object for the unclaimed range that holds it defines it (this run
-// `auto_03_801FA3CC_text.o`, 0x801FA3CC..0x801FDBE0), and this file is not in `configure.py`, so
-// the stub cannot reach main.dol. The measurement for both this block and `stub_189` is on that
-// stub's comment.
-//
-// This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
-// claim that fn_801FDAA4 is decompiled - it is not.
-extern "C" void stub_190() asm("fn_801FDAA4");
-extern "C" void stub_190() {}
-
 // fn_8004509C - retail 0x8004509C, 0x28 = 40 bytes (`config/G2ME01/symbols.txt:1277`), the
 // per-element copy `Carve80045014.c`'s `fn_8004507C` calls at 0x80045088. Asked for by the port
 // because that unit (Matching, 0x80045014..0x8004509C) reproduces its two functions byte for byte,
@@ -1113,6 +1096,38 @@ extern "C" void stub_197() {}
 // `stub_196` and `stub_197` above make for their carves' callees.
 extern "C" void stub_198() asm("fn_801FD924");
 extern "C" void stub_198() {}
+
+// fn_801FDAE8 - retail 0x801FDAE8, 0x74 = 116 bytes (`config/G2ME01/symbols.txt:8287`), the
+// 0x2C-byte element's deleting destructor: store the vtable 0x803B7BE4 into +0x0, run `fn_801FD6F0`
+// (with `li r4,-1`) over the member at +0x18, release the `rstl::basic_string` at +0x4 through
+// `internal_dereference__Q24rstl66basic_string<...>`, and `Free__7CMemoryFPCv` only when the
+// caller's flag is positive (`extsh. r0,r31 / ble`). Asked for by the port because
+// `src/MetroidPrime/ScriptObjects/Carve801FDAA4.c` (Matching, 0x801FDAA4..0x801FDAE8) reproduces
+// `fn_801FDAC4` byte for byte and that body's `li r4,-1` at 0x801FDACC and `bl fn_801FDAE8` at
+// 0x801FDAD4 are in retail's bytes, so the carve cannot drop the call. This block also
+// **retires `stub_190`**: that stub stood in for `fn_801FDAA4`, which the new unit now defines for
+// real, and leaving both would be two definitions of one symbol in the port's flat link. One
+// function stub out, one in - the total does not move.
+//
+// For the DOL nothing is needed: 0x801FDAE8 is exactly 0x0 bytes past that unit's claim end, so it
+// stays retail's and dtk emits its own bytes from `auto_03_801FDAE8_text.o` (0x801FDAE8..0x801FDBE0,
+// the `auto_*` object this claim splits out of `auto_03_801FD924_text`); this file is not in
+// `configure.py`, so the stub cannot reach main.dol. The port link does not carry that object,
+// which is why its gap would grow by this symbol: measured in this tree without this block,
+// `tools/link_check.sh` reports `FAIL duplicates went 0 -> 1 / DUP fn_801FDAA4` and
+// `FAIL undefined went 291 -> 292`, and `python3 tools/link_gap.py --rebuild` prints
+// `gap grew: fn_801FDAE8 is not in port_link_gap_list.md`; with the block in place the same
+// command prints `291 unique undefined symbols, 0 duplicate definitions` and `285  MISSING`, all
+// accounted for.
+//
+// This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
+// claim that fn_801FDAE8 is decompiled - it is not, and `docs/research/port_link_gap.md` keeps the
+// symbol listed as still missing. Claiming it instead only moves the same gap one function along:
+// its 0x74 bytes need the `.data` vtable `lbl_803B7BE4` (0x803B7BE4, `symbols.txt:18345`) as well as
+// the bodies of `fn_801FD6F0` (0x801FD6F0, 0x84) and that string release, which are themselves
+// unclaimed. The same trade `stub_196`/`stub_197`/`stub_198` above make for their carves' callees.
+extern "C" void stub_199() asm("fn_801FDAE8");
+extern "C" void stub_199() {}
 
 
 // Data objects. A vtable or typeinfo stub is zero-filled: harmless to take the
