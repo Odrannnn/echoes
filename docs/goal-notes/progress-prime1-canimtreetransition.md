@@ -324,3 +324,30 @@ Also checked, and *not* stale: the first run recorded that
 baseline reports no regression anywhere, so that disagreement is not reproducing here.
 
 WALL: __ct__19CAnimTreeTransitionFbRCQ24rstl25ncrc_ptr<13CAnimTreeNode>RCQ24rstl25ncrc_ptr<13CAnimTreeNode>RC13CCharAnimTimebiRCQ24rstl66basic_string 88.41% - MW hoists the `*a` load above the `bl fn_802AA708`; nine spellings of the mLoopA initialiser and the two ctor-body forms all score 88.41% or worse, and only a comma expression that passes the wrong hash moves it, so what is left is the register allocator
+
+---
+
+# Third run (lane 9, 2026-10-02) - 12/18 -> 13/18
+
+Re-measured on clean HEAD b127c5ae: 12/18, 7-arg `__ct__` 88.41%, AVFTP 97.58%, VClone 94.13%.
+Not stale.
+
+**The 7-arg `__ct__` is now 100%** (supersedes the previous run's `WALL:` - that wall was wrong
+about the spellings; it is not register allocation). The hoist of `*a` above `bl fn_802AA708` goes
+away when the call is an argument to a small inline helper taking the node pointer and the hash:
+
+```cpp
+static inline bool loop_state(const rstl::ncrc_ptr< CAnimTreeNode >& a, uint hash) {
+  return a->VGetBoolPOIState(hash);
+}
+... , mLoopA(loop_state(a, fn_802AA708()))
+```
+
+The hash call is evaluated first and the `*a` load happens inside the inlined body, as in retail.
+Only `src/Kyoto/Animation/CAnimTreeTransition.cpp` touched.
+
+Tried and rejected this run: in `VClone`, copying `mInitialized` to a local before the `rs_new`
+(94.13% -> 86.75%, reverted). AVFTP and VClone unchanged.
+
+`./tools/goal_check.sh build/goal/item.json` -> `PASS`, `target rose: 12 -> 13 / 18`,
+matched 12412 -> 12413, no asm added.

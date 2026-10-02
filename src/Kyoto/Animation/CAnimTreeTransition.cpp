@@ -34,6 +34,10 @@ extern "C" uint fn_802AA708() {
   return hash;
 }
 
+static inline bool loop_state(const rstl::ncrc_ptr< CAnimTreeNode >& a, uint hash) {
+  return a->VGetBoolPOIState(hash);
+}
+
 CAnimTreeTransition::CAnimTreeTransition(const bool characterSpaceBlend,
                                          const rstl::ncrc_ptr< CAnimTreeNode >& a,
                                          const rstl::ncrc_ptr< CAnimTreeNode >& b,
@@ -43,7 +47,7 @@ CAnimTreeTransition::CAnimTreeTransition(const bool characterSpaceBlend,
 , mTransDur(duration)
 , mTimeInTrans(0.f)
 , mRunA(runA)
-, mLoopA(a->VGetBoolPOIState(fn_802AA708()))
+, mLoopA(loop_state(a, fn_802AA708()))
 , mInitialized(false) {}
 
 CAnimTreeTransition::CAnimTreeTransition(const bool characterSpaceBlend,
