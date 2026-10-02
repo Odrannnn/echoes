@@ -2,6 +2,7 @@
 
 #include "Kyoto/Alloc/CMemory.hpp"
 #include "Kyoto/Alloc/CMemorySys.hpp"
+#include "Kyoto/Basics/CBasics.hpp"
 #include "Kyoto/Basics/COsContext.hpp"
 #include "Kyoto/CResFactory.hpp"
 #include "Kyoto/Graphics/CCubeMaterial.hpp"
@@ -615,7 +616,9 @@ int CCubeRenderer::GetStaticWorldDataSize() {
   int size = 0;
   for (rstl::list< CAreaListItem >::const_iterator area = mAreaListItems.begin();
        area != mAreaListItems.end(); ++area) {
-    size += area->mTextures->size() * sizeof(TCachedToken< CTexture >);
+    if (area->mTextures.get() != nullptr) {
+      size += area->mTextures->size() * sizeof(TCachedToken< CTexture >);
+    }
   }
   return size;
 }
@@ -981,9 +984,7 @@ void CCubeRenderer::EnablePVS(int areaId, const rstl::vector< rstl::pair< int, i
 void CCubeRenderer::DisablePVS(int areaId) {
   rstl::list< CAreaListItem >::iterator area = FindArea(areaId);
   if (area != mAreaListItems.end()) {
-    for (int i = 0; i < area->mPVSAlpha.size(); ++i) {
-      area->mPVSAlpha[i] = 0;
-    }
+    CBasics::ZeroMemory(area->mPVSAlpha.data(), area->mPVSAlpha.size());
   }
 }
 
