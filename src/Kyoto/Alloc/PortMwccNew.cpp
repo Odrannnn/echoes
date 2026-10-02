@@ -19,6 +19,7 @@
 
 #include "Kyoto/Alloc/CMemory.hpp"
 #include "Kyoto/CToken.hpp"
+#include "Kyoto/Text/CFontImageDef.hpp"
 
 extern "C" void* __nw__FUlPCcPCc(unsigned long size, const char* /*fileAndLine*/,
                                  const char* /*type*/) {
@@ -45,6 +46,21 @@ extern "C" void Free__7CMemoryFPCv(const void* ptr) { CMemory::Free(ptr); }
 // destructor above.
 extern "C" void __dt__6CTokenFv(void* self, short) {
   static_cast< CToken* >(self)->~CToken();
+}
+
+// Retail's own mangled name for `CFontImageDef::~CFontImageDef()`, reached the same way.
+// `src/MetroidPrime/Carve80024D24.c` (retail 0x80024D24..0x80024D68) is the unit that needs it:
+// that is `rstl::destroy_impl< CFontImageDef >`, whose whole body is `bl __dt__13CFontImageDefFv`
+// with `li r4,-1`.  Unlike the two names above, **no unit in this tree claims the bytes** - retail's
+// `__dt__13CFontImageDefFv` (0x80024D68, `symbols.txt:641`, 0x58 bytes, `scope:weak`) sits in the
+// same unclaimed `auto_*` range as the carve, one function above it, so dtk's own object supplies
+// them in the DOL link and this is only what a host link binds to.  The 16-bit second argument is
+// MWCC's deleting-destructor flag, which the host's C++ destructor does not take; the only call site
+// passes -1, so it is accepted and ignored and the work is `CFontImageDef`'s own destruction - the
+// texture vector at `+0x04`, whose host destructor `Kyoto/Text/CFontImageDef.cpp` already
+// instantiates as a weak symbol in this same link.
+extern "C" void __dt__13CFontImageDefFv(void* self, short) {
+  static_cast< CFontImageDef* >(self)->~CFontImageDef();
 }
 
 // The other half of the same split. Retail's `operator delete` is `CMemory::Free`, and `Matching`

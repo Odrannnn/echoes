@@ -113,6 +113,9 @@ MetroidPrime/CCredits.cpp:
 MetroidPrime/Carve80024B70.c:
 	.text       start:0x80024B70 end:0x80024C18
 
+MetroidPrime/Carve80024D24.c:
+	.text       start:0x80024D24 end:0x80024D68
+
 MetroidPrime/CAnimData.cpp:
 	.text       start:0x80025D3C end:0x8002F7A8
 	.ctors      start:0x803A54BC end:0x803A54C0
