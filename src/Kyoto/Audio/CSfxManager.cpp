@@ -59,15 +59,26 @@ extern "C" void* fn_8029FDAC(void* record, short n) {
   return record;
 }
 
+// MWCC 2.7 hands out r3..r8 to locals in *declaration order*, so the six names are declared
+// here in retail's own order - `done`, `rest`, `record`, `count`, `n`, `i` - rather than in the
+// order the code first touches them. The initializers are the same values either way, and the
+// resets (`done = 0`, `rest = n - 8`, `n = *(int*)record`) are still inside the loop, so the
+// compiled behaviour is unchanged; only the allocation moves. Measured: with `done`/`rest`/`n`
+// declared inside the loop body this function is 95.65% with every opcode and offset right and
+// only the registers wrong; declared this way it is 100.00%, 31 instructions byte-identical.
 extern "C" void fn_8029FD30(void* records) {
-  const int count = *(int*)records;
+  int done = 0;
+  int rest = 0;
   char* record = (char*)records + 4;
-  for (int i = 0; i < count; ++i) {
+  const int count = *(int*)records;
+  int n = 0;
+  int i = 0;
+  for (; i < count; ++i) {
     if (record != nullptr) {
-      const int n = *(int*)record;
-      int done = 0;
+      n = *(int*)record;
+      done = 0;
       if (n > 0) {
-        const int rest = n - 8;
+        rest = n - 8;
         if (n > 8) {
           for (; done < rest; done += 8) {
           }
@@ -92,15 +103,20 @@ extern "C" void* fn_8029FCE0(void* record, short n) {
   return record;
 }
 
+// Same declaration-order rule as in fn_8029FD30 above: `done` and `rest` are declared here,
+// before the `record` null test, so they get r3 and r4 and `count` gets r5 - retail's
+// allocation (98.95% with all 43 opcodes right before this).
 extern "C" void* fn_8029FC34(void* record, short n) {
+  int done = 0;
+  int rest = 0;
   if (record != nullptr) {
     // Retail tests the *address* `record + 0x1810` for null (`addic. r0,r30,6160` then `beq`) and
     // only then loads the count through it, so the address is not held in a variable here either.
     if ((unsigned long)record + 0x1810 != 0) {
-      int done = 0;
       const int count = *(int*)((char*)record + 0x1810);
+      done = 0;
       if (count > 0) {
-        const int rest = count - 8;
+        rest = count - 8;
         if (count > 8) {
           for (; done < rest; done += 8) {
           }
@@ -193,6 +209,7 @@ extern int fn_8029B8E8(SAuxRecord* record);
 //   fn_80334CAC  lwz 4                  -> int,   the record's own id
 //   fn_80334C40  stw 8                  -> void,  sets the int at +8
 //   fn_8033541C  lbz 0x12 / rlwimi 28   -> void,  sets bit 28 of the flags byte
+//   fn_80335408  lbz 0x12 / rlwimi 28   -> void,  clears bit 28 of the flags byte
 //   fn_80334C98  lbz 0x12 / rlwimi 29   -> void,  sets bit 29 of the flags byte
 //
 // and the data addresses are retail's own relocations, read out of the retail object:
@@ -208,6 +225,7 @@ extern int fn_80334C48(void* record);
 extern bool fn_80334CB4(void* record);
 extern void* fn_80334C20(void* record);
 extern void fn_80334C5C(void* record);
+extern void fn_80335408(void* record);
 extern int fn_80334CAC(void* record);
 extern void fn_8034066C(void* params, void* record);
 extern void fn_80334D8C(void* record, void* params);
@@ -595,7 +613,30 @@ void CSfxManager::Shutdown() {
   delete mpTranslationTable;
   mpTranslationTable = nullptr;
   StopAndRemoveAllEmitters();
-  // TODO: shut down auxiliary effects and release active effect records.
+#ifndef TARGET_PC
+  // 0x8029EF58 .. 0x8029EFB0 - the auxiliary-effect half of the shutdown.
+  //
+  //   fn_80340E08(lbl_804152DC)          release the auxiliary-effect manager's records
+  //   for (it = &lbl_80413EFC[1]; it != &lbl_80413EFC[1] + lbl_80413EFC[0] * 500; it += 500)
+  //     if (fn_80334C50(it) && fn_80334CB4(it)) fn_80335408(it);
+  //
+  // The loop is the same 500-stride walk as `fn_8029B81C` below, with `fn_80335408` in place of
+  // the parameter-block reset and the `SetAreaVolume` pair: both flag bits are tested before
+  // the record is released. `lbl_80413EFC` is the same `4 + 10 * 500` record list, and the
+  // bound is recomputed from the count on every iteration (`lwz r0,0(r31)` sits inside the
+  // loop in retail), so it is written as an expression and not hoisted into a local.
+  fn_80340E08(lbl_804152DC);
+  int* count = (int*)lbl_80413EFC;
+  uchar* first = (uchar*)count + 4;
+  for (uchar* it = first; it != first + *count * 500; it += 500) {
+    if (fn_80334C50(it) && fn_80334CB4(it)) {
+      fn_80335408(it);
+    }
+  }
+#else
+  // The port never constructs the auxiliary-effect manager (see Initialize), so it holds no
+  // active effect records and retail would find nothing to release here.
+#endif
 }
 
 void CSfxManager::StopAndRemoveAllEmitters() {

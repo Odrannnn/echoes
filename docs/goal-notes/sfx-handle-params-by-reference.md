@@ -568,3 +568,235 @@ goal_check: PASS sfx-handle-params-by-reference
   attacked with the **pressure** lever that the constructor probe above turned out to respond to.
 - **`GetStudio` 57.35%** is still the data-layout wall run 1 measured (retail materialises
   `mCurrentStudio` through `mCurrentArea`'s SDA base pair; ours reads it directly).
+
+---
+
+# Run 4 (lane 5, 2026-10-02): `Shutdown` written, and two 100%s out of a register-allocation law
+
+Re-measured the clean tree first. Runs 1-3's work was all in it: the unit stood at **143 / 159**
+and the sixteen unmatched functions were `Shutdown` 30.05%, `fn_8029FD30` 95.65%,
+`fn_8029FC34` 98.95%, `SetActiveAreas` 0.38% and the eleven percent-range ones.
+
+**Result: three functions at 100.00%, byte-identical instruction for instruction. The unit went
+143 -> 146 / 159 and `tools/goal_check.sh build/goal/item.json` printed `PASS`** (matched
+12274 -> 12277, linked 5863 -> 5863 unchanged). `src/Kyoto/Audio/CSfxManager.cpp` is the only file
+changed.
+
+| function | before | after | retail insns | differing lines |
+| --- | --- | --- | --- | --- |
+| `Shutdown__11CSfxManagerFv` | 30.05% (13 of 43 insns) | **100.00%** | 43 | 0 |
+| `fn_8029FD30` | 95.65% (all 31 opcodes right) | **100.00%** | 31 | 0 |
+| `fn_8029FC34` | 98.95% (all 43 opcodes right) | **100.00%** | 43 | 0 |
+
+## 1. `Shutdown` - the missing tail run 3 predicted
+
+Run 3 said "`Shutdown` is missing real work, not percent: 43 retail instructions against our 13,
+and the absent tail is the same 500-stride record walk that `fn_8029B81C` now does". That was
+exactly right, and it took one attempt:
+
+```cpp
+fn_80340E08(lbl_804152DC);
+int* count = (int*)lbl_80413EFC;
+uchar* first = (uchar*)count + 4;
+for (uchar* it = first; it != first + *count * 500; it += 500) {
+  if (fn_80334C50(it) && fn_80334CB4(it)) {
+    fn_80335408(it);
+  }
+}
+```
+
+The same walk as `fn_8029B81C`, with `fn_80335408` where that one has the parameter-block reset
+and the `SetAreaVolume` pair, gives 43/43 identical. `fn_80335408` is a **new** `extern`, read out
+of its own eight bytes like the others in that block: `lbz 0x12 / li r4,0 / rlwimi 28 / stb` -
+clears bit 28 of the record's flags byte. The `fn_80340E08(lbl_804152DC)` before it is the same
+pair `KillAll` already calls (see line ~846), so those two names were already declared.
+
+**It is inside `#ifndef TARGET_PC`, with an `#else` saying why.** That is the pattern this file
+already uses at `Initialize`, `KillAll` and `Update`: the port never constructs the auxiliary-effect
+manager, so it holds no records and retail would find nothing to do. Measured, not asserted:
+`python3 tools/link_gap.py` -> **282 MISSING, all accounted for**, the same figure run 3 measured,
+and `gate.sh`'s port probe (all 748 files, compile + link) passed.
+
+## 2. The finding that is worth more than the two functions: MWCC 2.7 allocates r3..r8 in DECLARATION order
+
+Run 1 wrote `fn_8029FD30` and `fn_8029FC34` and left both at "all mnemonics right, registers
+wrong", and measured ~15 spellings of the *loop* without moving them. The loop was never the
+problem. **The allocation follows the order the locals are declared in, not the order the code
+first touches them, and retail's declarations are recoverable from retail's registers.**
+
+Retail's `fn_8029FD30` maps as `done=r3, rest=r4, record=r5, count=r6, n=r7, i=r8` - r3..r8 in
+exactly that sequence, ascending, with no gaps. Ours mapped `record=r3, count=r4, i=r5, n=r6,
+done=r7, rest=r8`: also r3..r8 ascending, but in *our* declaration order. So the six names only
+have to be declared as `done, rest, record, count, n, i` - hoisted to the top of the function,
+with their initialisers and their per-iteration resets (`done = 0`, `rest = n - 8`,
+`n = *(int*)record`) left inside the loop where the behaviour is unchanged - and MWCC hands out
+r3..r8 in retail's order. That is the whole change, and it took it from 95.65% to **100.00%**,
+31 instructions byte-identical, first try.
+
+`fn_8029FC34` is the same law on a smaller set: retail has `done=r3, rest=r4, count=r5`, so only
+`done` and `rest` need hoisting above the `record` null test (98.95% -> **100.00%**, 43/43). Three
+spellings reach 100% and I took the smallest (`hoist-done-rest`); the other two measured, so the
+next run does not have to:
+
+| `fn_8029FC34` spelling | score |
+| --- | --- |
+| hoist `done`+`rest` only (`const int count`, `int i` stay put) - **taken** | **100.00%** |
+| hoist `done`+`rest`, declare `record` before `count` | 100.00% |
+| hoist `done`+`rest`+`count`+`i` at the top, `int count` not `const` | 100.00% |
+
+For `fn_8029FD30` the intermediate steps are worth keeping, because they show which part of the
+hoist is load-bearing and they are all one edit apart from the answer:
+
+| `fn_8029FD30` spelling | score |
+| --- | --- |
+| all six locals at the top, `done, rest, record, count, n, i` - **taken** | **100.00%** |
+| hoist `done` + `rest` only (count/record/n/i stay put) | 97.26% |
+| hoist `done` only | 98.55% |
+| hoist `done` + `rest`, `record` declared before `count` | 98.39% |
+| `n` hoisted to the function scope, rest as written | 95.65% |
+| hoist `done` + `n`, rest inside | 95.65% |
+| as it was (everything inside the loop body) | 95.65% |
+| swap `count`/`record` declarations only | 95.65% |
+| `while` loop instead of `for` | 95.65% |
+| pointer loop `record != first + count * 0x804` | 82.58% |
+| `int n = 0;` hoisted *above* the `record` null test | 84.03% |
+| `rest` declared before `done` | 89.35% |
+| `done = 0` moved above the `if (record != nullptr)` | 90.32% |
+
+The reading order that matters is: **hoist the *innermost* temporaries first** (`done` from r7 to
+r3, `rest` from r8 to r4), then the *outer* pair falls into place (`record` r3->r5, `count`
+r4->r6), then the two induction variables (`n` r6->r7, `i` r5->r8). The register a variable ends
+up in is not chosen for it - it is simply its position in the declaration list.
+
+**This is the general lever for the rest of this unit's percent-range functions**, and it is not a
+spelling hunt: it needs the declaration order, and retail's register numbering gives that order
+away. `fn_8029B8E8`, `SfxVolume`, `UpdateEmitter` and `__ct__CBaseSfxWrapper` all have their
+allocation visible in retail's bytes.
+
+## 3. `UpdateEmitter` - the declaration lever does NOT reach it (measured, 11 spellings)
+
+`UpdateEmitter` is 99.00% and its *entire* remaining difference is one register swapped with
+another: retail holds `position` in **r31** and the wrapper pointer `sound` in **r30**; ours holds
+`position` in r30 and `sound` in r31 (r27 = the invisible-reference address of `handle`, r28 =
+`direction`, r29 = `maxVolume` in both). Everything else - 120 instructions, all offsets, the
+`li r31,2` reuse of the dead `position` register at the end - is already identical, and the swap is
+internally consistent, so one allocation decision moves the whole function.
+
+The law above is about *locals*. Here three of the five live values are **parameters**, and
+parameters are not in the declaration list, so the lever does not apply directly: in retail the
+local `sound` is allocated *before* the parameter `position`, in ours after. I tried to reach it
+anyway, 11 spellings, all measured, none moved r30/r31:
+
+| spelling | score | what it did to the allocation |
+| --- | --- | --- |
+| as it is | 99.00% | `r30 <- r4` (position) |
+| `const uchar max = maxVolume;` local, used throughout | 95.71% | unchanged |
+| same local, declared after `sound` | 96.54% | unchanged |
+| same local, declared before `sound` | 95.71% | unchanged |
+| `const CVector3f& pos = position;` alias | 99.00% | unchanged |
+| `const CSfxChannel& channel` -> `const int count = channel.mSounds.size()` | 95.12% | re-ordered |
+| `CSfxEmitterWrapper* const sound` | 99.00% | unchanged |
+| `CAudioSys::C3DEmitterParmData& emitter = sound->GetEmitter();` | 82.08% | **`r31 <- r4`** - the retail pattern, but r27 then holds `direction` and the score collapses |
+| `const int index = handle.GetIndex()` cached, both branches' `if` split, `int done`/`rest` last | 81.21% / 97.17% / 89.35% | various |
+
+The `emitter` row is the interesting one and the only hint I can leave: making the *wrapper*'s
+`GetEmitter()` a named reference slides the register window so that `position` finally lands in
+**r31** as retail has it - but it also slides `r27` (which retail keeps on `&handle`) onto
+`direction`, and the two extra local copies cost more than the window gains. So the window is the
+right lever and the *declaration* is not; nobody has yet found a shape that shifts the window by
+one without adding a value. Cheap to keep hunting: a unit build of this file is 0.5 s.
+
+## Walls, spelled out so the next run does not repeat them
+
+WALL: UpdateEmitter__11CSfxManagerF10CSfxHandleRC9CVector3fRC9CVector3fUc 99.00% - 120
+instructions on both sides and every offset matches; the whole remaining difference is `position`
+in r30 where retail has it in r31 and `sound` in r31 where retail has it in r30. Eleven spellings
+this run (table above) plus run 2's ~8; none moved r30/r31 in the finished function. Parameters are
+not in the declaration list the fn_8029FD30 law works on, so the lever needs a *different* one -
+`emitter` shows the window can be slid, but not without losing `r27`.
+
+## Still unwritten, and what it would take
+
+- **`SetActiveAreas` (0.38%, 1060 B) is still the biggest thing in this unit**, and this run read
+  all of its 0x424 bytes, so the next attempt does not have to start from a disassembly. What it
+  is, in retail's own order: (1) store `currentArea` to a `.sdata2` int, (2) walk
+  `lbl_80413EFC` and for each record with `fn_80334C50 && fn_80334CB4 && id != -1`, search
+  `areas[0..size)` for the id and, **if it is not there**, run `fn_80335408`,
+  `fn_8034066C(lbl_804152DC, fn_80334C20(it))` and `SetAreaVolume(id, 127)`; (3) walk
+  `mAreaVolumes` (`lbl_80415288`, 8-byte elements, `mArea == -1` means unused) and set
+  `mArea = -1` for every area not in `areas`; (4) `if (mCurrentArea != currentArea)`
+  `mCurrentArea = currentArea; mCurrentStudio = !mCurrentStudio;` (5) for each area, find the
+  record with the highest `fn_80334C30(it)` among those whose id matches, and if it is found and
+  its `fn_80334CB4` is clear, re-register every matching record and then
+  `fn_80340768(lbl_804152DC, !mCurrentStudio, best, 0, 1)`, `fn_80334C18`,
+  `fn_8033541C(best, true)`, `fn_80335400`, `fn_80334C28`, `SetAreaVolume(id, fn_80334C28(best))`;
+  (6) `mDoUpdate = true` and set each channel sound's in-area flag, going through the vtable at
+  +56 and +24. The double bound test at 0x8029C424 (the `for` exiting on a match, then re-testing
+  `it == areas.data() + areas.size()`) is the one shape that is not obvious - it is a `for` with
+  a `break` followed by an `if (it == end)`, and it is how "the id was **not** in the list" comes
+  to run the body. New `extern`s it would need, all readable from their own bytes:
+  `fn_80334C30` (`rlwinm 0/4 + srawi 28` -> int), `fn_80334C28` (int),
+  `fn_80335400` (void(record, bool)). 265 instructions: this is a session, not an item.
+- **`fn_8029B8E8` is now the closest thing in the unit to a 100%** (93.88%, 101/101 opcodes) and
+  the declaration law above does **not** apply to it: its remaining difference is the *interleaving*
+  of five independent `lwz` and five independent `stw` in the record copy's prologue, in the same
+  registers (r3/r6) on both sides. That is MWCC's scheduler, not the allocator.
+- **`SfxVolume` 96.99%** is the same r30/r31 `sound`-versus-value swap as `UpdateEmitter` (retail
+  `sound` in r30, `volume` in r31; ours the other way round) **plus** a structural difference: retail
+  is 98 instructions and we are 97, and the missing one is `mr r30,r31`. So it needs the window
+  shifted *and* one more copy.
+- **`UpdateListener` 86.58%** is pure float scheduling - 36 instructions on both sides, all the
+  right opcodes, in a different order (`lfs f1`/`lfs f7,f6,f5` hoisted differently around the
+  `add r3,r3,r8`).
+
+## Verification
+
+`./tools/goal_check.sh build/goal/item.json`, run in this worktree against the driver's own
+baselines, on the final tree:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12274 -> 12277   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    All:  34.68% fuzzy, 28.06% matched, 12.90% linked (12277 / 28465 functions)
+  ok    target rose: main/Kyoto/Audio/CSfxManager: 143 -> 146 / 159 functions
+  ok    no asm added
+goal_check: PASS sfx-handle-params-by-reference
+```
+
+- `python3 tools/dol_fd.py Kyoto/Audio/CSfxManager Shutdown__11CSfxManagerFv fn_8029FD30
+  fn_8029FC34` -> `43 retail insns, 43 ours, 0 differing lines` / `31, 31, 0` / `43, 43, 0`.
+  `fn_8029FDAC` and `fn_8029FCE0` still measure 0 differing lines, i.e. the two rewrites did not
+  disturb them.
+- `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+- `python3 tools/check_symbol_names.py` -> 0 declared names missing, 525 units.
+- `python3 tools/check_raw_offsets.py` -> **ok: 167 raw-offset site(s) in 71 file(s)**, unchanged.
+  `Shutdown`'s `500` is the record stride and the `+ 4` is the head of the list, the same two
+  numbers `fn_8029B81C` already contributes, so `docs/research/raw_offsets.md` needs no section.
+- `python3 tools/link_gap.py` -> **282 MISSING, all accounted for** - the same count run 3
+  measured, so the port's undefined list is byte-identical. `Shutdown`'s new code is entirely
+  inside `#ifndef TARGET_PC`, and `fn_8029FD30`/`fn_8029FC34` only moved registers.
+- `tools/unit_fit.sh Kyoto/Audio/CSfxManager.cpp` -> **12 functions present in ours but not the
+  retail object, 1576 bytes** - identical to the clean tree, so this change adds no extra
+  functions. "sections over the claimed range" reads **356 bytes** where run 3 measured 240; the
+  116 is `Shutdown` growing by 30 instructions of *real* work (30 x 4 bytes), which is the point of
+  the change, not a symptom.
+- `python3 tools/check_decl_order.py --unit Kyoto/Audio/CSfxManager` reports the unit permuted,
+  byte-identical to before, which is the **pre-existing** condition run 1 documented (the whole
+  file's declaration order is off by a group: retail has `IsEmitter(CSfxWrapper)`, `~CSfxWrapper`,
+  `FAudioTranslationTableFactory`, `CFactoryFnReturn::CFactoryFnReturn` first, ours has the last
+  two first). Already listed in `docs/research/decl_order.md`, so the gate accepts it. **This unit
+  cannot be flipped until that is fixed** - worth knowing before anyone spends a lane trying.
+- `docs/HANDOFF.md` is **untouched** in the final tree. `goal_check.sh` runs the gate with
+  `MP_GATE_DOCS_WRITE=1`, which rewrote the state block; I restored it and re-ran the whole judge
+  on the restored tree to confirm the PASS does not depend on it.
+
+### One process note for whoever drives the next lane
+
+Do **not** batch several source rewrites into one run while a scratch harness holds a pristine
+copy of the file. I made the `fn_8029FD30` fix, snapshotted, made the `fn_8029FC34` fix, and then
+ran a batch of `UpdateEmitter` experiments that restored the *snapshot* - silently reverting the
+`fn_8029FC34` edit. The judge still printed PASS (143 -> 145), so the failure was invisible in the
+verdict and only showed up in the report. **Re-read the function you are about to claim before you
+build**, or re-snapshot after every applied edit.
