@@ -66,6 +66,14 @@ public:
   CMayaSpline(CInputStream& in, int count);
   ~CMayaSpline() {}
 
+  // Declared, not defined in-class. The implicit one is emitted only where something references
+  // it, and retail carries an out-of-line copy in the objects whose code calls it - at
+  // 0x80080DB8 in CScriptEffect.o and 0x25E8 in Tweaks.o - so the definitions live in
+  // CScriptEffect.cpp and Tweaks.cpp. The mangled name is unchanged (an implicit and a declared
+  // member assignment mangle identically); only the linkage differs, and the callers already
+  // emitted `bl` for it.
+  CMayaSpline& operator=(const CMayaSpline& other);
+
   static CMayaSpline CreateFor(float timeA, float amplitudeA, float timeB, float amplitudeB);
 
   size_t GetKnotCount() const;

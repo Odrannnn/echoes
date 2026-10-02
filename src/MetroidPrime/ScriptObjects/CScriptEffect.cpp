@@ -508,6 +508,33 @@ void CScriptEffect::SetGlobalTranslation(const CVector3f& translation) {
   }
 }
 
+// CMayaSpline's copy assignment, declared (not defined) in CMayaSpline.hpp. Retail's
+// CScriptEffect.o carries it as a function of its own at 0x80080DB8 (172 bytes). Nothing in
+// this translation unit assigns a CMayaSpline, so an implicit one is never emitted here and the
+// symbol would be missing; declaring it in the header is what makes this definition - and the
+// whole `rstl::vector<CMayaSplineKnot>` `operator=`/`clear`/`reserve`/`uninitialized_copy`
+// chain behind it - land in this object, which is what retail's does. It sits after
+// `__ct__CGameSplineDesc` (0x80080AD4) in the object, so it is written before that
+// constructor here: mwcceppc emits definitions in reverse source order.
+//
+// `SCacheWords` is not a change of behaviour: it is how a 32-byte trivially copyable tail is
+// spelled so that mwcceppc emits retail's block copy. Written as `mCache = other.mCache` the
+// compiler expands the assignment member by member, with an `lbz`/`stb` for the bitfield and
+// `lfs`/`stfs` for the float, which is 7 of 43 instructions away from retail; copying the same
+// 32 bytes as words is the 8 `lwz`/`stw` pairs retail has.
+CMayaSpline& CMayaSpline::operator=(const CMayaSpline& other) {
+  struct SCacheWords { uint w[8]; };
+  mPreInfinity = other.mPreInfinity;
+  mPostInfinity = other.mPostInfinity;
+  mKnots = other.mKnots;
+  mClampMode = other.mClampMode;
+  mMinAmplitude = other.mMinAmplitude;
+  mMaxAmplitude = other.mMaxAmplitude;
+  *reinterpret_cast< SCacheWords* >(&mCache) =
+      *reinterpret_cast< const SCacheWords* >(&other.mCache);
+  return *this;
+}
+
 // The two by-value parameters are spelled `const` (which the mangler ignores, so the symbol is
 // unchanged) because that is what makes mwcceppc put the epilogue's `lwz r0,36(r1)` first,
 // where retail has it: `lwz r0 ; lfd f31 ; lwz r31/30/29`. Without the qualifiers the reload is

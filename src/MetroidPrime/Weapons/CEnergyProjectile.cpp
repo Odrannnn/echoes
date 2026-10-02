@@ -377,6 +377,32 @@ void CEnergyProjectile::PlayImpactSound(const CVector3f& position,
   }
 }
 
+// CCameraShakerData's copy assignment, declared (not defined) in CCameraShakerData.hpp.
+// Retail's CEnergyProjectile.o carries it as a function of its own at 0x1D4, called from
+// SetCameraShakerData below; leaving it implicit lets mwcceppc fold it into that one caller
+// and both it and the caller stop matching. Retail defines it in no other object, and nothing
+// outside CEnergyProjectile.cpp assigns a CCameraShakerData.
+//
+// `CVector3fWords` is the same block-copy spelling, and for the same reason, as `SCacheWords` in
+// CScriptEffect.cpp: as `mPosition = other.mPosition` the three floats move as `lfs`/`stfs`, where
+// retail moves them as three `lwz`/`stw`.
+CCameraShakerData& CCameraShakerData::operator=(const CCameraShakerData& other) {
+  struct CVector3fWords { uint w[3]; };
+  mFlags = other.mFlags;
+  mDuration = other.mDuration;
+  mAttenuationDistance = other.mAttenuationDistance;
+  *reinterpret_cast< CVector3fWords* >(&mPosition) =
+      *reinterpret_cast< const CVector3fWords* >(&other.mPosition);
+  mHorizontalMotion = other.mHorizontalMotion;
+  mForwardMotion = other.mForwardMotion;
+  mVerticalMotion = other.mVerticalMotion;
+  mAudioEffect = other.mAudioEffect;
+  mMaxAmplitude = other.mMaxAmplitude;
+  mLastThresholdTime = other.mLastThresholdTime;
+  mFirstThresholdTime = other.mFirstThresholdTime;
+  return *this;
+}
+
 void CEnergyProjectile::SetCameraShakerData(const CCameraShakerData& data) {
   mCameraShaker = data;
   mCameraShakerDirty = true;

@@ -14,6 +14,13 @@ public:
                     const CMayaSpline& verticalMotion, const CMayaSpline& forwardMotion,
                     int audioEffect);
 
+  // Declared, not defined in-class, because retail's CEnergyProjectile.o carries it as a real
+  // function (0x1D4, 172 bytes) called from SetCameraShakerData rather than inlined into it.
+  // Left implicit, mwcceppc folds it into that one caller, and both it and the caller stop
+  // matching. Retail defines it in no other object, and nothing outside CEnergyProjectile.cpp
+  // assigns a CCameraShakerData, so the definition goes there.
+  CCameraShakerData& operator=(const CCameraShakerData& other);
+
   CCameraShakerData NewTranslation(const CVector3f& position) const;
   CVector3f GetPoint(float time);
   float GetMaxAmplitude();

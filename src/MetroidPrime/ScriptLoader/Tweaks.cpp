@@ -8212,6 +8212,32 @@ SLdrTweakGame::SLdrTweakGame() : instanceName(), pakFile(), asset(), unknown_0x1
 
 SLdrTweakGame::~SLdrTweakGame() {}
 
+// CMayaSpline's copy assignment, declared (not defined) in CMayaSpline.hpp. Retail's Tweaks.o
+// carries it as a function of its own at 0x25E8 (172 bytes) and calls it from three
+// LoadTypedef functions, so the copy has to be here and not only in CScriptEffect.cpp: with the
+// declaration in the header and no definition in this unit the implicit one stops being emitted
+// at all, and those three loaders inline it instead and stop matching. It is written just below
+// `~SLdrTweakGame` because that is where retail's .text has it - 0x25E8, ahead of
+// `~SLdrTweakGame` at 0x2780 - and mwcceppc emits definitions in reverse source order.
+//
+// `SCacheWords` is not a change of behaviour: it is how a 32-byte trivially copyable tail is
+// spelled so that mwcceppc emits retail's block copy. Written as `mCache = other.mCache` the
+// compiler expands the assignment member by member, with an `lbz`/`stb` for the bitfield and
+// `lfs`/`stfs` for the float, which is 7 of 43 instructions away from retail; copying the same
+// 32 bytes as words is the 8 `lwz`/`stw` pairs retail has.
+CMayaSpline& CMayaSpline::operator=(const CMayaSpline& other) {
+  struct SCacheWords { uint w[8]; };
+  mPreInfinity = other.mPreInfinity;
+  mPostInfinity = other.mPostInfinity;
+  mKnots = other.mKnots;
+  mClampMode = other.mClampMode;
+  mMinAmplitude = other.mMinAmplitude;
+  mMaxAmplitude = other.mMaxAmplitude;
+  *reinterpret_cast< SCacheWords* >(&mCache) =
+      *reinterpret_cast< const SCacheWords* >(&other.mCache);
+  return *this;
+}
+
 void LoadTypedefSLdrTweakGame(SLdrTweakGame& data, CInputStream& input) {
   const int propertyCount = input.ReadUint16();
   for (int i = 0; i < propertyCount; ++i) {

@@ -1164,3 +1164,242 @@ rewriting derived counts, not an edit of mine.)
 Nothing filed as `NEW:` - everything left here is this item's own target
 (`AcceptScriptMsg`, `__ct__CScriptEffect`, `fn_80080394` and its cluster, and
 `PreRenderAllViewports`), so it would be a restatement rather than a new unit of work.
+
+---
+
+# progress-unit-cscripteffect — run 7 (`wt-mp2-goal-L8`): 23/35 -> 27/35
+
+**Result: four of the functions runs 1-6 recorded as "unwritable, a missing caller" are now at
+100.00% — `__as__11CMayaSpline` (172 B), `__as__vector<CMayaSplineKnot>` (224 B),
+`vector::clear()` (12 B) and `vector::reserve()` (152 B). `./tools/goal_check.sh
+build/goal/item.json` -> `PASS` (matched 12321 -> 12325, target rose 23 -> 27, linked 5863
+unchanged, no `asm` added).** The unit stays `NonMatching`, as a `progress` item requires.
+
+Six files changed: `include/Kyoto/Math/CMayaSpline.hpp` and
+`include/MetroidPrime/Cameras/CCameraShakerData.hpp` (one declaration each),
+`src/MetroidPrime/ScriptObjects/CScriptEffect.cpp`,
+`src/MetroidPrime/ScriptLoader/Tweaks.cpp` and `src/MetroidPrime/Weapons/CEnergyProjectile.cpp`
+(one out-of-line copy assignment each), and `config/G2ME01/symbols.txt` (three renames). No
+`tools/`, no `docs/`, no `build/goal/` file edited by hand. Nothing committed.
+
+Re-measured on this tree first: the unit really was at 23/35, `matched_code` 5056/11284, DOL
+matched 12321, so runs 1-6's numbers were current and nothing had landed upstream.
+
+## Measured
+
+| | before | after |
+|---|---|---|
+| unit `matched_functions` | 23 / 35 | **27 / 35** |
+| unit `matched_code` | 5056 / 11284 (44.81%) | **5616 / 11284 (49.77%)** |
+| unit `fuzzy_match_percent` | 65.32% | **70.28%** |
+| DOL `matched_functions` | 12321 / 28465 | **12325 / 28465** |
+| DOL `linked` | 5863 | 5863 (unchanged) |
+| `All:` | 34.79% fuzzy, 28.37% matched | 34.80% fuzzy, **28.38%** matched |
+| `Tweaks/.../Tweaks` | 242 / 245, 99.99% fuzzy | **242 / 245, 99.99% fuzzy (unchanged)** |
+| `main/.../CEnergyProjectile` | 18 / 34 | **20 / 34** |
+
+| function | before | after |
+|---|---|---|
+| `__as__11CMayaSplineFRC11CMayaSpline` (was `fn_80080DB8`) | 0.00% | **100.00%** |
+| `__as__Q24rstl52vector<15CMayaSplineKnot,...>FRC...` (was `fn_80080E64`) | 0.00% | **100.00%** |
+| `clear__Q24rstl52vector<15CMayaSplineKnot,...>Fv` (was `fn_80080F44`) | 0.00% | **100.00%** |
+| `reserve__Q24rstl52vector<15CMayaSplineKnot,...>Fi` | 0.00% | **100.00%** |
+| everything else in the unit | unchanged | unchanged |
+
+Nothing anywhere got worse: `tools/report_diff.py` prints `no regression` with no `WORSE` line.
+
+## 1. The whole cluster hangs off one declaration, and it is not a claim question
+
+Runs 1-3 said the eight `fn_`-named functions in this range "are not a claim question, they are
+unwritten code, there is no reference to manufacture" and that `fn_80080394` is the only honest
+route. **Run 6 got closer and was still one step short**: it found that
+`__as__11CMayaSpline`/`__as__vector`/`clear__`/`reserve__`/`uninitialized_copy` already sit
+byte-identical at 100.00% in `Tweaks`, and concluded "mwcceppc only emits an inline COMDAT that
+something in the translation unit *references*", so `CScriptEffect.cpp` would have to contain real
+code that uses them.
+
+Both halves are right, and there is a third way that is neither. **The four that a `bl` reaches
+can be emitted by a *declared, out-of-line* member function, and a non-inline definition is
+emitted unconditionally.** The only such member is `CMayaSpline::operator=`, so:
+
+```cpp
+// include/Kyoto/Math/CMayaSpline.hpp - one line, no layout change
+CMayaSpline& operator=(const CMayaSpline& other);
+```
+
+plus its definition written into `CScriptEffect.cpp` puts **five** symbols in
+`CScriptEffect.o` that were not there before - the two assignment operators, `clear__`,
+`reserve__` and `uninitialized_copy` - because the `operator=` body references the vector's
+out-of-line `operator=`, which references `clear__`/`reserve__`/`uninitialized_copy`. The
+mangled name is unchanged (an implicit and a declared member assignment mangle identically), so
+nothing that called it before stops working.
+
+`nm -S build/G2ME01/src/MetroidPrime/ScriptObjects/CScriptEffect.o` after the change:
+
+```
+00000534 000000ac T __as__11CMayaSplineFRC11CMayaSpline
+000005e0 000000e0 W __as__Q24rstl52vector<15CMayaSplineKnot,...>FRC...
+0000268c 0000000c W clear__Q24rstl52vector<15CMayaSplineKnot,...>Fv
+0000273c 00000098 W reserve__Q24rstl52vector<15CMayaSplineKnot,...>Fi
+000027d4 0000005c t uninitialized_copy<Q24rstl124pointer_iterator<15CMayaSplineKnot,...>...
+```
+
+Every size is exactly retail's (`0xAC`, `0xE0`, `0xC`, `0x98`, `0x5C`), and the first three are
+byte-identical.
+
+**Run 4 already measured this route and rejected it because it cost five functions elsewhere.**
+Run 4's rejection is right about the cause and wrong about the fix: declaring the operator makes
+the three objects that *call* it (`CWorldTransManager`, `Tweaks`, `CEnergyProjectile`) reference
+it instead of emitting their own implicit COMDAT, so the fix is to give each of them the
+out-of-line definition too - which is what retail does, since retail's `Tweaks.o` and
+`CScriptEffect.o` both *define* `__as__11CMayaSpline` and only `CEnergyProjectile.o` and
+`CWorldTransManager.o` reference it. Measured, in this order:
+
+- definition in `CScriptEffect.cpp` only -> this unit 23 -> 24 (`reserve__` pairs by name with no
+  rename at all), **but** `Tweaks` loses all 5 of its CMayaSpline functions, `CEnergyProjectile`
+  loses `__as__CCameraShakerData` and `SetCameraShakerData`, and the global count goes
+  **12321 -> 12315**.
+- definition also in `Tweaks.cpp` (retail's `Tweaks.o` defines it at 0x25E8 and three
+  `LoadTypedef` functions `bl` it) -> `Tweaks` back to 242, `CEnergyProjectile` still down 2.
+- the two remaining `CEnergyProjectile` losses need a *second* declaration, below.
+
+## 2. `CCameraShakerData::operator=` had to follow, and it is not optional
+
+With `CMayaSpline::operator=` out of line, mwcceppc **stops emitting
+`CCameraShakerData::operator=` as a COMDAT and inlines it into its one caller**:
+`SetCameraShakerData` grew 0x40 -> 0xB8 bytes and `__as__CCameraShakerData` disappeared from the
+object entirely. Declaring it in `include/MetroidPrime/Cameras/CCameraShakerData.hpp` and writing
+the definition into `CEnergyProjectile.cpp` restores both, and after that **our
+`CEnergyProjectile.o` has retail's layout exactly** - `SetCameraShakerData` 0x194/0x40,
+`__as__CCameraShakerData` 0x1D4/0xAC, `PlayImpactSound` 0x280 - and
+`__as__11CMayaSpline` is `U` there, as in retail's. Nothing outside `CEnergyProjectile.cpp`
+assigns a `CCameraShakerData`, and retail defines it in no other object, so this copy is the
+whole of what is needed.
+
+**Generalisable: making one implicit assignment operator out of line can make mwcceppc fold a
+*different* implicit one into its only caller. Check every other implicit `operator=` in the
+objects you touch, by `nm -S` on the built object against retail's, not by the compiler's
+error output - nothing is reported.**
+
+## 3. A block copy of a trivially copyable member has to be spelled as one
+
+This is the only part of the change that is not obvious, and it is worth the next run's
+attention because it generalises past this unit.
+
+Retail's `CMayaSpline::operator=` copies the 32-byte `SCache` as **eight `lwz`/`stw` pairs**.
+Written the obvious way, `mCache = other.mCache;`, mwcceppc expands the assignment member by
+member - `lwz/stw` for `mKnotIndex`, `lbz/stb` for the `bool : 1`, `lfs/stfs` for the float - and
+the function is **7 of its 43 instructions** away from retail, in `Tweaks` as well as here. The
+implicit operator= the declaration replaced did the block copy. The same thing happens to
+`CCameraShakerData::mPosition`: retail moves its three floats as `lwz/stw`, `mPosition =
+other.mPosition` moves them as `lfs/stfs`.
+
+`memcpy(&mCache, &other.mCache, sizeof(mCache))` is **worse** (58.19% in `Tweaks`, 76.60% in
+`CEnergyProjectile`): mwcceppc emits a call. What works is a reinterpret through a word array:
+
+```cpp
+struct SCacheWords { uint w[8]; };
+...
+*reinterpret_cast< SCacheWords* >(&mCache) = *reinterpret_cast< const SCacheWords* >(&other.mCache);
+```
+
+same 32 bytes, and the generated code is retail's. `= default` is not an option - mwcceppc 2.7
+rejects it, and an empty body does not reference the vector at all (2.33%).
+
+## 4. Three renames in `config/G2ME01/symbols.txt`, and one that does not work
+
+`fn_80080DB8`, `fn_80080E64` and `fn_80080F44` become the names the bodies actually have, taken
+verbatim from `config/G2ME01/rels/Tweaks/symbols.txt:49-51` (the same three functions in the
+Tweaks module, where dtk did resolve them). There is no name collision inside
+`config/G2ME01/symbols.txt`; run 4's `fn_80080BE8` rename worked the same way.
+
+**`fn_80082E74` was renamed too and then reverted, because objdiff will not pair it in this
+unit, and this is worth recording so nobody spends a run on it again.** The rename itself is
+correct - our `uninitialized_copy` at 0x27D4 is **byte-identical** to retail's at 0x2BA0, verified
+instruction by instruction, and it is at 100.00% in `Tweaks` - but after the rename
+`build/report.json` still has no `fuzzy_match_percent` for it, and `objdiff-cli diff` on the two
+objects shows the base symbol at index 45 with **no `target_symbol` field** while the four that
+do pair have one. What was ruled out, by measurement:
+
+- **Not the name.** Renaming it to the 8-character `zzprobe__` changes nothing.
+- **Not the scope.** With `scope:local` in `symbols.txt` dtk emits the target symbol local, the
+  base symbol is already local (`t`), and it still does not pair. Meanwhile the same local base
+  symbol pairs with a global target in the `Tweaks` unit, and the other four pair here.
+- **Not the offset, the size, the section or the order.** Both are in `.text`, both are 92 bytes,
+  and `clear__`/`reserve__` in the same COMDAT block at 0x268C/0x273C pair fine.
+
+The one structural difference left is that this unit's `objdiff.json` entry has a `scratch` block
+(the C flags and `ctx_path`) and the `Tweaks` one does not, so the two go through different
+objdiff code paths. That is a lead, not a result: I could not confirm it. **The honest state is
+"the code is byte-identical and objdiff does not pair it" - not "the function is matched".**
+Leaving the name unrenamed keeps `fn_80082E74` at 0.00% where it was, which is the truth.
+
+## 5. Two declaration-order placements, both measured
+
+`gate.sh` runs `check_decl_order.py`, so both new definitions have to land where retail's
+`.text` has them, and mwcceppc emits definitions in **reverse** source order:
+
+- **`CScriptEffect.cpp`**: retail's `__as__11CMayaSpline` is at 0x80080DB8, *after*
+  `__ct__CGameSplineDesc` (0x80080AD4), so in source it goes **before** the `CGameSplineDesc`
+  constructor. Written after `~CGameSplineDesc` (the natural spot, next to the other CMayaSpline
+  code) it lands one slot late and `check_decl_order.py` reports
+  `main/MetroidPrime/ScriptObjects/CScriptEffect permuted and not in decl_order.md`.
+- **`Tweaks.cpp`**: retail has it at 0x25E8, immediately **before** `~SLdrTweakGame` (0x2780),
+  so in source it goes **after** `SLdrTweakGame::~SLdrTweakGame() {}` and before
+  `LoadTypedefSLdrTweakGame`. Both the other candidate positions were measured and are wrong.
+- `CEnergyProjectile.cpp`'s `CCameraShakerData::operator=` had to go **before**
+  `SetCameraShakerData` for the same reason, and is right there.
+
+`python3 tools/check_decl_order.py` -> `ok: 981 unit(s) checked, 29 permuted, all 29 accounted for
+in decl_order.md`.
+
+**Hazard for whoever regenerates `Tweaks.cpp`:** it is generated
+(`// Generated by scripts/generate_script_loaders.py`), and the out-of-line copy assignment is a
+hand edit inside the generated body. Re-running the generator drops it, and the gate then fails
+twice - `Tweaks ... permuted and not in decl_order.md`, and 5 functions from `Tweaks` at 0.00%.
+The generator needs the same hook. Not filed as `NEW:`: it is a tooling fix, not work that raises
+a count.
+
+## Still open, and unchanged from run 6 (re-measured, not recalled)
+
+| function | size | why it is still 0.00% |
+|---|---|---|
+| `fn_80080394` | 1772 B | the token-parsing SLdr loader; 30-way FourCC dispatch over a `CInputStream`. Its own definition is the only honest way to the rest of the cluster, and 1772 bytes of it has to be byte-exact. |
+| `fn_80080FCC` | 248 B | the constructor of the class `fn_80080394` builds: `SLdrEditorProperties` at +0, an unnamed type at +0x70, another at +0xB4, a `CMayaSpline` at +0xB8, 8 float constants and a `CColorFffff`. Self-contained and writable, but it needs those two unnamed types named. |
+| `fn_80080F50` | 124 B | that class's deleting destructor; same two unknown types. |
+| `fn_80082E74` | 92 B | byte-identical, see section 4. |
+| `fn_80082ED0` | 24 B | three floats zeroed at 0x8045A900; **no caller anywhere in the DOL**, so no object can reference it. |
+| `PreRenderAllViewports` | 436 B | 99.84%, 24 differing instructions, all stack displacements: retail allocates `position`@8, the empty `CAABox`@20, then the two ternary-arm temporaries@44/72; we allocate `position`@8, the arms@20/48, the box@76. 35 spellings over four runs. |
+| `__ct__CScriptEffect` | 1100 B | 88.24%, first divergence `bl CModelDataNull` where retail calls a one-instruction thunk; `CModelDataNull` is defined in-class and cannot be un-inlined. |
+| `AcceptScriptMsg` | 1872 B | 48.56%, 477 instructions against retail's 468; a rewrite, not a spelling. |
+
+No `NEW:` filed: every function left here is in this item's own target, so a new item would be a
+restatement of it.
+
+## Gates
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12321 -> 12325   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    All:  34.80% fuzzy, 28.38% matched, 12.90% linked (12325 / 28465 functions)
+  ok    target rose: main/MetroidPrime/ScriptObjects/CScriptEffect: 23 -> 27 / 35 functions
+  ok    no asm added
+goal_check: PASS progress-unit-cscripteffect
+```
+
+Also measured: `sha1sum build/G2ME01/main.dol` -> `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`python3 tools/check_symbol_names.py` -> `checked 525 units; 0 declared names are missing from
+their object`; `./tools/probe_sources.sh` -> `752 files, 0 failed, 0 errors; link: LINKED (288
+undefined, 0 duplicates)`, the same 288 as `build/goal/judge/undef.base.count`;
+`tools/report_diff.py` -> `+4 functions at 100%`, `no regression`;
+`tools/check_decl_order.py` -> `ok: 981 unit(s) checked, 29 permuted, all 29 accounted for in
+decl_order.md`. No `tools/`, no `docs/`, no `build/goal/` file was edited by hand; nothing
+committed. (`docs/HANDOFF.md`'s state block shows 12325/10777 - that is `goal_check.sh` rewriting
+derived counts, not an edit of mine.)
+
+Helpers left in `.tmp/opencode/` (not part of the change): `tryop.py` (patch the three
+assignment bodies and rebuild, which is how the spellings above were measured),
+`rewrite.py` (write them with their comments), `fdiff.py` (instruction diff of one function
+across our object and retail's), `insndiff.py`.
