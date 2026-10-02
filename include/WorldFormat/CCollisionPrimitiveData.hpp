@@ -19,6 +19,13 @@ class CVector3f;
 // `GetTriangle__23CCollisionPrimitiveDataFUs` instead.
 extern "C" void fn_80257A14(CCollisionSurface* out, const CCollisionPrimitiveData* self, ushort index);
 
+// retail `__dt__23CCollisionPrimitiveDataFv` (0x80257AF8): the deleting destructor takes the
+// delete flag as a second argument and returns `this`, and it is written out of line under its own
+// mangled name because MWCC's implicit member teardown does not reproduce it - same shape as
+// `src/MetroidPrime/main.cpp`'s `__dt__18CGameGlobalObjectsFv`. C linkage, so the name is the one
+// `config/G2ME01/symbols.txt` declares.
+extern "C" void* __dt__23CCollisionPrimitiveDataFv(CCollisionPrimitiveData* self, int flag);
+
 // Shared collision-array view. COBBTree owns its arrays through SIndexData instead.
 class CCollisionPrimitiveData {
 public:
@@ -53,6 +60,7 @@ protected:
   // "undefined identifier 'fn_80257A14'" and then aborts every translation unit that includes this
   // header, which is how one line of a header takes 38 units down with it.
   friend void fn_80257A14(CCollisionSurface* out, const CCollisionPrimitiveData* self, ushort index);
+  friend void* __dt__23CCollisionPrimitiveDataFv(CCollisionPrimitiveData* self, int flag);
 };
 CHECK_SIZEOF(CCollisionPrimitiveData, 0x34)
 

@@ -1,18 +1,29 @@
 /**
- * `.text 0x80257A14..0x80257AF8`, 0xE4 = 228 bytes, one function:
+ * `.text 0x80257A14..0x80257CB8`, 0x2A4 = 676 bytes, four functions, **in this order in the file
+ * because mwcceppc emits definitions in reverse source order** (see
+ * `tools/check_decl_order.py --unit WorldFormat/CCollisionPrimitiveData`):
  *
  * ```
+ * 80257C28  __ct__23CCollisionPrimitiveDataFiiiiPCUxPCUcPCUcPCUcPC14CCollisionEdgePCUsPCUsPC9CVector3fb
+ * 80257BB0  __ct__23CCollisionPrimitiveDataFv
+ * 80257AF8  __dt__23CCollisionPrimitiveDataFv
  * 80257A14  fn_80257A14
  * ```
  *
- * `CCollisionPrimitiveData::GetTriangle(ushort)` in retail. Upstream left the range in the gap
- * between `WorldFormat/CAreaRenderOctTree.cpp` (which ends at 0x80255128) and
+ * The claim was 0x80257A14..0x80257AF8 (one function, `GetTriangle(ushort)`) and is now extended to
+ * 0x80257CB8 by the three `CCollisionPrimitiveData`-named functions the class already declared in
+ * `include/WorldFormat/CCollisionPrimitiveData.hpp`. Upstream left the range in the gap between
+ * `WorldFormat/CAreaRenderOctTree.cpp` (which ends at 0x80255128) and
  * `Weapons/CProjectileWeapon.cpp` (which starts at 0x802591B4), so it arrived as part of dtk's
- * `main/auto_03_80255128_text`; this claim is a sub-range of that auto unit and both boundaries are
- * retail function boundaries, so nothing else moves. `fn_80257540` below it (retail's
- * `GetTriangleVertexIndices`) and the two constructors stay where they were.
+ * `main/auto_03_80255128_text` / `main/auto_03_80257AF8_text`; this claim is a sub-range of those and
+ * every boundary is a retail function boundary, so nothing else moves. **The claim can only grow at
+ * the top end in whole functions, and only while the whole unit keeps matching**: a claim that adds
+ * a function which does not reach 100% makes the unit `NonMatching`, which `tools/report_diff.py`
+ * reports as `UNLINKED` and `tools/goal_check.sh` reports as `LINKED TOTAL FELL`. `fn_80257540`
+ * (retail's `GetTriangleVertexIndices`, below this claim) and the remaining nineteen functions of
+ * the gap (0x80257CB8..0x802591B4) stay where they were.
  *
- * **Three code-shape rules, each measured, each worth a session:**
+ * **Three code-shape rules for `fn_80257A14`, each measured, each worth a session:**
  *
  * 1. **The hidden return pointer is the first parameter.** `CCollisionSurface` is 0x30 bytes, so a
  *    by-value return travels through a pointer the caller passes in r3, and retail never writes r3
@@ -57,6 +68,7 @@
  */
 #include "WorldFormat/CCollisionPrimitiveData.hpp"
 
+#include "Kyoto/Alloc/CMemory.hpp"
 #include "Kyoto/Math/CVector3f.hpp"
 #include "WorldFormat/CCollisionEdge.hpp"
 #include "WorldFormat/CCollisionSurface.hpp"
@@ -66,6 +78,123 @@
 // src/WorldFormat/CCollisionSurface.cpp under `#ifdef TARGET_PC`.
 extern "C" void fn_800E88A8(CCollisionSurface* out, const CVector3f* v0, const CVector3f* v1,
                             const CVector3f* v2, u64 flags);
+
+#ifndef TARGET_PC
+// The collision-cache tables retail addresses absolutely: `lbl_80410E24` is the .bss halfword table
+// at 0x80410E24 (0x200 bytes = 512 slots) that `fn_80257498` allocates out of, and `lbl_80418968`
+// is the .sdata word counter at 0x80418968 (-0x7418(r13)). Both are defined by the DOL itself, not
+// by any unit, so they are declared here and never defined.
+extern "C" ushort lbl_80410E24[512];
+extern "C" uint lbl_80418968;
+
+/** retail `fn_80257498` (0x80257498): allocates a collision-cache slot id. */
+extern "C" ushort fn_80257498();
+
+/**
+ * retail `__ct__23CCollisionPrimitiveDataFiiiiPCUxPCUcPCUcPCUcPC14CCollisionEdgePCUsPCUsPC9CVector3fb`
+ * (0x80257C28, 0x90 = 144 bytes).
+ *
+ * Thirteen arguments, seven in registers and six on the stack, and every one of them is stored
+ * straight into its member in declaration order - `mMaterialCount` at +0x00 through `mVertices` at
+ * +0x2C - with no test and no branch. `mCacheId` comes from `fn_80257498()` and `mOwnsArrays` is
+ * bit 24 of the byte at +0x32, which is `rlwimi r0,r31,7,24,24` on the incoming `bool` read by
+ * `lbz r31,47(r1)`. The class's own spelling is the mangled name `config/G2ME01/symbols.txt`
+ * declares, so this is a plain member definition rather than an `extern "C"` one.
+ */
+CCollisionPrimitiveData::CCollisionPrimitiveData(
+    int materialCount, int vertexCount, int edgeCount, int triangleCount, const u64* materials,
+    const uchar* vertexMaterials, const uchar* edgeMaterials, const uchar* surfaceMaterials,
+    const CCollisionEdge* edges, const ushort* surfaceIndices, const ushort* extraIndices,
+    const CVector3f* vertices, bool ownsArrays) {
+  mMaterialCount = materialCount;
+  mVertexCount = vertexCount;
+  mEdgeCount = edgeCount;
+  mTriangleCount = triangleCount;
+  mMaterials = materials;
+  mVertexMaterials = vertexMaterials;
+  mEdgeMaterials = edgeMaterials;
+  mSurfaceMaterials = surfaceMaterials;
+  mEdges = edges;
+  mSurfaceIndices = surfaceIndices;
+  x28_ = extraIndices;
+  mVertices = vertices;
+  mCacheId = fn_80257498();
+  mOwnsArrays = ownsArrays;
+}
+
+/**
+ * retail `__ct__23CCollisionPrimitiveDataFv` (0x80257BB0, 0x78 = 120 bytes).
+ *
+ * One `li r0,0` and twelve `stw r0,N(r3)` - the four counts, `mMaterialCount` at +0x00 through
+ * `mVertices` at +0x2C, all seven pointers included - then the same `fn_80257498()` cache id and
+ * the same bit-24 write of `mOwnsArrays`, with `r4 = 0` feeding the `rlwimi`. It does *not* tail
+ * into the thirteen-argument constructor.
+ */
+CCollisionPrimitiveData::CCollisionPrimitiveData() {
+  mMaterialCount = 0;
+  mVertexCount = 0;
+  mEdgeCount = 0;
+  mTriangleCount = 0;
+  mMaterials = nullptr;
+  mVertexMaterials = nullptr;
+  mEdgeMaterials = nullptr;
+  mSurfaceMaterials = nullptr;
+  mEdges = nullptr;
+  mSurfaceIndices = nullptr;
+  x28_ = nullptr;
+  mVertices = nullptr;
+  mCacheId = fn_80257498();
+  mOwnsArrays = false;
+}
+
+/**
+ * retail `__dt__23CCollisionPrimitiveDataFv` (0x80257AF8, 0xB8 = 184 bytes).
+ *
+ * The shape is MWCC's deleting destructor: `mr. r30,r3` / `beq` is `if (self)`, the return value is
+ * `self`, and the delete flag is compared as a *sign-extended halfword* - the `extsh. r0,r31` /
+ * `ble` pair - which is what `static_cast< short >(flag) > 0` compiles to (the same reading as
+ * `fn_80248410` in `src/WorldFormat/CMetroidAreaCollider.cpp:1074`). The flag is read into `r31` by
+ * the prologue and tested only at the end, so the seven `Free`s run for *any* nonzero flag.
+ *
+ * The arrays freed are the seven pointers at +0x10..+0x28, which is every array the class owns -
+ * `mMaterials` included, and `x28_` last. `mOwnsArrays` is bit 24 of the byte at +0x32, which is
+ * `rlwinm. r0,r0,25,31,31`.
+ *
+ * The tail is two statements retail really has whose values nothing reads: the .sdata word at
+ * 0x80418968 is incremented, and the collision-cache slot is masked and stored back. **The `ble`
+ * does not test either of them**: `addi`, `stw`, `sthx` and the mask (`rlwinm` without the `.`)
+ * write no condition register, so the branch is still decided by the `extsh.` above and reads
+ * `(short)flag <= 0`. The mask is the load-bearing oddity and it is measured, not guessed:
+ *
+ *   - `x &= 0xFFFE0000` and `x &= ~0x1FFFFu` and `x &= (uint)0xFFFE0000` and a `uint` temporary all
+ *     compile to `54 80 00 1c` (`clrrwi r0,r4,17`) - four bytes off;
+ *   - `x &= 0x7FFFu` compiles to `54 80 04 7e`, which is retail's `clrlwi r0,r4,17` byte for byte.
+ *
+ * So the source is the 16-bit one, `&= 0x7FFF` - which is also what the allocator's
+ * `ori r0,r0,32768` in `fn_80257498` implies: bit 15 is the slot's in-use flag and this clears it.
+ * **Do not "fix" the constant to 0xFFFE0000**: on a 16-bit lvalue mwcceppc 2.7 narrows that mask
+ * to a different rotate-mask form and the object stops matching.
+ */
+extern "C" void* __dt__23CCollisionPrimitiveDataFv(CCollisionPrimitiveData* self, int flag) {
+  if (self != nullptr) {
+    if (self->mOwnsArrays) {
+      CMemory::Free(self->mMaterials);
+      CMemory::Free(self->mVertexMaterials);
+      CMemory::Free(self->mEdgeMaterials);
+      CMemory::Free(self->mSurfaceMaterials);
+      CMemory::Free(self->mEdges);
+      CMemory::Free(self->mSurfaceIndices);
+      CMemory::Free(self->x28_);
+    }
+    lbl_80410E24[self->mCacheId] &= 0x7FFF;
+    ++lbl_80418968;
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+#endif
 
 extern "C" void fn_80257A14(CCollisionSurface* out, const CCollisionPrimitiveData* self, ushort index) {
   const int start = index * 3;
