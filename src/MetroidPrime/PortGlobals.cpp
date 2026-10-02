@@ -77,6 +77,8 @@
 
 #include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CEntity.hpp"
+#include "MetroidPrime/CInGameGuiManager.hpp"
+#include "rstl/auto_ptr.hpp"
 #include "MetroidPrime/CPhysicsActor.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrTweakPlayer.hpp"
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
@@ -1912,6 +1914,45 @@ void CElementGen::SetExternalParam(uint index, float value) { mExternalVars[inde
 // without this the frame's audio update was a stub that only printed. It is here and not in
 // `CStreamAudioManager.cpp` because that file is a `Matching` unit.
 extern "C" void fn_8032194C(float dt) { CStreamAudioManager::Update(dt); }
+
+// Retail 0x800E0B80, 0x64 = 100 bytes, in `main/auto_03_800DFA60_text`. `Carve800E1548.c` calls
+// it from `fn_800E1618` with the deleting-destructor's `-1`, and listing that carve in
+// `files.cmake` put the name in the port's undefined set - 291 -> 292 with
+// `tools/link_check.sh --strict`, which the goal gate fails on.
+//
+// **What retail's bytes are** (`build/G2ME01/asm/auto_03_800DFA60_text.s`, the listing dtk emits
+// for the unclaimed range):
+//
+//     mr r31,r4 ; mr. r30,r3 ; beq            guard the receiver, keep the flag
+//     lbz r0,0(r30) ; cmplwi r0,0 ; beq        a byte at +0
+//     lwz r3,4(r30) ; li r4,1 ; bl fn_800E0BE4 a pointer at +4, called with flag 1
+//     extsh. r0,r31 ; ble ; mr r3,r30 ; bl Free__7CMemoryFPCv
+//
+// and `rstl::auto_ptr`'s own layout is `{ mutable bool mHas; T* mItem; }`
+// (`include/rstl/auto_ptr.hpp`), i.e. the byte at +0 is `mHas` and the word at +4 is `mItem`.
+// So this is MWCC's out-of-line form of `rstl::auto_ptr<CInGameGuiManager>::~auto_ptr()`: destroy
+// the pointee when the holder owns it, and free the holder itself only when the flag casts to a
+// positive short. `Carve800E1548.c`'s element stride of 8 is the same two words, which is what
+// ties the two files together.
+//
+// The pointee destructor is retail 0x800E0BE4, `CInGameGuiManager::~CInGameGuiManager`, and the
+// port has no body for it - `CInGameGuiManager.cpp` is a structure-first scaffold with no
+// destructor at all. `delete` is what stands in, and it is the same work: run the member
+// destructors, then release the block.
+extern "C" void fn_800E0B80(void* ptr, int flag) {
+  rstl::auto_ptr< CInGameGuiManager >* holder =
+      static_cast< rstl::auto_ptr< CInGameGuiManager >* >(ptr);
+  if (ptr != nullptr) {
+    if (holder->mHas) {
+      CInGameGuiManager* item = holder->mItem;
+      holder->mHas = false;
+      delete item;
+    }
+    if (flag > 0) {
+      CMemory::Free(ptr);
+    }
+  }
+}
 
 // Retail 0x8016BDB4, 0x30: a forwarder to the loader, in a range no unit of ours claims yet.
 // `CMemoryCard`'s constructor walks this list for the MLVLs.
