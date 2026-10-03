@@ -5,11 +5,27 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 202 of them: the ones referenced **only by
+ * file supplies 204 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   194 functions, 10 data objects (counted 2026-10-03, after
+ *   196 functions, 10 data objects (counted 2026-10-03, after
+ *   `src/MetroidPrime/Carve800E0EFC.c` needed **two** stand-ins:
+ *   `stub_carve800e0efc_0` for the `fn_800E0FAC` its `fn_800E0F54` calls (retail's unclaimed
+ *   144-byte destructor one byte above this carve's claim, left in dtk's `auto_03_800E028C_text.o`),
+ *   and `stub_carve800e0efc_1` for the `__dt__21CDependencyGroupTokenFv` its `fn_800E0EFC` calls -
+ *   a name the **host** cannot spell, since a host compiler mangles the same destructor
+ *   `_ZN21CDependencyGroupTokenD1Ev` while the DOL link gets MWCC's spelling from dtk's
+ *   `build/G2ME01/obj/MetroidPrime/Player/CMorphBall.o` (`nm build/G2ME01/main.elf`: `800c07e0 W`).
+ *   The file's two derived terms moved `grep -cE 'asm\("'` 205 -> 207 and
+ *   `^extern "C" void stub_[A-Za-z0-9_]*\(\) asm\(` 195 -> 197, with
+ *   `^extern "C" char stub_data_*` unmoved at 10; total supplied 203 -> 205.  All three
+ *   re-measured on this tree after the edit rather than carried - **the counts this paragraph
+ *   replaced said 202 / 194 / 202 and were already three low on the parent commit `0c95f33f`,
+ *   which measured 205 / 195 / 205**, so they were re-derived from the tree, not adjusted.
+ *   **This file's `_0`-suffixed names defeat neither derived term**: `[A-Za-z0-9_]*` matches
+ *   `stub_carve800e0efc_0` and `stub_carve800e0efc_1`, so both are inside the 197.
+ *   Before that, 2026-10-03, after
  *   `src/MetroidPrime/Carve8001FEDC.c` needed **two** stand-ins: `stub_8001fedc_0` for the
  *   `fn_800E142C` its `fn_8001FF2C` calls, and `stub_8001fedc_1` for the `__dt__13CStateManagerFv`
  *   its `fn_8001FEDC` calls - a name the **host** cannot spell, since a host compiler mangles the
@@ -1795,3 +1811,42 @@ extern "C" void stub_carve8010ee5c_0() {}
 // the top of this file is deliberately left untouched for the same reason.
 extern "C" void stub_carve801eb30c_0() asm("fn_801EB374");
 extern "C" void stub_carve801eb30c_0() {}
+
+// `fn_800E0FAC` - retail `.text:0x800E0FAC`, 0x90 = 144 bytes, `symbols.txt:3902`, size:
+// unclaimed.  **This is an empty-body stand-in and it is announced as one.**  It does not claim
+// 0x800E0FAC is decompiled: no unit claims that range.  It is the byte immediately above
+// `src/MetroidPrime/Carve800E0EFC.c`'s own claim (0x800E0EFC..0x800E0FAC) and stays in dtk's
+// `auto_03_800E028C_text.o`, which the matching build links, so this carve cannot reach it.
+//
+// **Why the port asks for it at all.** `src/MetroidPrime/Carve800E0EFC.c` declares `fn_800E0FAC`
+// and its `fn_800E0F54` calls it at retail's own `bl` (0x800E0F7C), that file is in `files.cmake`,
+// and no other port source declares or calls it.
+//
+// What retail's function does, measured from `build/G2ME01/asm/auto_03_800E028C_text.s:1000-1040`:
+// a null-receiver early return, then a member at +0x38 released through `fn_800E103C` with flag
+// -1, a `bool` at +0x30 gating a `CQuitGameScreen*` at +0x34 through `__dt__15CQuitGameScreenFv`,
+// then `bl __dt__6CTokenFv` on the receiver itself (flag 0), the signed-halfword deleting-flag test
+// and `Free__7CMemoryFPCv`.  **An empty body does none of that**, so an object destroyed through
+// this name keeps all of its members rather than releasing them - the same trade
+// `stub_8001fedc_0` makes for the neighbour carve's 284-byte element, and it is why this one is
+// named after the unit that asks for it.
+extern "C" void stub_carve800e0efc_0() asm("fn_800E0FAC");
+extern "C" void stub_carve800e0efc_0() {}
+
+// `__dt__21CDependencyGroupTokenFv` - retail `.text:0x800C07E0`, 0x6C = 108 bytes,
+// `symbols.txt:3546`, weak, `CDependencyGroupToken::~CDependencyGroupToken()` under **MWCC's own
+// mangling**.  **This is an empty-body stand-in and it is announced as one.**  It exists because
+// the *port* cannot spell that name: the DOL link gets it from dtk's own
+// `build/G2ME01/obj/MetroidPrime/Player/CMorphBall.o` (`nm build/G2ME01/main.elf` has
+// `800c07e0 W __dt__21CDependencyGroupTokenFv`, retail's own claim for that address), but a host
+// compiler mangles the same destructor `_ZN21CDependencyGroupTokenD1Ev`, so the retail spelling
+// is undefined on a host link no matter which unit asks for it.  Nothing in `src/` defines
+// `CDependencyGroupToken`'s destructor body at all, so an empty stand-in loses no port behaviour.
+//
+// **Why the port asks for it at all.** `src/MetroidPrime/Carve800E0EFC.c` declares it and its
+// `fn_800E0EFC` calls it at retail's own `bl` (0x800E0F24), which is one of the two `bl` targets
+// that make that function a byte-shape twin of
+// `__dt__Q24rstl32single_ptr<18CGameGlobalObjects>Fv`.  Measured against
+// `build/goal/judge/undef.base.txt`, `Carve800E0EFC.c.o` was the sole new referencer of this name.
+extern "C" void stub_carve800e0efc_1() asm("__dt__21CDependencyGroupTokenFv");
+extern "C" void stub_carve800e0efc_1() {}

@@ -532,6 +532,9 @@ MetroidPrime/CActorParameters.cpp:
 	.sdata      start:0x80418218 end:0x80418228
 	.sdata2     start:0x8041B680 end:0x8041B688
 
+MetroidPrime/Carve800E0EFC.c:
+	.text       start:0x800E0EFC end:0x800E0FAC
+
 MetroidPrime/Carve800E10EC.cpp:
 	.text       start:0x800E10EC end:0x800E122C
 
