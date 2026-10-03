@@ -2174,6 +2174,40 @@ config.libs = [
             # paren-count reason the 3790 entry gives, and like every entry after it this comment
             # is paren-balanced.
             Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardianAD4.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardianAD4.cpp", mw_version="GC/2.7"),
+            # Added 2026-10-03 (lane 5, `progress-rel-ingboostballguardian-aac`). `.text`
+            # 0xAAC..0xAD4, `fn_30_AAC` (0x28 = 40 bytes per
+            # `config/G2ME01/rels/IngBoostBallGuardian/symbols.txt:26`), one function: the null guard
+            # and the forwarding call in front of the entry above.
+            # **The whole body is `cmplwi r3,0` / `beq` / `bl fn_30_F78`**, with no `addi` and no
+            # `mr` between the caller's r3 and the callee's, so both arguments are forwarded
+            # untouched and there is no address arithmetic to spell: `if (self) fn_30_F78(self,
+            # other);` is the entire function and it returns `void` - the epilogue never touches r3
+            # after the callee, and `fn_30_F78` has no return value to pass on.
+            # **Its only caller, `fn_30_A8C` (0xA8C, 0x20), forwards just as blindly** - `stwu` /
+            # `mflr` / `bl fn_30_AAC` / `lwz` / `mtlr` / `addi` / `blr`, no argument setup at all -
+            # so the two-argument signature is measured from `fn_30_F78`'s own body, a 0x38-byte
+            # member-wise copy (six `lfs`/`stfs`, six `lwz`/`stw` pairs, two more `lfs`/`stfs`) laid
+            # out as `RelRecord38` in the source.
+            # **The callee stays `extern "C"` and stays undefined here**: `fn_30_F78`
+            # (`.text:0xF78 size 0x74`) is claimed by no unit and this carve starts no new auto unit
+            # at 0xF78, so it is still defined by `auto_00_00000B30_text.o` at object offset 0x448,
+            # an object the module links. This unit therefore adds no undefined symbol to the
+            # module.
+            # **mw_version is load-bearing**, with the same per-object override as the five entries
+            # above: the `Rel` block this entry sits in defaults to GC/1.3.2, and setting the
+            # version there instead would recompile the other module-30 units.
+            # **No dead-strip hazard, measured**: `fn_30_AAC` is not in ldscript.lcf's FORCEACTIVE
+            # list, but `powerpc-eabi-objdump -r` finds an R_PPC_REL24 naming it in
+            # `auto_00_00000000_text.o` and in `auto_00_00000130_text.o` (the call at 0xA98), and
+            # the second of those is the auto unit this carve splits in two, so it is in the module's
+            # link after the split. No force_active: entry, no config.yml change and no symbols.txt
+            # rename: the claim is `.text` only and `fn_30_*` is the name dtk's objects call it. The
+            # claim spans no unclaimed gap - `fn_30_A8C` is 0x20 bytes and ends exactly at 0xAAC -
+            # and `total_functions` stays 28465. The entry is named with the module prefix and
+            # carries source= for the reason the 388C entry gives; it sits after the AD4 entry for
+            # the paren-count reason the 3790 entry gives, and like every entry after it this
+            # comment is paren-balanced.
+            Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardianAAC.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardianAAC.cpp", mw_version="GC/2.7"),
             # Added 2026-10-02 (lane 11, `progress-vt-rel-ingboostballguardian`, the vtable-name
             # trial). Six more ranges out of module 30's unclaimed gaps, twelve functions, every
             # one a virtual `tools/rel_class_map.py` names off the DOL vtable's matching slot:

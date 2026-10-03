@@ -511,6 +511,13 @@ src/MetroidPrime/PortLinkStubs.cpp
     # between 0x15 and 0x18 are alignment rather than a declared pad member. Same empty host
     # branch as the entries above.
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianAD4.cpp
+    # `fn_30_AAC` (0xAAC, 0x28), the null-guarded forwarding call in front of the entry above and
+    # the whole of the unit - `cmplwi r3,0` / `beq` / `bl fn_30_F78`, both arguments forwarded
+    # untouched and no return value; see the `Rel("IngBoostBallGuardian", ...)` block in
+    # configure.py for the range, the callee's measured 0x38-byte layout, the dead-strip
+    # measurement and why `fn_30_F78` stays an undefined `extern "C"`. Same empty host branch as
+    # the entries above.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianAAC.cpp
     # The three functions in front of it, `.text` 0x3790..0x388C of module 30: the null-guarded
     # deleting-destructor chain (see the `Rel("IngBoostBallGuardian", ...)` block in configure.py
     # for the range, the measurements and why the entry there is named with the module prefix and
