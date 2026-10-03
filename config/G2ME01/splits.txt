@@ -1668,6 +1668,9 @@ MetroidPrime/ScriptLoader/MediumIng.cpp:
 	.text       start:0x80218A40 end:0x80218A6C
 	.sbss       start:0x804193F8 end:0x80419400
 
+MetroidPrime/ScriptLoader/Carve80218A6C.c:
+	.text       start:0x80218A6C end:0x80218A74
+
 MetroidPrime/ScriptLoader/MinorIng.cpp:
 	.text       start:0x80218A74 end:0x80218AA0
 	.sbss       start:0x80419400 end:0x80419408
