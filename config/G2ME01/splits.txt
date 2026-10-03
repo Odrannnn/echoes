@@ -3413,6 +3413,9 @@ Kyoto/Math/Carve80335B7C.c:
 Kyoto/Math/Carve80337198.c:
 	.text       start:0x80337198 end:0x8033719C
 
+Kyoto/Math/Carve8033719C.c:
+	.text       start:0x8033719C end:0x803371A4
+
 Kyoto/Math/Carve803371A4.c:
 	.text       start:0x803371A4 end:0x803371A8
 

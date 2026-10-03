@@ -1160,6 +1160,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/Kyoto/Math/Carve80335B58.c
     src/Kyoto/Math/Carve80335B7C.c
     src/Kyoto/Math/Carve80337198.c
+    # A carve of `fn_8033719C` (0x8033719C..0x803371A4), the vtable slot that returns retail's
+    # `.sdata2` word `lbl_8041ED38`, out of dtk's `auto_03_8033719C_text`. The word itself is
+    # declared, not claimed, and defined host-only in the file - see its header.
+    src/Kyoto/Math/Carve8033719C.c
     src/Kyoto/Math/Carve803371A4.c
     src/Kyoto/Math/Carve803371F4.c
     src/Kyoto/Math/Carve80339D1C.c
