@@ -1578,6 +1578,9 @@ MetroidPrime/ScriptLoader/SporbBase.cpp:
 	.text       start:0x80213C08 end:0x80213CB8
 	.sbss       start:0x804193A8 end:0x804193B0
 
+MetroidPrime/ScriptLoader/Carve80213CB8.c:
+	.text       start:0x80213CB8 end:0x80213CC0
+
 MetroidPrime/Tweaks/CTweakTargeting.cpp:
 	.text       start:0x80213CC0 end:0x802142A0
 	.data       start:0x803B8038 end:0x803B805C align:4

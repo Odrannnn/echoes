@@ -845,6 +845,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/Carve80212A24.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve80213320.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/SporbBase.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80213CB8.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/Sandworm.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8021887C.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/CommandPirate.cpp"),
