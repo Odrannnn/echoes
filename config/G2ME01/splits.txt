@@ -1654,6 +1654,9 @@ MetroidPrime/ScriptLoader/FlyingPirate.cpp:
 	.text       start:0x802189D8 end:0x80218A04
 	.sbss       start:0x804193E8 end:0x804193F0
 
+MetroidPrime/ScriptLoader/Carve80218A04.c:
+	.text       start:0x80218A04 end:0x80218A0C
+
 MetroidPrime/ScriptLoader/Grenchler.cpp:
 	.text       start:0x80218A0C end:0x80218A38
 	.sbss       start:0x804193F0 end:0x804193F8
