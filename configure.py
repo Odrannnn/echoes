@@ -879,6 +879,7 @@ config.libs = [
             # slot. `.c` because module 40 imports the plain retail name `fn_80218B68`.
             Object(Matching, "MetroidPrime/ScriptLoader/Carve80218B68.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/GunTurretBase.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80218BC8.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/Lumite.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Shrieker.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Splinter.cpp"),

@@ -1703,6 +1703,9 @@ MetroidPrime/ScriptLoader/GunTurretBase.cpp:
 	.text       start:0x80218B70 end:0x80218BC8
 	.sbss       start:0x80419420 end:0x80419428
 
+MetroidPrime/ScriptLoader/Carve80218BC8.c:
+	.text       start:0x80218BC8 end:0x80218BD0
+
 MetroidPrime/ScriptLoader/Lumite.cpp:
 	.text       start:0x80218BD0 end:0x80218BFC
 	.sbss       start:0x80419428 end:0x80419430
