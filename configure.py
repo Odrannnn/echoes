@@ -623,6 +623,12 @@ config.libs = [
             Object(Matching, "MetroidPrime/Weapons/CPowerBeam.cpp"),
             Object(NonMatching, "MetroidPrime/Weapons/CAuxWeapon.cpp"),
             Object(NonMatching, "MetroidPrime/Weapons/GunController/CGunMotion.cpp"),
+            # Carved out of dtk's unclaimed `auto_03_801D72D0_text`: `fn_801D7E9C`
+            # (0x801D7E9C..0x801D7EBC, 0x20), the 32-byte `CGunWeapon::Update` forwarder in the
+            # `Update` slot (base + 0x2C) of the vtable at 0x803B7238, byte-for-byte the
+            # instructions of the matched `fn_80004438`. `.c` because retail's own
+            # `fn_801D7E9C` is the symbol - see the file header.
+            Object(Matching, "MetroidPrime/Weapons/GunController/Carve801D7E9C.c"),
             # Carved out of dtk's unclaimed `auto_03_801D72D0_text`: `fn_801D8248`
             # (0x801D8248..0x801D8254, 0xC), the 12-byte array element constructor `fn_801D81C8`
             # hands to `__construct_array`, byte-for-byte the instructions of the matched

@@ -2131,6 +2131,11 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/Weapons/GunController/CGSFreeLook.cpp
     src/MetroidPrime/Weapons/GunController/CGunController.cpp
     src/MetroidPrime/Weapons/GunController/CGunMotion.cpp
+    # A carve of `fn_801D7E9C` (0x801D7E9C..0x801D7EBC), the 32-byte `CGunWeapon::Update`
+    # forwarder out of dtk's `auto_03_801D72D0_text`, between `CGunMotion.cpp`'s and
+    # `Carve801D8248.c`'s ranges.  `.c` because retail's own `fn_801D7E9C` is the symbol, so the
+    # definition has to be unmangled - see the file header.
+    src/MetroidPrime/Weapons/GunController/Carve801D7E9C.c
     # A carve of `fn_801D8248` (0x801D8248..0x801D8254), the 12-byte array element constructor out
     # of dtk's `auto_03_801D72D0_text`, between `CGunMotion.cpp`'s and `CGunWeapon.cpp`'s ranges.
     # `.c` because retail's own `fn_801D8248` is the symbol, so the definition has to be

@@ -1984,6 +1984,36 @@ extern "C" void stub_carve8016f69c_0(const void*, void*, void*)
     asm("Touch__6CActorFR6CActorR13CStateManager");
 extern "C" void stub_carve8016f69c_0(const void*, void*, void*) {}
 
+// `Update__10CGunWeaponFfR13CStateManager` - retail `.text:0x801DB2C0`, **0x26C = 620 bytes**,
+// `config/G2ME01/symbols.txt:7661`: the one callee of
+// `src/MetroidPrime/Weapons/GunController/Carve801D7E9C.c` (`Matching`, 0x801D7E9C..0x801D7EBC),
+// whose `fn_801D7E9C` - retail's unnamed `CGunWeapon::Update`, the `Update` slot (base + 0x2C) of
+// the vtable at 0x803B7238 - is a frame and one `bl` to this name.  **This is an empty-body
+// stand-in and it is announced as one: those 620 bytes are NOT reproduced here.**  Nothing in this
+// file claims 0x801DB2C0 is decompiled - the range belongs to `MetroidPrime/Weapons/CGunWeapon.cpp`'s
+// existing claim (0x801D8254..0x801DC1B8), so dtk's object for that unit supplies the bytes in the
+// DOL link (`nm build/G2ME01/obj/MetroidPrime/Weapons/CGunWeapon.o`:
+// `0000306c T Update__10CGunWeaponFfR13CStateManager`) and the symbol is nothing this carve can or
+// should claim.  This file is not in `configure.py`, so a definition here cannot reach main.dol.
+//
+// **Why a stand-in at all, when the host already has the method:** the host link resolves
+// `CGunWeapon::Update` to `_ZN10CGunWeapon6UpdateEfR13CStateManager` - Itanium mangling, which is
+// what `build-port-link/CMakeFiles/mp_game.dir/src/MetroidPrime/Weapons/CGunWeapon.cpp.o` defines
+// - while a plain C definition site emits the `bl` against MWCC's spelling, which nothing on the
+// host provides.  Same trade `stub_80004438_0` makes for `Carve80004438.c`'s callee: without this
+// the port's link gap grows by exactly this one name.
+//
+// The name is keyed to the unit that asks for it, following `stub_carve8016f69c_0` above, so another
+// lane's carve cannot take it between the judge and the rebase.  The declaration takes the three
+// arguments the caller passes - `this`, the `float`, the `CStateManager&` - and the body ignores all
+// three, which is an announced no-op rather than a plausible-looking return.  The file's derived
+// terms move `grep -cE 'asm\("'` 213 -> 214, with `grep -cE 'asm\("(fn_|lbl_)'` unmoved at 49
+// (MWCC's spelling is not an `fn_`/`lbl_` placeholder), `^extern "C" char stub_data_*` unmoved at 10
+// and `^extern "C" void stub_[A-Za-z0-9_]*\(\) asm\(` unmoved at 201 (this one takes parameters).
+extern "C" void stub_carve801d7e9c_0(const void*, float, void*)
+    asm("Update__10CGunWeaponFfR13CStateManager");
+extern "C" void stub_carve801d7e9c_0(const void*, float, void*) {}
+
 // `fn_801F1510` - retail `.text:0x801F1510`, 0x44 = 68 bytes, `config/G2ME01/symbols.txt:8021`: the
 // one callee of `src/MetroidPrime/Carve801F14F0.c` (`Matching`, 0x801F14F0..0x801F1510), whose
 // `fn_801F14F0` is a frame and one `bl` to this name and nothing else - the byte-for-byte twin
