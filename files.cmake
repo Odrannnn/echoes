@@ -490,6 +490,13 @@ src/MetroidPrime/PortLinkStubs.cpp
     # range, the measured layout, the dead-strip measurement and why the two records are spelled as
     # calls and not as assignments. Same empty host branch as the entries above.
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian10694.cpp
+    # `fn_30_33B0` (0x33B0, 0x5C), the module's copy of a record of eight floats, two words and a
+    # byte, called by `fn_30_324C` as an lvalue copy through r3/r4; see the
+    # `Rel("IngBoostBallGuardian", ...)` block in configure.py for the range, the measured layout,
+    # why the two word copies are written +0x24 before +0x20, the dead-strip measurement and why
+    # the entry there carries a per-object `mw_version="GC/2.7"` (the module default gives the same
+    # 92 bytes but only 31 of them are retail's). Same empty host branch as the entries above.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian33B0.cpp
     # The three functions in front of it, `.text` 0x3790..0x388C of module 30: the null-guarded
     # deleting-destructor chain (see the `Rel("IngBoostBallGuardian", ...)` block in configure.py
     # for the range, the measurements and why the entry there is named with the module prefix and

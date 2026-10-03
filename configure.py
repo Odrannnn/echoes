@@ -1966,6 +1966,49 @@ config.libs = [
             # paren count flip_test.sh's unit_info uses starts at the last call of that helper, and
             # the extra close paren at the end of the comment above is what makes the count come
             # out even for this entry and for every entry after it.)
+            # Added 2026-10-03 (lane 7, `progress-rel-ingboostballguardian-33b0`). `.text`
+            # 0x33B0..0x340C, `fn_30_33B0` (0x5C), one leaf: the module's copy of a record read
+            # off its own loads - eight floats at +0x00..+0x1F, two words at +0x20 and +0x24 and a
+            # byte at +0x28, eleven member copies in MWCC's two-deep schedule, with no relocation
+            # in `.rela.text` anywhere in the range (measured on
+            # `build/G2ME01/IngBoostBallGuardian/obj/auto_00_000020A0_text.o` between section
+            # offsets 0x1310 and 0x136C), so the bytes are the whole of the claim and there is no
+            # callee to declare. `fn_30_324C` calls it at 0x3334 with `addi r3,r1,104` /
+            # `addi r4,r1,56` - two of its own frame's locals - so the record is copied as an
+            # lvalue through r3/r4, not constructed through a hidden return pointer; that is what
+            # fixes the parameter spelling and the member-by-member body. The record's own size is
+            # not measurable from the copy (0x29 is read, last member a byte), so the local type is
+            # named for the extent the copy reaches. The claim is this range and not a wider run
+            # because `fn_30_340C` behind it (0x6C) is a different function and `fn_30_324C` in
+            # front of it (0x164) is the ray-intersection builder that calls this one.
+            # **mw_version is load-bearing, with the same per-object override as the 388C entry
+            # above and for the same reason**: at the module default GC/1.3.2 this source gives
+            # plain load/store pairs in f0 with no rotation and only 31 of its 92 bytes right
+            # (measured with tools/probe_cc.sh on this source against
+            # orig/G2ME01/files/RelProd/IngBoostBallGuardian.rel - same 92-byte size, different
+            # bytes, which is why a byte comparison rather than a percentage is the test here);
+            # at GC/2.7 it is byte-identical, 92 of 92. Setting the version on the Rel block
+            # instead would recompile the other module-30 units.
+            # **The two word copies are written +0x24 before +0x20, against the declaration order,
+            # and that is the whole of the difference between 88 and 92 bytes**: retail issues
+            # `lwz r0,0x24(r4)` then `lwz r5,0x20(r4)`, interleaved with the last `stfs` and the
+            # `lbz`, so the two words land in different registers; MWCC follows the statement
+            # order. Three spellings measured on this source at GC/2.7 all give 88 of 92 and none
+            # of them retail's - declaration order, the two words as a nested struct assigned
+            # whole, and the whole-object `*self = other`. The last matters because the 388C entry
+            # above uses exactly that spelling successfully: at eleven members it still inlines
+            # (one function, no out-of-line `__as__`), so what differs here is the statement
+            # order, not the inlining threshold that entry measures.
+            # **No dead-strip hazard, measured**: `fn_30_33B0` is not in ldscript.lcf's FORCEACTIVE
+            # list (unlike `fn_30_3790`), but powerpc-eabi-objdump -r shows an R_PPC_REL24 naming
+            # it in auto_00_00000000_text.o (0x3334) as well as in auto_00_000020A0_text.o
+            # (0x1294) - the two dtk objects that define it today - so a reference is in the link
+            # once the carve removes their copies. No force_active: entry, no config.yml change,
+            # no symbols.txt rename. The entry is named with the module prefix and carries source=
+            # for the reason the 388C entry above gives, and it sits after it so the paren count
+            # flip_test.sh's unit_info uses stays even - it inherits that entry's closing paren
+            # for the same reason the 3790 entry below does.)
+            Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian33B0.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian33B0.cpp", mw_version="GC/2.7"),
             Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian3790.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian3790.cpp"),
             # Added 2026-10-03 (lane 7, `progress-rel-ingboostballguardian-108d4`). `.text`
             # 0x108D4..0x10B90, `fn_30_108D4` (0x2BC = 700 bytes), one leaf: the module's copy of a
