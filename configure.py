@@ -911,6 +911,13 @@ config.libs = [
             # that exact retail name, so the definition has to be unmangled - see the file header.
             Object(Matching, "MetroidPrime/ScriptLoader/Carve80218DF4.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/GlowBug.cpp"),
+            # Added 2026-10-03 (goal item `carve-80218e28`). The 8 bytes at 0x80218E28, the
+            # Glowbug module's loader setter (`stw r3, gLoader_GlowBug@sda21(r0); blr`), carved
+            # out of dtk's `auto_03_80218E28_text`. `GlowBug.cpp`'s .text ends at 0x80218E28
+            # and the rest of that dtk run is still unsourced, so this claims the 8 bytes only;
+            # .sbss stays with GlowBug.cpp, which defines the slot. `.c` because module 26
+            # imports the plain retail name `fn_80218E28`.
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80218E28.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/IngSpaceJumpGuardian.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/DigitalGuardian.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Shredder.cpp"),
