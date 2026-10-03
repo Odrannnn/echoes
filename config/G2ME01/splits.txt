@@ -1910,6 +1910,9 @@ MetroidPrime/ScriptLoader/Carve8023E5A8.c:
 MetroidPrime/ScriptLoader/Carve80241C90.c:
 	.text       start:0x80241C90 end:0x80241CD8
 
+MetroidPrime/ScriptLoader/Carve802420F8.c:
+	.text       start:0x802420F8 end:0x80242140
+
 MetroidPrime/ScriptLoader.cpp:
 	.text       start:0x80242894 end:0x80243ED4
 	.ctors      start:0x803A55A4 end:0x803A55A8
