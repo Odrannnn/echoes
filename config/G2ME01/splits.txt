@@ -2305,6 +2305,9 @@ GuiSys/Carve80278C68.c:
 MetroidPrime/Carve80278C74.c:
 	.text       start:0x80278C74 end:0x80278C7C
 
+MetroidPrime/Carve80279244.c:
+	.text       start:0x80279244 end:0x80279250
+
 MetroidPrime/Carve80279250.c:
 	.text       start:0x80279250 end:0x80279260
 

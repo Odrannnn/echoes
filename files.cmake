@@ -1096,6 +1096,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve80278568.c
     src/GuiSys/Carve80278C68.c
     src/MetroidPrime/Carve80278C74.c
+    # A carve of `fn_80279244` (0x80279244..0x80279250), the 0xC-byte `'TBGP'` FourCC returner out
+    # of dtk's `auto_03_80278C7C_text` - a byte-shape twin of `GetWidgetTypeID__13CAuiImagePaneCFv`.
+    # `.c` because the symbol is retail's unmangled `fn_80279244` placeholder - see the file header.
+    src/MetroidPrime/Carve80279244.c
     src/MetroidPrime/Carve80279250.c
     src/MetroidPrime/Carve8027A1C4.c
     src/MetroidPrime/Carve8027A53C.c
