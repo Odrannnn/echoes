@@ -1961,6 +1961,9 @@ MetroidPrime/ScriptLoader/MetareeSwarm.cpp:
 	.text       start:0x8022D57C end:0x8022D5A8
 	.sbss       start:0x804195E0 end:0x804195E8
 
+MetroidPrime/ScriptLoader/Carve8022D5A8.c:
+	.text       start:0x8022D5A8 end:0x8022D5B0
+
 MetroidPrime/ScriptLoader/Carve8022D758.c:
 	.text       start:0x8022D758 end:0x8022D75C
 

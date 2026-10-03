@@ -990,6 +990,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     # exact retail name, so the definition has to be unmangled - see the file header.
     src/MetroidPrime/ScriptLoader/Carve8022A024.c
     src/MetroidPrime/ScriptLoader/Carve8022A3F4.c
+    src/MetroidPrime/ScriptLoader/Carve8022D5A8.c
     src/MetroidPrime/ScriptLoader/Carve8022D758.c
     src/MetroidPrime/ScriptLoader/Carve8022DA40.c
     src/MetroidPrime/ScriptLoader/Carve8022EB54.c
