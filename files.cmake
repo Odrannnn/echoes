@@ -2076,6 +2076,11 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/Weapons/GunController/CGSFreeLook.cpp
     src/MetroidPrime/Weapons/GunController/CGunController.cpp
     src/MetroidPrime/Weapons/GunController/CGunMotion.cpp
+    # A carve of `fn_801D8248` (0x801D8248..0x801D8254), the 12-byte array element constructor out
+    # of dtk's `auto_03_801D72D0_text`, between `CGunMotion.cpp`'s and `CGunWeapon.cpp`'s ranges.
+    # `.c` because retail's own `fn_801D8248` is the symbol, so the definition has to be
+    # unmangled - see the file header.
+    src/MetroidPrime/Weapons/GunController/Carve801D8248.c
 )
 
 # LZO's bundled config assumes 32-bit size_t; set the host width for native builds.

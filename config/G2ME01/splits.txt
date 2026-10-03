@@ -1297,6 +1297,9 @@ MetroidPrime/Weapons/GunController/CGunMotion.cpp:
 	.text       start:0x801D6BDC end:0x801D72D0
 	.sdata2     start:0x8041D280 end:0x8041D288
 
+MetroidPrime/Weapons/GunController/Carve801D8248.c:
+	.text       start:0x801D8248 end:0x801D8254
+
 MetroidPrime/Weapons/CGunWeapon.cpp:
 	.text       start:0x801D8254 end:0x801DC1B8
 	.data       start:0x803B7370 end:0x803B73D0
