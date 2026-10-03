@@ -872,6 +872,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     # setter, out of dtk's `auto_03_80213CB8_text`. `.c` because the module imports that exact
     # retail name, so the definition has to be unmangled - see the file header.
     src/MetroidPrime/ScriptLoader/Carve80213CB8.c
+    # A carve of `fn_8021F9E4` (0x8021F9E4..0x8021F9EC), the Shredder module's 8-byte loader
+    # setter out of dtk's `auto_03_8021F9E4_text`. `.c` because the module imports that exact
+    # retail name, so the definition has to be unmangled - see the file header.
+    src/MetroidPrime/ScriptLoader/Carve8021F9E4.c
     # A carve of the four unnamed `CTweakGame` float readers at 0x80216D2C..0x80216D5C, and the
     # one definition of `fn_80216D38` in both builds - see the note above and the file header.
     src/MetroidPrime/Tweaks/Carve80216D2C.c

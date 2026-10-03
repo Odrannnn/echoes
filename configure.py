@@ -921,6 +921,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/IngSpaceJumpGuardian.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/DigitalGuardian.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Shredder.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve8021F9E4.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/FrontEndDataNetwork.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8021FA18.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/StoneToad.cpp"),
