@@ -738,6 +738,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Player/Carve80168498.c
     src/MetroidPrime/CInGameTweakManagerReadFromMemoryCard.cpp
     src/MetroidPrime/Carve8016BEA8.cpp
+    src/MetroidPrime/Carve8016F69C.c
     src/MetroidPrime/Carve8016FD4C.c
     src/MetroidPrime/Carve80171DD4.c
     src/MetroidPrime/Carve80179E08.c

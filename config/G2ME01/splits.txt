@@ -1042,6 +1042,9 @@ MetroidPrime/CRumbleManager.cpp:
 	.text       start:0x8016DC58 end:0x8016DF3C
 	.sdata2     start:0x8041C788 end:0x8041C798
 
+MetroidPrime/Carve8016F69C.c:
+	.text       start:0x8016F69C end:0x8016F6BC
+
 MetroidPrime/Carve8016FD4C.c:
 	.text       start:0x8016FD4C end:0x8016FD94
 

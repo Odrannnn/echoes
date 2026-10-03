@@ -1963,3 +1963,23 @@ extern "C" int stub_carve8016bea8_0() { return 0; }
 // this body ignores both.
 extern "C" void stub_carve801834c8_0() asm("fn_8005F508");
 extern "C" void stub_carve801834c8_0() {}
+
+// `Touch__6CActorFR6CActorR13CStateManager` - retail `.text:0x8004C564`, **0x4 = 4 bytes**,
+// `config/G2ME01/symbols.txt:1473`: the one callee of `src/MetroidPrime/Carve8016F69C.c` (`Matching`,
+// 0x8016F69C..0x8016F6BC), whose `fn_8016F69C` - `CBouncyGrenade::Touch`, the `Touch` slot
+// (base + 0x40) of the vtable at 0x803B5394 - is a frame and one `bl` to this name.  **This is an empty-body stand-in, it is
+// announced as one, and here it is retail's behaviour rather than a loss.**  Measured off
+// `build/G2ME01/main.elf`: those four bytes are a single `blr`, so `CActor::Touch` does nothing at
+// all and the call this file's caller makes has nothing to do.  Nothing here claims 0x8004C564 is
+// decompiled - the range belongs to `MetroidPrime/CActor.cpp`'s existing claim
+// (0x80049ED8..0x8004E84C), so dtk's object for that unit supplies the bytes in the DOL link and
+// the symbol is nothing this carve can or should claim; and this file is not in `configure.py`, so
+// a definition here cannot reach main.dol.
+//
+// The name is keyed to the unit that asks for it, following `stub_carve801834c8_0` above, so another
+// lane's carve cannot take it between the judge and the rebase.  The declaration takes the three
+// pointers the caller passes - `this`, the actor, the state manager - and the body ignores all
+// three, which is exactly what retail's `blr` does with them.
+extern "C" void stub_carve8016f69c_0(const void*, void*, void*)
+    asm("Touch__6CActorFR6CActorR13CStateManager");
+extern "C" void stub_carve8016f69c_0(const void*, void*, void*) {}
