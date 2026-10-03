@@ -25,6 +25,9 @@ MetroidPrime/Carve8000387C.cpp:
 MetroidPrime/CMainResetGameState.cpp:
 	.text       start:0x80003A48 end:0x80003BE8
 
+MetroidPrime/Carve80003EFC.c:
+	.text       start:0x80003EFC end:0x80003F08
+
 MetroidPrime/Carve80004010.c:
 	.text       start:0x80004010 end:0x8000408C
 

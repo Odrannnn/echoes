@@ -650,6 +650,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Enemies/Carve800358E0.c
     src/MetroidPrime/Carve80003858.c
     src/MetroidPrime/Carve8000387C.cpp
+    # A carve of `fn_80003EFC` (0x80003EFC..0x80003F08), the 0xC-byte `vec[1] = 0` half out of
+    # dtk's `auto_03_80003BE8_text` - a byte-shape twin of `fn_80004010` below. `.c` because the
+    # symbol is retail's unmangled `fn_80003EFC` placeholder - see the file header.
+    src/MetroidPrime/Carve80003EFC.c
     src/MetroidPrime/Carve80004010.c
     src/MetroidPrime/Carve8000432C.cpp
     src/MetroidPrime/Carve80004438.c
