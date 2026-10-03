@@ -2021,6 +2021,9 @@ MetroidPrime/ScriptLoader/IngBoostBallGuardian.cpp:
 	.text       start:0x8022FF98 end:0x8022FFC4
 	.sbss       start:0x80419610 end:0x80419618
 
+MetroidPrime/ScriptLoader/Carve8022FFC4.c:
+	.text       start:0x8022FFC4 end:0x8022FFCC
+
 MetroidPrime/ScriptLoader/PlantScarabSwarm.cpp:
 	.text       start:0x8022FFCC end:0x8022FFF8
 	.sbss       start:0x80419618 end:0x80419620

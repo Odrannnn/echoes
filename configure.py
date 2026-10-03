@@ -1000,6 +1000,14 @@ config.libs = [
             # unmangled - see the file header. .sbss stays with SwampBossStage1.cpp.
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8022EC64.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/IngBoostBallGuardian.cpp"),
+            # Carve of `fn_8022FFC4` (0x8022FFC4..0x8022FFCC), the IngBoostBallGuardian
+            # module's 8-byte loader setter out of dtk's `auto_03_8022FFC4_text`.
+            # `IngBoostBallGuardian.cpp`'s .text ends at 0x8022FFC4 and PlantScarabSwarm.cpp's
+            # starts at 0x8022FFCC, so this is the whole gap between two claimed units;
+            # .sbss stays with IngBoostBallGuardian.cpp, which defines the slot. `.c` because
+            # module 30 imports that exact retail name, so the definition has to be unmangled -
+            # see the file header.
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve8022FFC4.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/PlantScarabSwarm.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8022FFF8.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/SkyRipple.cpp"),

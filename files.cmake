@@ -1029,6 +1029,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     # loader setter out of dtk's `auto_03_8022FFF8_text`. `.c` because module 49 imports that
     # exact retail name, so the definition has to be unmangled - see the file header.
     src/MetroidPrime/ScriptLoader/Carve8022FFF8.c
+    # A carve of `fn_8022FFC4` (0x8022FFC4..0x8022FFCC), the IngBoostBallGuardian module's
+    # 8-byte loader setter out of dtk's `auto_03_8022FFC4_text`. `.c` because the module
+    # imports that exact retail name, so the definition has to be unmangled - see the file
+    # header.
+    src/MetroidPrime/ScriptLoader/Carve8022FFC4.c
     src/MetroidPrime/ScriptLoader/Carve80232834.c
     src/MetroidPrime/ScriptLoader/Carve80232868.c
     src/MetroidPrime/ScriptLoader/Carve8023289C.c
