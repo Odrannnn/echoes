@@ -911,6 +911,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     # setter out of dtk's `auto_03_80218AA0_text`. `.c` because the module imports that exact
     # retail name, so the definition has to be unmangled - see the file header.
     src/MetroidPrime/ScriptLoader/Carve80218AA0.c
+    # A carve of `fn_80218B08` (0x80218B08..0x80218B10), the Blogg module's 8-byte loader
+    # setter out of dtk's `auto_03_80218B08_text`. `.c` because the module imports that exact
+    # retail name, so the definition has to be unmangled - see the file header.
+    src/MetroidPrime/ScriptLoader/Carve80218B08.c
     # A carve of `fn_802201F8` (0x802201F8..0x80220294), the deleting destructor of the unnamed
     # 0x448-byte class `fn_8021FBCC` news with `"??(??"` - see the file header.
     src/MetroidPrime/ScriptLoader/Carve802201F8.cpp

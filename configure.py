@@ -868,6 +868,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/Carve80218AA0.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/ElitePirate.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Blogg.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80218B08.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/MetroidAlpha.cpp"),
             # Added 2026-10-03 (goal item `carve-80218b68`). The 8 bytes at 0x80218B68, the
             # Metroid module's loader setter (`stw r3, gLoader_MetroidAlpha@sda21(r0); blr`),
