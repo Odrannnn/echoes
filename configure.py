@@ -431,6 +431,7 @@ config.libs = [
             Object(NonMatching, "WorldFormat/CPVSAreaSet.cpp"),
             Object(NonMatching, "WorldFormat/CAreaRenderOctTree.cpp"),
             Object(Matching, "WorldFormat/Carve80255350.c"),
+            Object(Matching, "WorldFormat/Carve802553F4.cpp"),
             Object(Matching, "WorldFormat/Carve802554BC.c"),
             Object(Matching, "WorldFormat/Carve80255900.c"),
             Object(Matching, "WorldFormat/Carve80255A0C.c"),
