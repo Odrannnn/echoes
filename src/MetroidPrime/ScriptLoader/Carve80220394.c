@@ -48,10 +48,12 @@ extern void __dt__11CMayaSplineFv(void* self, short flag);
 
 /** 0x80241C90, `symbols.txt:10220`, size 0x3C: the deleting destructor of the object at +4 of this
  *  receiver - its constructor is `fn_80241CCC` (0x80241CCC, 0xC: `li r0,0 / stw r0,0(r3) / blr`).
- *  Defined by dtk's `auto_03_802399F4_text.o` (`build/G2ME01/asm/auto_03_802399F4_text.s`, its
- *  `.fn` is `fn_80241C90`: receiver guard, `extsh.` on the flag, `Free__7CMemoryFPCv`, receiver
- *  returned), so the matching build takes it from there too.  Declared, never defined here for the
- *  matching build; the port-only stand-in at the end of this file is what the host link needs. */
+ *  Now claimed by `MetroidPrime/ScriptLoader/Carve80241C90.c` (0x80241C90..0x80241CD8), so both
+ *  builds define it and this file only declares it.  Before that claim it came from dtk's
+ *  `auto_03_8023C998_text.o` (the name that auto unit has carried since
+ *  `Carve8023C950.c` took 0x8023C950..0x8023C998 out of the middle of it) and this file needed a
+ *  `#ifdef TARGET_PC` stand-in for the host link; that stand-in is gone, because the symbol is
+ *  defined here now and a second definition would be a `link_check: duplicate definitions`. */
 extern void* fn_80241C90(void* self, short flag);
 
 /** 0x802CE388, `symbols.txt:12992`, size 0x64: `CMemory::Free(void const*)`.  Claimed by
@@ -69,28 +71,3 @@ void* fn_80220394(void* self, short flag) {
   }
   return self;
 }
-
-#ifdef TARGET_PC
-// Port-only stand-in for the one symbol in this file that nothing else under `src/` defines.  The
-// matching build does not compile this block (`PORT_NOTES.md`, "TARGET_PC, and the rule for port
-// edits"), so `main.dol` still takes the real 0x80241C90 from dtk's auto object above and
-// `fn_80220394` keeps its retail bytes.
-//
-// The host's flat link carries our sources only, not dtk's objects, so without a definition the
-// link loses `fn_80241C90`: measured with `./tools/probe_sources.sh` (which compiles every file in
-// `files.cmake` with `-DTARGET_PC`), without this block the strict check names
-// `NEW fn_80241C90` and with it the undefined count does not grow.  The other callee needs
-// nothing here: `src/MetroidPrime/ScriptLoader/Carve80220294.c` already defines
-// `__dt__11CMayaSplineFv` under `TARGET_PC` for its own three wrappers, and a second definition
-// would be a duplicate (`link_check: duplicate definitions`).
-//
-// Empty body on purpose: a stand-in that returns something plausible is worse than one that
-// announces itself.  Nothing in the port calls `fn_80220394` (the only caller in retail is
-// `fn_802201F8`, which no unit of ours claims and no table names), so this cannot change what the
-// game does.
-void* fn_80241C90(void* self, short flag) {
-  (void)self;
-  (void)flag;
-  return self;
-}
-#endif
