@@ -1710,6 +1710,9 @@ MetroidPrime/ScriptLoader/Lumite.cpp:
 	.text       start:0x80218BD0 end:0x80218BFC
 	.sbss       start:0x80419428 end:0x80419430
 
+MetroidPrime/ScriptLoader/Carve80218BFC.c:
+	.text       start:0x80218BFC end:0x80218C04
+
 MetroidPrime/ScriptLoader/Shrieker.cpp:
 	.text       start:0x80218C04 end:0x80218C30
 	.sbss       start:0x80419430 end:0x80419438
