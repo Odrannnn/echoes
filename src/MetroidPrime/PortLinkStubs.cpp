@@ -1612,3 +1612,25 @@ extern "C" char stub_data_9[64] asm("lbl_803B7BCC") = {};
 // than retail's 0xC, like every other data stub here: on this path the object is only ever taken the
 // address of, never read.
 // Defined once, as `stub_data_9`: the tip already stubbed `lbl_803B7BCC` when this block was carried onto it.
+
+// `fn_80256D64` - retail `.text:0x80256D64`, 0x4C = 76 bytes, `symbols.txt:10530`: the copy
+// constructor of one 0x20-strided array element, and the only thing
+// `src/WorldFormat/Carve80256D1C.c` (`Matching`, 0x80256D1C..0x80256D64) calls - its
+// `fn_80256D3C` is a null test plus one `bl` to this name.  **This is an empty-body stand-in and it
+// is announced as one.**  It does not claim 0x80256D64 is decompiled: no unit claims that range,
+// `build/G2ME01/asm/auto_03_80255B28_text.s:1386-1404` is still the only place retail's 19
+// instructions appear, and this file is not in `configure.py`, so a definition here cannot reach
+// main.dol.  What retail's function does, measured from those instructions: a member-wise copy
+// from r4 to r3 of a 0x1E = 30-byte aggregate - six `float`s at +0x00..+0x14 and three `short`s
+// at +0x18/+0x1A/+0x1C - ending in `blr` with no frame of its own.  Measured with
+// `python3 tools/link_gap.py --rebuild`: without this block `gap grew: fn_80256D64 is not in
+// port_link_gap_list.md` and 280 MISSING; with it, 279, the count `docs/research/
+// port_link_gap_list.md` already accounts for.  Retail names the class nothing, so nothing here
+// guesses at it.
+//
+// The name is keyed to the unit that asks for it rather than `stub_NNN`, following
+// `stub_carve8000447c_0` and `stub_80004438_0` above: a numbered name is what another lane's carve
+// takes between the judge and the rebase, and the header paragraph at the top of this file is
+// deliberately left untouched for the same reason.
+extern "C" void stub_carve80256d1c_0() asm("fn_80256D64");
+extern "C" void stub_carve80256d1c_0() {}
