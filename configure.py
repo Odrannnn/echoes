@@ -964,6 +964,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/Carve80281310.c"),
             Object(Matching, "Kyoto/Animation/Carve802B2088.c"),
             Object(Matching, "Kyoto/Animation/Carve802B2568.c"),
+            Object(Matching, "Kyoto/Math/Carve8032B648.cpp"),
             Object(Matching, "Kyoto/Math/Carve8032C144.c"),
             Object(Matching, "Kyoto/Math/Carve8032E444.c"),
             Object(Matching, "Kyoto/Math/Carve8032F2B8.c"),

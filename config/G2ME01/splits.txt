@@ -3161,6 +3161,9 @@ Kyoto/Particles/CParticleSpawnSystem.cpp:
 Kyoto/Particles/CParticleSpawnRandom.cpp:
 	.sdata      start:0x80418C70 end:0x80418C78
 
+Kyoto/Math/Carve8032B648.cpp:
+	.text       start:0x8032B648 end:0x8032B724
+
 Kyoto/Math/Carve8032C144.c:
 	.text       start:0x8032C144 end:0x8032C14C
 
