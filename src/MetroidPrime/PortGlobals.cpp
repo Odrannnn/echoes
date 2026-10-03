@@ -995,6 +995,19 @@ extern "C" const float lbl_8041C508 = 0.25f;
 // `lbl_8041C398` failure above.
 extern "C" const float lbl_8041A920 = 1.0f;
 
+// `lbl_8041ECE8` - `.sdata2:0x8041ECE8`, `size:0x4`, `data:float` (`symbols.txt:25423`). The
+// same arrangement as `lbl_8041A920` above, in the same unclaimed `.sdata2` region: no unit
+// in `config/G2ME01/splits.txt` claims it, so the DOL link gets the word from dtk's
+// `auto_11_8041EC28_sdata2.o` and only the port needs it defined.
+// `Kyoto/Math/Carve80335A0C.c` declares it and loads it: retail's `fn_80335A0C` is
+// `lfs f1,lbl_8041ECE8@sda21(r0) ; blr`, and the word it loads is `00000000` = 0.0f
+// (`objdump -s -j .sdata2 build/G2ME01/main.elf`; `build/G2ME01/asm/
+// auto_11_8041EC28_sdata2.s:185` reads the same word as `.float 0`). **The carve cannot write
+// `return 0.f;`** for the reason the `lbl_8041A920` entry above gives: the literal would put a
+// `.sdata2` section in that translation unit which no claim places. Defined `const` and
+// declared non-`const` by the reader, same as above.
+extern "C" const float lbl_8041ECE8 = 0.0f;
+
 // ---------------------------------------------------------------------------
 // rstl free functions
 // ---------------------------------------------------------------------------
