@@ -1997,6 +1997,9 @@ MetroidPrime/ScriptLoader/DestructableBarrier.cpp:
 	.text       start:0x8022EBD0 end:0x8022EBFC
 	.sbss       start:0x804195F8 end:0x80419600
 
+MetroidPrime/ScriptLoader/Carve8022EBFC.c:
+	.text       start:0x8022EBFC end:0x8022EC04
+
 MetroidPrime/ScriptLoader/SwampBossStage2.cpp:
 	.text       start:0x8022EC04 end:0x8022EC30
 	.sbss       start:0x80419600 end:0x80419608

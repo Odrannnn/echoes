@@ -1005,6 +1005,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptLoader/Carve8022D758.c
     src/MetroidPrime/ScriptLoader/Carve8022DA40.c
     src/MetroidPrime/ScriptLoader/Carve8022EB54.c
+    # A carve of `fn_8022EBFC` (0x8022EBFC..0x8022EC04), the DestructableBarrier module's
+    # 8-byte loader setter out of dtk's `auto_03_8022EBFC_text`. `.c` because the module
+    # imports that exact retail name, so the definition has to be unmangled - see the file
+    # header.
+    src/MetroidPrime/ScriptLoader/Carve8022EBFC.c
     src/MetroidPrime/ScriptLoader/Carve80232834.c
     src/MetroidPrime/ScriptLoader/Carve80232868.c
     src/MetroidPrime/ScriptLoader/Carve8023289C.c
