@@ -433,6 +433,7 @@ config.libs = [
             Object(Matching, "WorldFormat/Carve80255A0C.c"),
             Object(Matching, "WorldFormat/Carve80255C54.c"),
             Object(Matching, "WorldFormat/Carve80256D1C.c"),
+            Object(Matching, "WorldFormat/Carve80256F20.cpp"),
             Object(Matching, "WorldFormat/CCollisionPrimitiveData.cpp"),
             Object(MatchingFor("G2ME01"), "WorldFormat/CWorldLight.cpp"),
             Object(Matching, "MetroidPrime/CStaticGeometryMap.cpp"),

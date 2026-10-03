@@ -2038,6 +2038,9 @@ WorldFormat/Carve80255C54.c:
 WorldFormat/Carve80256D1C.c:
 	.text       start:0x80256D1C end:0x80256D64
 
+WorldFormat/Carve80256F20.cpp:
+	.text       start:0x80256F20 end:0x80257040
+
 WorldFormat/CCollisionPrimitiveData.cpp:
 	.text       start:0x80257A14 end:0x80257CB8
 
