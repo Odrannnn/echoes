@@ -38,28 +38,11 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **191 sites in 82 files** (`python3 tools/check_raw_offsets.py`
-prints `191 raw-offset site(s) in 82 file(s)`, and the 82 `##` headings below sum to 191; measured
-2026-10-02, after the `progress-twin-rel-sandboss` item added module 55's two new units -
-`CSandBossRelTail3.cpp` (2 sites, the `CGameProjectile` destructor's two subobjects) and
-`CSandBossRelTail2.cpp` (3 sites, the `CCameraShakerData` destructor's three splines) - on top of
-the `progress-twin-rel-ingboostballguardian` item's module 30 accessor block -
-`CIngBoostBallGuardian194C.cpp` (1 site), `CIngBoostBallGuardianC6AC.cpp` (1) and
-`CIngBoostBallGuardianPredicates.cpp` (7), nine sites over three new files. The line before those
-two read 176 in 76 while the tool already measured 185 in 79, so the totals here are re-derived
-2026-10-02, after the `progress-twin-rel-sporb` item added `SporbDtors.cpp` (6 sites: `+0x584`,
-`+0xA0`, `+0x5C`, `+0x18`, `+0x238`, `+0x1F8`). The line before that edit read 185 in 79 in the
-`CIngBoostBallGuardianD2xx.cpp` (2 sites) and `CIngBoostBallGuardian13B7C.cpp` (1), three sites over
-two new files; before that the same day the `progress-twin-rel-ingboostballguardian` item added
-module 30's accessor
-from the tool rather than accumulated by hand).
-measured 2026-10-02, after the `progress-vtctl-rel-gunturret` item added module 28's trigger
-block - `CGunTurretBaseTriggers.cpp` (2 sites, `+0x7E8` and `+0x808`) - over one new file. **The
-bold total and the tool's total were different before that edit** (185 in 79 against the tool's
-186 in 80), because the bold number was written from the previous item's sentence rather than
-from the tool; both now read the same measured line, which is the whole point of the sentence
-below. This line read 176 in 76 while the tool already measured 185 in 79 before that edit, so
-the totals here are re-derived from the tool rather than accumulated by hand).
+the count here fails the gate. **203 sites in 87 files** (`python3 tools/check_raw_offsets.py --list`
+prints `total: 203 raw-offset sites in 87 file(s)`, and the 87 `##` headings below sum to 203;
+measured 2026-10-03 by the `carve-8010ee5c` item, which added
+`src/MetroidPrime/Carve8010EE5C.c` with its single `+0x54` - the twelfth site of that shape in a
+`.c` carve, and the eleventh file to carry one).
 
 **This line has been wrong before, five times over, and the failure was always the same one.**
 `tools/check_raw_offsets.py` compares the *per-file* counts in the headings and never this
@@ -1123,3 +1106,30 @@ file; this section read 165 in 69 when it was written (2026-10-01, with
   functions in the claim spell no raw offset: the record and the count+array vector they walk are
   declared in the file (`struct SFlyerElem`, `struct SFlyerVec`), and the class's deleting
   destructor reaches its vtable through the module's own `lbl_21_data_4` data label.
+
+## `src/MetroidPrime/Carve8010EE5C.c` (1 site)
+
+- `+0x54`, in `fn_8010EE5C` (retail `.text:0x8010EE5C..0x8010EEEC`, 0x90 = 144 bytes, 2 functions,
+  100.00% matched, `Object(Matching)` in `configure.py`; `carve-8010ee5c`). **Kind A, opaque
+  receiver**, so kept rather than fixed. The carve's first function is a vtable entry of the vtable
+  `lbl_803B4BE0`, the vtable of an **unnamed** `CActor` subclass - retail names the class nowhere,
+  and the only thing that reaches either body is that table, a dtk-only data object with no claimed
+  unit - so the file is a `.c` unit taking `void* self` and there is no class to write a member
+  through. The offset is retail's own `addi r4,r4,0x54` and nothing else: it points at
+  `CActor::mPosition`, measured from the far side as well
+  (`include/MetroidPrime/CActor.hpp:290`, `mutable CVector3f mPosition;  // x54`), and the callee
+  `__ct__6CAABoxFRC9CVector3fRC9CVector3f` (0x802F8CC4) takes `CVector3f const&` twice, which is why
+  the same pointer is passed for both corners. So the member *is* identified - it is
+  `CActor::mPosition` - but the *class* is not, and Rule 1 is about the class: naming a
+  `CWhatever::mPosition` would be inventing a class for retail bytes, exactly what
+  `CSfxManager.cpp`'s `fn_8029FC34` above declines to do. The carve's second function,
+  `fn_8010EECC`, spells no offset at all. Blocker, and the mild kind: this goes when the class is
+  modelled, which is the same per-class layout repair as Kind C above and not a one-line header
+  edit - the vtable has to be read first, to learn the members between +0x00 and +0x54.
+
+  It is the **third** raw offset in a `.c` unit and the third file to carry one, 1 site each -
+  `python3 tools/check_raw_offsets.py --list | grep -E "\.c\s+[0-9]+$"` prints exactly those three,
+  summing to 3 of the 203 - after `src/MetroidPrime/Carve800E9C14.c` (`+0x2C8`) and
+  `src/MetroidPrime/Cameras/Carve801E7C14.c` (`+12`).  Both of those are the same situation in a
+  different guise: a carved out-of-line accessor over a receiver whose class *is* modelled but whose
+  member is not, so neither is removable without a header change either.
