@@ -518,6 +518,12 @@ src/MetroidPrime/PortLinkStubs.cpp
     # measurement and why `fn_30_F78` stays an undefined `extern "C"`. Same empty host branch as
     # the entries above.
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianAAC.cpp
+    # `fn_30_F78` (0xF78, 0x74), the 0x38-byte record copy the entry above calls - fourteen
+    # `lfs`/`lwz` loads out of the source interleaved with fourteen `stfs`/`stw` stores into the
+    # destination and no return value; see the `Rel("IngBoostBallGuardian", ...)` block in
+    # configure.py for the range, the measured member layout, the dead-strip measurement and why
+    # the name stays `fn_30_F78` after this carve. Same empty host branch as the entries above.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianF78.cpp
     # The three functions in front of it, `.text` 0x3790..0x388C of module 30: the null-guarded
     # deleting-destructor chain (see the `Rel("IngBoostBallGuardian", ...)` block in configure.py
     # for the range, the measurements and why the entry there is named with the module prefix and

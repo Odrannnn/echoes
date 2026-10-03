@@ -15,6 +15,9 @@ IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardianAAC.cpp:
 IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardianAD4.cpp:
 	.text       start:0x00000AD4 end:0x00000B30
 
+IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardianF78.cpp:
+	.text       start:0x00000F78 end:0x00000FEC
+
 MetroidPrime/ScriptObjects/CIngBoostBallGuardian194C.cpp:
 	.text       start:0x0000194C end:0x00001988
 

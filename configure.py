@@ -2208,6 +2208,11 @@ config.libs = [
             # the paren-count reason the 3790 entry gives, and like every entry after it this
             # comment is paren-balanced.
             Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardianAAC.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardianAAC.cpp", mw_version="GC/2.7"),
+            # Added 2026-10-03 (lane 5, `progress-rel-ingboostballguardian-f78`). `.text`
+            # 0xF78..0xFEC, `fn_30_F78` (0x74 = 116 bytes per
+            # `config/G2ME01/rels/IngBoostBallGuardian/symbols.txt:33`), one function: the 0x38-byte
+            # record copy the entry above calls.
+            Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardianF78.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardianF78.cpp", mw_version="GC/2.7"),
             # Added 2026-10-02 (lane 11, `progress-vt-rel-ingboostballguardian`, the vtable-name
             # trial). Six more ranges out of module 30's unclaimed gaps, twelve functions, every
             # one a virtual `tools/rel_class_map.py` names off the DOL vtable's matching slot:
