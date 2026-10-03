@@ -1268,6 +1268,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/rstl/rc_ptr_copy.cpp
     src/rstl/rstl_map.cpp
     src/rstl/rstl_misc.cpp
+    src/rstl/Carve802FDAF4.c
     src/rstl/rstl_strings.cpp
 )
 

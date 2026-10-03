@@ -2806,6 +2806,9 @@ rstl/rstl_misc.cpp:
 	.text       start:0x802FDAB8 end:0x802FDAF4
 	.rodata     start:0x803AFAB0 end:0x803AFAB8
 
+rstl/Carve802FDAF4.c:
+	.text       start:0x802FDAF4 end:0x802FDB94
+
 rstl/rstl_strings.cpp:
 	.text       start:0x802FDD90 end:0x802FF3AC
 	.sbss       start:0x80419AE8 end:0x80419AEC
