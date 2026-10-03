@@ -4,8 +4,9 @@
 // pointer out of the .sbss slot at 0x80419400 and calls member 0 of it.
 //
 // This unit claims .text 0x80218A74..0x80218AA0 and .sbss 0x80419400..0x80419408. The 8-byte
-// setter at 0x80218AA0 is deliberately NOT claimed: REL modules import it by its
-// retail name, so it cannot be renamed and must stay in dtk's auto unit.
+// setter at 0x80218AA0 is claimed by the `Matching` unit
+// `src/MetroidPrime/ScriptLoader/Carve80218AA0.c`, which keeps the retail name the MinorIng
+// module imports it by; this unit still owns the slot.
 // docs/research/rel_loaders.md has every loader in this family.
 
 struct SLoaderSlot {

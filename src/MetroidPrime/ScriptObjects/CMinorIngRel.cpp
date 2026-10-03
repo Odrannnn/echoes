@@ -82,9 +82,10 @@
 //     immediately after `LoadMinorIng__FR13CStateManagerR12CInputStreamR11CEntityInfo` at
 //     0x80218A74, which is 44 bytes and so ends exactly at 0x80218AA0. So it stores the *address*
 //     of a loader slot, not a loader. `src/MetroidPrime/ScriptLoader/MinorIng.cpp` - a `Matching`
-//     unit, and the file that already records why this setter is deliberately not claimed in the
-//     DOL - reads the slot as `(*gLoader_MinorIng.value)(mgr, input, info)`, which is why the store
-//     below hands it `&lbl_44_bss_84` and why that slot is four bytes wide. **The import name is
+//     unit and the owner of the slot - reads it as `(*gLoader_MinorIng.value)(mgr, input, info)`,
+//     which is why the store below hands it `&lbl_44_bss_84` and why that slot is four bytes wide.
+//     The setter itself is the `Matching` unit `src/MetroidPrime/ScriptLoader/Carve80218AA0.c`,
+//     a `.c` carve so the definition below stays unmangled. **The import name is
 //     the plain `fn_80218AA0`** that `config/G2ME01/symbols.txt` already gives it - not the long
 //     MWCC-mangled `SetLoader_...` form `CAtomicAlphaRel.cpp` has to spell out for its own module -
 //     so no `symbols.txt` rename is needed and the DOL is untouched. It is `extern "C"`: an alias

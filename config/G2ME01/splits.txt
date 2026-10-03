@@ -1675,6 +1675,9 @@ MetroidPrime/ScriptLoader/MinorIng.cpp:
 	.text       start:0x80218A74 end:0x80218AA0
 	.sbss       start:0x80419400 end:0x80419408
 
+MetroidPrime/ScriptLoader/Carve80218AA0.c:
+	.text       start:0x80218AA0 end:0x80218AA8
+
 MetroidPrime/ScriptLoader/ElitePirate.cpp:
 	.text       start:0x80218AA8 end:0x80218AD4
 	.sbss       start:0x80419408 end:0x80419410
