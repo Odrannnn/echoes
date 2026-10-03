@@ -706,6 +706,7 @@ config.libs = [
             # Units carved and matched before the upstream merge, in ranges upstream leaves unsplit.
             Object(Matching, "Runtime/MetroTRKConsoleStubs.cpp"),
             Object(Matching, "MetroidPrime/Carve80003858.c"),
+            Object(Matching, "MetroidPrime/Carve8000387C.cpp"),
             Object(NonMatching, "MetroidPrime/CMainResetGameState.cpp"),
             Object(Matching, "MetroidPrime/Carve80004010.c"),
             Object(Matching, "MetroidPrime/Carve8000432C.cpp"),
