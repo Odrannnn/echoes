@@ -626,6 +626,14 @@ config.libs = [
             Object(Matching, "MetroidPrime/Weapons/CPowerBeam.cpp"),
             Object(NonMatching, "MetroidPrime/Weapons/CAuxWeapon.cpp"),
             Object(NonMatching, "MetroidPrime/Weapons/GunController/CGunMotion.cpp"),
+            # Carved out of dtk's unclaimed `auto_03_801D72D0_text`: `fn_801D7584`
+            # (0x801D7584..0x801D75A4, 0x20), the `IsLoaded() const` override that word 21 of the
+            # unclaimed vtable `lbl_803B7310` points at where `__vt__10CPowerBeam` has
+            # `IsLoaded__10CPowerBeamCFv`, and which forwards to `CGunWeapon::IsLoaded()` with
+            # nothing of its own - the eight instructions of the matched `fn_80004438`
+            # (`src/MetroidPrime/Carve80004438.c`). `.c` because retail's own `fn_801D7584` is
+            # the symbol - see the file header.
+            Object(Matching, "MetroidPrime/Weapons/GunController/Carve801D7584.c"),
             # Carved out of dtk's unclaimed `auto_03_801D72D0_text`: `fn_801D7E9C`
             # (0x801D7E9C..0x801D7EBC, 0x20), the 32-byte `CGunWeapon::Update` forwarder in the
             # `Update` slot (base + 0x2C) of the vtable at 0x803B7238, byte-for-byte the
