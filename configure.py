@@ -3009,7 +3009,22 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptCoin.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCoinThink.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptCoinTouchBounds.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCoinRest.cpp"),
+            # `.text` 0x1BA4..0x32B8 plus the module's whole `.rodata` and `.data`: `NonMatching`
+            # with no source, which is how a named range keeps retail's bytes. See
+            # `config/G2ME01/rels/ScriptCoin/splits.txt` for why the old single 0x1BA4..0x36A4 claim
+            # became three units.
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCoinRestHead.cpp"),
+            # `.text` 0x32B8..0x3374, the `rstl::reserved_vector<float, 8>` pair, which the source
+            # reproduces byte for byte. **The name is module-qualified** because the queue's target
+            # for this unit is `ScriptCoin/MetroidPrime/ScriptObjects/CScriptCoinRest` and
+            # `tools/goal_check.sh` resolves a `match` target against `configure.py`; an unqualified
+            # name leaves the item unjudgeable. `mw_version="GC/2.7"` is load-bearing - under the
+            # module's default 1.3.2 `fn_58_32F8` keeps the cursor in r6 and hoists the value load,
+            # which moves every displacement in the function. Same override
+            # `CIngBoostBallGuardianF78.cpp` uses.
+            Object(Matching, "ScriptCoin/MetroidPrime/ScriptObjects/CScriptCoinRest.cpp", source="MetroidPrime/ScriptObjects/CScriptCoinRest.cpp", mw_version="GC/2.7"),
+            # `.text` 0x3374..0x36A4: `NonMatching`, no source.
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCoinRestTail.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCoinTail.cpp"),
         ],
     ),

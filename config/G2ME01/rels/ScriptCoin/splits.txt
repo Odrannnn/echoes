@@ -19,10 +19,16 @@ MetroidPrime/ScriptObjects/CScriptCoinThink.cpp:
 MetroidPrime/ScriptObjects/CScriptCoinTouchBounds.cpp:
 	.text       start:0x00001B24 end:0x00001BA4
 
-MetroidPrime/ScriptObjects/CScriptCoinRest.cpp:
-	.text       start:0x00001BA4 end:0x000036A4
+MetroidPrime/ScriptObjects/CScriptCoinRestHead.cpp:
+	.text       start:0x00001BA4 end:0x000032B8
 	.rodata     start:0x00000000 end:0x00000068
 	.data       start:0x00000000 end:0x000000D8
+
+ScriptCoin/MetroidPrime/ScriptObjects/CScriptCoinRest.cpp:
+	.text       start:0x000032B8 end:0x00003374
+
+MetroidPrime/ScriptObjects/CScriptCoinRestTail.cpp:
+	.text       start:0x00003374 end:0x000036A4
 
 MetroidPrime/ScriptObjects/CScriptCoinTail.cpp:
 	.text       start:0x000036A4 end:0x00003848
