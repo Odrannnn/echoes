@@ -1936,6 +1936,9 @@ MetroidPrime/ScriptLoader/DarkCommando.cpp:
 	.text       start:0x80235DD4 end:0x80235E00
 	.sbss       start:0x80419660 end:0x80419668
 
+MetroidPrime/ScriptLoader/Carve802392A4.cpp:
+	.text       start:0x802392A4 end:0x802393A8
+
 MetroidPrime/ScriptLoader/RubiksPuzzle.cpp:
 	.text       start:0x802399C8 end:0x802399F4
 	.sbss       start:0x804196C0 end:0x804196C8

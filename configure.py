@@ -923,6 +923,14 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8023492C.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/DarkSamusBattleStage.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/DarkCommando.cpp"),
+            # Carved out of dtk's unclaimed `auto_03_80235E00_text`: `fn_802392A4` (0x802392A4,
+            # 0xB8) and `fn_8023935C` (0x8023935C, 0x4C), the byte-shape twins of the 0x24-element
+            # pair `fn_71_3B08` / `fn_71_3BC0` in `ScriptObjects/CSnakeWeedSwarmVecTail.cpp` with a
+            # 0x10-byte element. `.cpp` with `extern "C"`, like `Carve80233A90.cpp` above: MWCC
+            # passes a by-value 4-byte class parameter by pointer, so the four outgoing-argument
+            # stores in `fn_802392A4` are unreachable from C, and the converting constructor on the
+            # iterator is what materialises the temporaries. The name stays unmangled.
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve802392A4.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/RubiksPuzzle.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8023B634.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8023C860.c"),
