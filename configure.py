@@ -800,6 +800,13 @@ config.libs = [
             Object(Matching, "MetroidPrime/Carve801F3690.c"),
             Object(Matching, "MetroidPrime/Carve801F36DC.c"),
             Object(Matching, "MetroidPrime/Carve801F7AC8.c"),
+            # `fn_801F8A54` (0x801F8A54..0x801F8A60, 0xC = 12 bytes), the 12-byte `vec[1] = 0`
+            # cleared by the destructor of `fn_801F89E0`'s object, carved out of dtk's unclaimed
+            # `auto_03_801F7AD0_text` run and the byte-shape twin of the matched `fn_80004010`
+            # (`MetroidPrime/Carve80004010.c:98`, same three instructions). `.c` because
+            # `symbols.txt:8170` carries only the `fn_<addr>` placeholder, so the definition has
+            # to stay unmangled - see the file header. No callees, no data, `.text` only.
+            Object(Matching, "MetroidPrime/Carve801F8A54.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/CUnknown90.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801F97C8.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FA1CC.cpp"),

@@ -1424,6 +1424,9 @@ MetroidPrime/CRuleSet.cpp:
 MetroidPrime/Carve801F7AC8.c:
 	.text       start:0x801F7AC8 end:0x801F7AD0
 
+MetroidPrime/Carve801F8A54.c:
+	.text       start:0x801F8A54 end:0x801F8A60
+
 MetroidPrime/ScriptObjects/CUnknown90.cpp:
 	.text       start:0x801F9050 end:0x801F9190
 	.rodata     start:0x803AC568 end:0x803AC570

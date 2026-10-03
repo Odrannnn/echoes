@@ -829,6 +829,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve801F3690.c
     src/MetroidPrime/Carve801F36DC.c
     src/MetroidPrime/Carve801F7AC8.c
+    # A carve of `fn_801F8A54` (0x801F8A54..0x801F8A60, 0xC = 12 bytes), the `vec[1] = 0`
+    # cleared by `fn_801F89E0`, out of dtk's unclaimed `auto_03_801F7AD0_text` run. `.c` because
+    # retail names it only `fn_<addr>`, so the definition has to be unmangled - see the file header.
+    src/MetroidPrime/Carve801F8A54.c
     src/MetroidPrime/ScriptObjects/Carve801F97C8.c
     src/MetroidPrime/ScriptObjects/Carve801FA1CC.cpp
     src/MetroidPrime/ScriptObjects/Carve801FBC58.c
