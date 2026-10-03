@@ -378,6 +378,8 @@ taking a failed-once item if that pid is a live `run_goal.sh`; with the hard lan
 one as before. Measured backlog when this landed: 141 queued items at `fails=1` against one hard
 lane, so that band drains slowly and on Claude usage; stop lane 9 to hand it back to the free lanes.
 
+**DeepSeek is off the loop (2026-10-03).** Its Go quota ran out from about 21:00Z on 10-02 to 04:13Z on 10-03; every review failed and 99 judge-passed items were parked, then requeued at fails=0. The review-model drop-in and lanes 10-13 model drop-ins were renamed to `*.conf.deepseek-off` in `~/.config/systemd/user/mp2-goal@*.service.d/`, so all 13 lanes and their reviews run on `space-bunny-free#max`.
+
 **A Go usage limit is not an item's fail (2026-10-02).** Lanes 10-13 (`deepseek-v4.1-flash`) ran
 on an exhausted OpenCode Go workspace for about fifteen minutes: every run died in 2-3 s with
 `GoUsageLimitError` and was charged to its item, 14 items in all, ten of them sent to review on it.
