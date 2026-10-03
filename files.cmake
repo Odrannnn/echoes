@@ -1150,6 +1150,12 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve8027A53C.c
     src/GuiSys/Carve8028032C.c
     src/MetroidPrime/Carve80280338.c
+    # A carve of `fn_80280F38` (0x80280F38..0x80280F5C), `rstl::destroy_impl` for a
+    # `rstl::vector<void*>`, out of dtk's `auto_03_80280340_text` - a byte-shape twin of the
+    # matched `fn_80004458`. `.cpp` because the callee is an MWCC-mangled template symbol no C
+    # declaration can name and `extern "C"` keeps the definition itself unmangled - see the file
+    # header.
+    src/MetroidPrime/Carve80280F38.cpp
     src/MetroidPrime/Carve80281310.c
     src/Collision/Carve8028B728.c
     src/Collision/Carve8028B8BC.c

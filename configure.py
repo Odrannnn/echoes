@@ -1169,6 +1169,19 @@ config.libs = [
             # is no link-order cycle. `total_functions` stays 28465.
             Object(Matching, "GuiSys/Carve8028032C.c"),
             Object(Matching, "MetroidPrime/Carve80280338.c"),
+            # Carve of `fn_80280F38` (0x80280F38..0x80280F5C, 0x24 = 36 bytes) out of the
+            # unclaimed dtk range `auto_03_80280340_text` (0x80280340..0x80281310). It is the
+            # byte-shape twin of the matched `fn_80004458` (`MetroidPrime/Carve80004438.c:89`):
+            # `rstl::destroy_impl< rstl::vector< void* > >`, one frame and one destructor call.
+            # `.cpp` because the callee is `__dt__Q24rstl37vector<Pv,Q24rstl17rmemory_allocator>Fv`
+            # (0x8005C42C, defined by `MetroidPrime/CGameArea.cpp`) and `<`, `>`, `,` are not
+            # identifier characters - `extern "C"` around the definition keeps `fn_80280F38`
+            # unmangled, and the template is declared locally with its destructor never defined
+            # so nothing is emitted for it. The claim touches no unit boundary (`Carve80280338.c`
+            # ends 3064 bytes below, `Carve80281310.c` starts 948 bytes above), so there is no
+            # link-order cycle. Report unit name: `main/MetroidPrime/Carve80280F38`.
+            # `total_functions` stays 28465.
+            Object(Matching, "MetroidPrime/Carve80280F38.cpp"),
             Object(Matching, "MetroidPrime/Carve80281310.c"),
             Object(Matching, "Kyoto/Animation/Carve802B2088.c"),
             Object(Matching, "Kyoto/Animation/Carve802B2568.c"),
