@@ -417,6 +417,7 @@ config.libs = [
             Object(NonMatching, "GuiSys/CAuiEnergyBarT01.cpp"),
             Object(NonMatching, "GuiSys/CAuiImagePane.cpp"),
             Object(Matching, "GuiSys/CGuiPane.cpp"),
+            Object(Matching, "GuiSys/Carve80278C68.c"),
             Object(NonMatching, "GuiSys/CGuiTextPane.cpp"),
             Object(NonMatching, "WorldFormat/COBBTree.cpp"),
             Object(NonMatching, "WorldFormat/CCollidableOBBTree.cpp"),
