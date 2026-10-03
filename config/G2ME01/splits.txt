@@ -1936,6 +1936,9 @@ MetroidPrime/ScriptLoader/PuddleSpore.cpp:
 	.text       start:0x8022A02C end:0x8022A058
 	.sbss       start:0x804195B8 end:0x804195C0
 
+MetroidPrime/ScriptLoader/Carve8022A058.c:
+	.text       start:0x8022A058 end:0x8022A060
+
 MetroidPrime/ScriptLoader/Carve8022A3F4.c:
 	.text       start:0x8022A3F4 end:0x8022A3FC
 

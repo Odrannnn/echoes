@@ -1,0 +1,95 @@
+// Carved out of an unclaimed dtk `auto_*` range.  Every number here is measured: the
+// addresses and sizes come from `config/G2ME01/symbols.txt`, the instructions are the ones
+// dtk itself emitted into `build/G2ME01/asm/auto_03_8022A058_text.s`, and the body below is
+// the C those bytes are the compilation of.
+//
+// .text 0x8022A058..0x8022A060, 0x8 = 8 bytes, 1 function:
+//
+//   fn_8022A058    0x8022A058  0x8    stw     r3, gLoader_PuddleSpore@sda21(r0)
+//                                          blr
+//
+// **What it is: PuddleSpore's loader setter.**  It is the byte-shape twin of the matched
+// `fn_80200E3C` in `src/MetroidPrime/ScriptLoader/Carve80200E3C.c` (SpacePirate's), of
+// `fn_8021FA18` in `Carve8021FA18.c` (FrontEndDataNetwork's), of `fn_80218D24` in
+// `Carve80218D24.c` (ChozoGhost's) and of `fn_80213CB8` in `Carve80213CB8.c` (Sporb's):
+// store the argument into the loader pointer's `.sbss` slot and return.  Those differ from
+// this one only in the 16-bit `@sda21` displacement, because the slots sit 8 bytes apart in
+// the same run of `.sbss` - `gLoader_SpacePirate` at 0x80419358 is `90 6D 95 D8`,
+// `gLoader_FrontEndDataNetwork` at 0x80419520 is `90 6D 97 A0`, and `gLoader_PuddleSpore`
+// at 0x804195B8 is `90 6D 98 38`.  Every other byte is the same, including the
+// `4E 80 00 20` `blr`.  The slot's own arithmetic checks out: `_SDA_BASE_` (0x8041FD80) is
+// 0x67C8 above the slot, and 0x10000 - 0x67C8 is the 0x9838 the store encodes as a signed
+// halfword.
+//
+// Both callers are in module 51 (`PuddleSpore`) and neither calls it a setter by name, so
+// the argument is read off them (`build/G2ME01/PuddleSpore/asm/auto_00_0000038C_text.s`):
+//
+//   * `RELExit` (`.text:0x3B8`, 0x24 bytes) does `li r3, 0x0` and then `bl fn_8022A058` -
+//     the module tears the loader down on the way out.
+//   * `fn_51_3FC` (`.text:0x3FC`, 0x30 bytes, which `RELMain` at `.text:0x3DC` reaches
+//     through `bl fn_51_3FC`) fills the record in place first: `lis r4, fn_51_42C@ha`,
+//     `lis r3, lbl_51_bss_C@ha`, then `stwu r0, lbl_51_bss_C@l(r3)` with `r0 = fn_51_42C`,
+//     and only then calls `fn_8022A058` with `r3` still on `lbl_51_bss_C`.
+//
+// So the argument is that word's address, and the record is **0x4 bytes**: a bare
+// `FScriptLoader` with no pointers-to-member-function after it.
+// `config/G2ME01/rels/PuddleSpore/symbols.txt:172` gives `lbl_51_bss_C =
+// .bss:0x0000000C; // type:object size:0x4 data:4byte`, and dtk's own
+// `auto_05_00000000_bss.s` says the same thing (`lbl_51_bss_C size:0x4` against
+// `lbl_51_bss_0 size:0xC`).  The DOL says it too: `LoadPuddleSpore` at 0x8022A02C
+// loads the slot and calls word 0 of it and nothing else, so there is no second field for
+// anything to occupy.  That is what distinguishes this from its wider relatives in the
+// family - SpacePirate's record (`fn_80200E3C`) is 0x1C and Metroid's (`fn_80218B68`) is
+// 0x10 - and it makes this the same shape as FrontEndDataNetwork's.
+//
+// The slot is `gLoader_PuddleSpore` at `.sbss 0x804195B8..0x804195C0`, which
+// `MetroidPrime/ScriptLoader/PuddleSpore.cpp` already claims and already defines
+// (`SLoaderSlot { FScriptLoader* value; unsigned int padding; }`, read at `+0`), so this
+// unit claims `.text` only and takes the pointer as `extern`.  That unit's header says the
+// setter "is deliberately NOT claimed: REL modules import it by its retail name, so it
+// cannot be renamed and must stay in dtk's auto unit".  **That sentence is superseded by
+// this file**, the same way `FrontEndDataNetwork.cpp`'s was superseded by
+// `docs/goal-notes/carve-8021fa18.md`: the import is the plain `fn_8022A058` (named by
+// `config/G2ME01/symbols.txt:9838` in the DOL and by module 51's two `bl fn_8022A058`),
+// so defining it unmangled here keeps the symbol in the DOL link and both calls still
+// resolve against it, with nothing renamed.  No other unit in `src/` defines it, so there
+// is exactly one definition.
+//
+// Source order is **descending by address** and that is load-bearing: mwcceppc emits
+// function definitions in *reverse* source order and mwldeppc keeps the object `.text`
+// verbatim, so an ascending file is a permuted `.text` - 100.00% per function and a broken
+// DOL.  Only `tools/flip_test.sh` catches that.  A one-function file cannot get it wrong.
+//
+// Retail names none of these.  `symbols.txt` carries the `fn_<addr>` placeholder and this
+// file reproduces that symbol verbatim, so the definition has to stay C: a C++ one would
+// mangle to `_Z<len>fn_<addr>v` and objdiff would pair nothing.  That is also why the unit
+// is a `.c` rather than a `.cpp`.
+//
+// Its own unit because a unit may not claim two discontiguous ranges in one section (dtk
+// `dol split` fails with "Cyclic dependency ... link order"), and because the two
+// neighbours are claimed units whose boundaries bracket this gap exactly:
+// `PuddleSpore.cpp` ends at 0x8022A058 and `Carve8022A3F4.c` starts at 0x8022A3F4.  So the
+// claim spans no unclaimed gap.  What is left of the old dtk range,
+// 0x8022A060..0x8022A3F4, is deliberately still unclaimed: it is `fn_8022A060`'s destructor
+// and `fn_8022A0C0`'s loader, neither of which is a copy of anything already matched.
+//
+// The directory is retail's own, taken from the nearest claimed range: this address is
+// 0x2C bytes into `MetroidPrime/ScriptLoader/PuddleSpore.cpp`, so the code is that unit's
+// neighbourhood.  For an anonymous function that is the only evidence there is, and it beats
+// a lane picking the directory it happened to own.
+
+/** The record module 51 hands over, 0x4 bytes as measured above.  Only its address is
+ *  stored, so the field type describes the shape rather than a layout this unit reads;
+ *  `PuddleSpore.cpp`'s `SLoaderSlot` reads word 0 of the same value.  Declared **above** the
+ *  prototype below, not inside it: a struct named in a parameter list is scoped to that
+ *  list, and the host build then rejects the definition as a conflicting type. */
+struct SPuddleSporeLoader {
+  void* loader; /* FScriptLoader */
+};
+
+/** `PuddleSpore.cpp` defines this in `.sbss 0x804195B8` and reads `value` at `+0`; MWCC
+ *  does not encode a variable's type in its name, so this references `gLoader_PuddleSpore`
+ *  itself whatever the type is spelled. */
+extern struct SPuddleSporeLoader* gLoader_PuddleSpore;
+
+void fn_8022A058(struct SPuddleSporeLoader* loader) { gLoader_PuddleSpore = loader; }

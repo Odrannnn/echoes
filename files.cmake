@@ -984,6 +984,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptLoader/Carve80229EAC.c
     src/MetroidPrime/ScriptLoader/Carve80229EE0.c
     src/MetroidPrime/ScriptLoader/Carve80229EE8.cpp
+    # 8-byte loader setter (PuddleSpore's, 0x8022A058..0x8022A060) out of dtk's
+    # `auto_03_8022A058_text`, the byte-shape twin of `Carve80200E3C.c` above. `.c` because
+    # module 51 imports that exact retail name, so the definition has to be unmangled -
+    # see the file header.
+    src/MetroidPrime/ScriptLoader/Carve8022A058.c
     src/MetroidPrime/ScriptLoader/Carve80229FF0.c
     # A carve of `fn_8022A024` (0x8022A024..0x8022A02C), the IngSpiderballGuardian module's 8-byte
     # loader setter out of dtk's `auto_03_8022A024_text`. `.c` because the module imports that

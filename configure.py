@@ -973,6 +973,7 @@ config.libs = [
             # `.c` because module 35 imports the plain retail name `fn_8022A024`.
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8022A024.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/PuddleSpore.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve8022A058.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8022A3F4.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/EmperorIngStage2Tentacle.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8022A570.c"),
