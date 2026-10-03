@@ -1952,6 +1952,9 @@ MetroidPrime/ScriptLoader/Carve80229410.c:
 MetroidPrime/ScriptLoader/Carve80229568.c:
 	.text       start:0x80229568 end:0x8022956C
 
+MetroidPrime/ScriptLoader/Carve80229B30.c:
+	.text       start:0x80229B30 end:0x80229B58
+
 MetroidPrime/ScriptLoader/Carve80229BBC.c:
 	.text       start:0x80229BBC end:0x80229BC4
 

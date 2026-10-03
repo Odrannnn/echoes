@@ -1028,6 +1028,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptLoader/Carve80227AF8.c
     src/MetroidPrime/ScriptLoader/Carve80229410.c
     src/MetroidPrime/ScriptLoader/Carve80229568.c
+    # 40-byte `rstl::list<CEntity*>::push_back` (0x80229B30..0x80229B58) out of dtk's
+    # `auto_03_8022956C_text`.  `.c` because the definition must stay unmangled under retail's
+    # `fn_80229B30` placeholder - see the file header.
+    src/MetroidPrime/ScriptLoader/Carve80229B30.c
     src/MetroidPrime/ScriptLoader/Carve80229BBC.c
     src/MetroidPrime/ScriptLoader/Carve80229EAC.c
     src/MetroidPrime/ScriptLoader/Carve80229EE0.c
