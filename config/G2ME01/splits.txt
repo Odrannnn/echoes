@@ -1953,6 +1953,9 @@ MetroidPrime/ScriptLoader.cpp:
 	.text       start:0x80242894 end:0x80243ED4
 	.ctors      start:0x803A55A4 end:0x803A55A8
 
+MetroidPrime/Carve8024492C.cpp:
+	.text       start:0x8024492C end:0x802449D4
+
 WorldFormat/CAreaOctTree_Tests.cpp:
 	.text       start:0x8024569C end:0x802471B0
 

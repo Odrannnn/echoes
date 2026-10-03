@@ -877,6 +877,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptLoader/SLdrActorParameters.cpp
     src/MetroidPrime/ScriptLoader/Carve80241C90.c
     src/MetroidPrime/ScriptLoader/Carve802420F8.c
+    # A carve of `fn_8024492C` and `fn_80244990` (0x8024492C..0x802449D4), a second instantiation
+    # of `TNonStaticCallback2::Function` and a second copy of `DoSelectionChange`, out of dtk's
+    # `auto_03_80243ED4_text`. `.cpp` with `extern "C"`: the first needs a pointer-to-member
+    # call for its `__ptmf_scall`, the second needs `CSfxManager::SfxStart`. See the file header.
+    src/MetroidPrime/Carve8024492C.cpp
     src/MetroidPrime/Carve802476D8.c
     src/WorldFormat/Carve80255900.c
     src/WorldFormat/Carve80255A0C.c

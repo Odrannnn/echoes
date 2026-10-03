@@ -613,6 +613,7 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptStreamedMusic.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoaderRel.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptLoader.cpp"),
+            Object(Matching, "MetroidPrime/Carve8024492C.cpp"),
             Object(NonMatching, "MetroidPrime/Weapons/CBomb.cpp"),
             Object(Matching, "MetroidPrime/Weapons/CPowerBeam.cpp"),
             Object(NonMatching, "MetroidPrime/Weapons/CAuxWeapon.cpp"),
