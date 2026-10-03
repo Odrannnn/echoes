@@ -5,14 +5,23 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 199 of them: the ones referenced **only by
+ * file supplies 200 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   191 functions, 10 data objects (counted 2026-10-03, after `src/Collision/Carve8028B728.c`
+ *   192 functions, 10 data objects (counted 2026-10-03, after
+ *   `src/Collision/Carve8028B8BC.c` needed `stub_8028b8bc_0` for the `fn_8028B914` that its
+ *   `fn_8028B8F4` forwards to - the file's two derived terms moved `grep -cE 'asm\("'`
+ *   201 -> 202 and `^extern "C" void stub_[A-Za-z0-9_]*\(\) asm\(` 191 -> 192, with
+ *   `^extern "C" char stub_data_*` unmoved at 10.  All three re-measured on this tree after the
+ *   edit rather than carried; the `_0` suffix the three stubs added this month carry does NOT
+ *   defeat the second term, contrary to what the superseded paragraph below claims -
+ *   `[A-Za-z0-9_]*` matches it, so all three of `stub_801e515c_0`, `stub_80004438_0` and
+ *   `stub_8028b728_0` were already inside its 191.
+ *   Before that, 2026-10-03, after `src/Collision/Carve8028B728.c`
  *   needed `stub_8028b728_0` for the `fn_8028B780` its `fn_8028B760` forwards to - the file's
  *   three derived terms moved `grep -cE 'asm\("'` 200 -> 201 and
- *   `^extern "C" void stub_[A-Za-z0-9_]*\(\) asm(` 190 -> 191, with
+ *   `^extern "C" void stub_[A-Za-z0-9_]*\(\) asm\(` 190 -> 191, with
  *   `^extern "C" char stub_data_*` unmoved at 10.
  *   **The 189 / 199 this line carried before it was superseded.**  Re-measured on the parent
  *   commit `1b2665ba` with the same three terms, the file already held 190 functions and a total
@@ -1537,6 +1546,26 @@ extern "C" void stub_80004438_0() {}
 // that same object.
 extern "C" void stub_8028b728_0() asm("fn_8028B780");
 extern "C" void stub_8028b728_0() {}
+
+// `fn_8028B914` - retail `.text:0x8028B914`, 0x4C = 76 bytes, `symbols.txt:11395`: retail's copy
+// for the 0x20-byte element that `src/Collision/Carve8028B8BC.c`'s `fn_8028B8F4` forwards to.
+// **This is an empty-body stand-in and it is announced as one.** It does not claim 0x8028B914 is
+// decompiled: no unit claims that range - it is still inside dtk's `auto_03_8028B780_text.o`,
+// whose copy of the 0x4C bytes is `build/G2ME01/asm/auto_03_8028B780_text.s:129-148` - and this
+// file is not in `configure.py`, so a definition here cannot reach main.dol. What retail's
+// function does, measured from those bytes: return early when the destination is null, otherwise
+// copy the source's bytes at +0x00 and +0x01, its words at +0x08 and +0x0C, and its four floats at
+// +0x10/+0x14/+0x18/+0x1C, skipping +0x04. **An empty body does none of that**, so an element
+// constructed through this name is left uninitialised rather than copied - the same trade
+// `stub_8028b728_0` above makes for the neighbour carve's 0x50-byte element, and it is why this one
+// is named after the unit that asks for it.
+//
+// **Why the port asks for it at all.** `src/Collision/Carve8028B8BC.c:94` declares `fn_8028B914`
+// and its `fn_8028B8F4` body calls it, that file is the first `files.cmake` unit whose `.text`
+// reaches the name, and no other port source declares or calls it - `fn_8028B8F4` is the only
+// retail caller of 0x8028B914 in this range and it is in that same object.
+extern "C" void stub_8028b8bc_0() asm("fn_8028B914");
+extern "C" void stub_8028b8bc_0() {}
 
 // `fn_80009224` - retail `.text:0x80009224`, 0x50 = 80 bytes, `symbols.txt:191`: the release of a
 // `CWorldLayerState` payload, which retail leaves unnamed.  **This is an empty-body stand-in and
