@@ -708,6 +708,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/Carve8000447C.cpp"),
             Object(Matching, "MetroidPrime/Carve800045A0.c"),
             Object(Matching, "MetroidPrime/Carve80004744.c"),
+            Object(Matching, "MetroidPrime/Carve800047E0.c"),
             Object(Matching, "MetroidPrime/Player/CGameStateBlockDtor.cpp"),
             Object(Matching, "MetroidPrime/Player/CGameStateBlockCopyCtor.cpp"),
             Object(Matching, "MetroidPrime/Player/Carve80004B9C.c"),

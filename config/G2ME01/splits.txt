@@ -40,6 +40,9 @@ MetroidPrime/Carve800045A0.c:
 MetroidPrime/Carve80004744.c:
 	.text       start:0x80004744 end:0x80004798
 
+MetroidPrime/Carve800047E0.c:
+	.text       start:0x800047E0 end:0x8000489C
+
 MetroidPrime/Player/CGameStateBlockDtor.cpp:
 	.text       start:0x80004A4C end:0x80004AA0
 

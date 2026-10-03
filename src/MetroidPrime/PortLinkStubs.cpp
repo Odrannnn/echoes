@@ -1812,6 +1812,33 @@ extern "C" void stub_carve8010ee5c_0() {}
 extern "C" void stub_carve801eb30c_0() asm("fn_801EB374");
 extern "C" void stub_carve801eb30c_0() {}
 
+// `fn_8000489C` - retail `.text:0x8000489C`, 0x60 = 96 bytes, `config/G2ME01/symbols.txt:85`: the
+// `rstl::destroy_impl` walk that `src/MetroidPrime/Carve800047E0.c` (`Matching`,
+// 0x800047E0..0x8000489C) forwards to - its `fn_80004864` is retail's `rstl::destroy(begin, end)`,
+// whose whole body is one `bl` to this name (`build/G2ME01/asm/auto_03_8000489C_text.s:1-29`, and
+// the same `bl` inside the carve at `build/G2ME01/asm/MetroidPrime/Carve800047E0.s:52`).  **This is
+// an empty-body stand-in and it is announced as one.**  It does not claim 0x8000489C is
+// decompiled: no unit claims that range, `build/G2ME01/asm/auto_03_8000489C_text.s` is still the
+// only place retail's 24 instructions appear, and this file is not in `configure.py`, so a
+// definition here cannot reach main.dol.  What retail's function does, measured from those bytes:
+// walk `first` to `last` in strides of **12** (`addi r31,r31,0xc`) calling `__dt__6CTokenFv` on each
+// element's first word behind a `cmplwi r31,0` null test, re-reading the bound through `lwz r0,0(r30)`
+// every iteration.  **An empty body does none of that**, so a 12-byte element array destroyed
+// through this name keeps its `CToken`s rather than releasing them - the same trade
+// `stub_8028b728_0` and `stub_8001fedc_0` make for their units' unclaimed callees, and it is why
+// this one is named after the unit that asks for it.  `src/MetroidPrime/main.cpp:1237-1241` already
+// documents the same walk from the other side, for `fn_800068F4`'s clear of `CGameState::x1f4`.
+// Measured with `python3 tools/link_gap.py --rebuild`: without this block
+// `gap grew: fn_8000489C is not in port_link_gap_list.md`; with it, the gap is the 280 the branch
+// head already had, so `tools/gate.sh`'s `port link gap` step is unmoved.
+//
+// The name is keyed to the unit that asks for it rather than `stub_NNN`, following
+// `stub_carve801eb30c_0`, `stub_carve80256d1c_0`, `stub_carve8000447c_0` and `stub_80004438_0`
+// above: a numbered name is what another lane's carve takes between the judge and the rebase, and
+// the header paragraph at the top of this file is deliberately left untouched for the same reason.
+extern "C" void stub_carve800047e0_0() asm("fn_8000489C");
+extern "C" void stub_carve800047e0_0() {}
+
 // `fn_800E0FAC` - retail `.text:0x800E0FAC`, 0x90 = 144 bytes, `symbols.txt:3902`, size:
 // unclaimed.  **This is an empty-body stand-in and it is announced as one.**  It does not claim
 // 0x800E0FAC is decompiled: no unit claims that range.  It is the byte immediately above
