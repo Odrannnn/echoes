@@ -2236,6 +2236,9 @@ WorldFormat/Carve80255A0C.c:
 WorldFormat/Carve80255C54.c:
 	.text       start:0x80255C54 end:0x80255D2C
 
+WorldFormat/Carve802563C8.c:
+	.text       start:0x802563C8 end:0x802563E8
+
 WorldFormat/Carve80256D1C.c:
 	.text       start:0x80256D1C end:0x80256D64
 

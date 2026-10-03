@@ -2066,3 +2066,22 @@ extern "C" void stub_carve801f14f0_0(void*, const void*) {}
 extern "C" void stub_carve801f21e4_0(const void*, void*, void*)
     asm("Touch__15CGameProjectileFR6CActorR13CStateManager");
 extern "C" void stub_carve801f21e4_0(const void*, void*, void*) {}
+
+// `fn_80256570` - retail `.text:0x80256570`, **0x60 = 96 bytes**, `config/G2ME01/symbols.txt:10514`:
+// the one callee of `src/WorldFormat/Carve802563C8.c` (`Matching`, 0x802563C8..0x802563E8), whose
+// `fn_802563C8` is a frame and one `bl` to this name.  **This is an empty-body stand-in and it is
+// announced as one.**  Nothing here claims 0x80256570 is decompiled - no unit claims that range, it
+// is one byte-range above this carve's claim and still in dtk's unclaimed
+// `auto_03_80255D2C_text.o`, so dtk's object supplies retail's bytes in the DOL link and the
+// symbol is nothing this carve can or should claim; and this file is not in `configure.py`, so a
+// definition here cannot reach main.dol.
+//
+// The name is keyed to the unit that asks for it, following `stub_carve8016f69c_0` above, so another
+// lane's carve cannot take it between the judge and the rebase.  The declaration takes the two
+// pointers retail's `fn_802563C8` forwards (`mr r30,r3 / mr r31,r4` on entry to the callee) and
+// returns the first, which is what the real callee returns (`mr r3,r30` before its `blr`); the body
+// ignores both and **returns a null pointer**, which is announced here rather than made to look
+// like the receiver.  The call is on no path the boot takes, or `tools/link_gap.py --rebuild` would
+// have dropped it from the missing list instead of reporting it.
+extern "C" void* stub_carve802563c8_0(const void*, const void*) asm("fn_80256570");
+extern "C" void* stub_carve802563c8_0(const void*, const void*) { return 0; }
