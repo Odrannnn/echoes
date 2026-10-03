@@ -2012,6 +2012,45 @@ config.libs = [
             # carries source= for the reason the 388C entry gives, and it inherits that entry's
             # closing paren for the same reason the 3790 entry above does.)
             Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian108D4.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian108D4.cpp", mw_version="GC/2.7"),
+            # Added 2026-10-03 (lane 9, `progress-rel-ingboostballguardian-10694`). `.text`
+            # 0x10694..0x108D4, `fn_30_10694` (0x240 = 576 bytes), one function: the copy of the
+            # 0x29C-byte sub-object that the 10B90 and 108D4 entries above are the callees of. It
+            # copies +0x00..+0xEF inline, sets r3 = r30+0xF0 / r4 = r31+0xF0 and calls
+            # `fn_30_10B90`, copies +0x138..+0x13F inline, then sets r3 = r30+0x140 / r4 = r31+0x140
+            # and calls `fn_30_108D4` - the two `R_PPC_REL24`s at object offsets 0x35B8 and 0x35D4
+            # of `build/G2ME01/IngBoostBallGuardian/obj/auto_00_0000D2E0_text.o`, which is why it
+            # becomes claimable only now. Its epilogue's `mr r3,r30` is what fixes the return type
+            # as the pointer and not void.
+            # **The head is sixty flat members, and the stride question comes out aperiodic**: the
+            # per-member load type over all 62 members is
+            # `W F F F F F F W W W W W W W W W W W W W F W F F F W W W W W F F F F F W F F F W
+            # F F F F F W F F F F W W F F F W W W F F F`, which repeats for no period up to 30 -
+            # checked by script, not by eye - so unlike the 108D4 entry above there is no
+            # array-of-triples to model here and the head is spelled one member at a time.
+            # **The two records are spelled as calls, not as assignments.** Writing
+            # `self->rec0F0 = other.rec0F0` makes this object define its own out-of-line `__as__`
+            # for the 0x48-byte record - measured, a second function at 0x260, where retail defines
+            # one - and it also drops the head back to plain load/store pairs, 390 of 576 bytes
+            # wrong.
+            # **mw_version is load-bearing**, with the same per-object override as the two entries
+            # above and for the same reason: at the module default GC/1.3.2 the same source is still
+            # 576 bytes and **360 of them are wrong** - plain pairs, one live register, source order.
+            # At GC/2.7 it is byte-identical (GC/2.0, 2.5 and 2.6 agree; GC/3.0a5 emits a
+            # `_savegpr_16` prologue). Setting the version on the `Rel` block instead would
+            # recompile the other module-30 units.
+            # **No dead-strip hazard, measured**: `fn_30_10694` is not in ldscript.lcf's FORCEACTIVE
+            # list, but `R_PPC_REL24`s name it at module 0x10588 (in `fn_30_1056C`) and at module
+            # 0x10C40 (in `fn_30_10C24`), so dtk's own objects hold every reference. Each of those
+            # two instructions is named twice - by the head object `auto_00_00000000_text.o` as well
+            # - because dtk's auto units overlap, so the four relocation records are two
+            # instructions and not four. No force_active: entry, no config.yml change and no
+            # symbols.txt rename: the claim is `.text` only and the `fn_30_*` name is what dtk's
+            # objects call it. The claim spans no unclaimed gap - `fn_30_1056C` ends exactly at
+            # 0x10694 - and `total_functions` stays 28465. The entry is named with the module
+            # prefix and carries source= for the reason the 388C entry gives; it sits after that
+            # entry for the paren-count reason the 3790 entry gives, and like every entry after it
+            # this comment is paren-balanced.
+            Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian10694.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian10694.cpp", mw_version="GC/2.7"),
             # Added 2026-10-02 (lane 11, `progress-vt-rel-ingboostballguardian`, the vtable-name
             # trial). Six more ranges out of module 30's unclaimed gaps, twelve functions, every
             # one a virtual `tools/rel_class_map.py` names off the DOL vtable's matching slot:

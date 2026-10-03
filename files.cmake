@@ -484,6 +484,12 @@ src/MetroidPrime/PortLinkStubs.cpp
     # triple rather than `*self = other` or 87 member-by-member lines. Same empty host branch as
     # the entries above.
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian108D4.cpp
+    # `fn_30_10694` (0x10694, 0x240), the whole-sub-object copy the two entries above are the
+    # callees of - it copies +0x00..+0xEF and +0x138..+0x13F inline and calls each of them at
+    # +0xF0 and +0x140; see the `Rel("IngBoostBallGuardian", ...)` block in configure.py for the
+    # range, the measured layout, the dead-strip measurement and why the two records are spelled as
+    # calls and not as assignments. Same empty host branch as the entries above.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian10694.cpp
     # The three functions in front of it, `.text` 0x3790..0x388C of module 30: the null-guarded
     # deleting-destructor chain (see the `Rel("IngBoostBallGuardian", ...)` block in configure.py
     # for the range, the measurements and why the entry there is named with the module prefix and
