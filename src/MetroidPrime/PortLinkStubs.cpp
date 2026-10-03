@@ -9,7 +9,15 @@
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   189 functions, 10 data objects (counted 2026-10-02, after `src/MetroidPrime/ScriptObjects/
+ *   191 functions, 10 data objects (counted 2026-10-03, after `src/Collision/Carve8028B728.c`
+ *   needed `stub_8028b728_0` for the `fn_8028B780` its `fn_8028B760` forwards to - the file's
+ *   three derived terms moved `grep -cE 'asm\("'` 200 -> 201 and
+ *   `^extern "C" void stub_[A-Za-z0-9_]*\(\) asm(` 190 -> 191, with
+ *   `^extern "C" char stub_data_*` unmoved at 10.
+ *   **The 189 / 199 this line carried before it was superseded.**  Re-measured on the parent
+ *   commit `1b2665ba` with the same three terms, the file already held 190 functions and a total
+ *   of 200, so the line was already one high before this change and is re-derived from the tree
+ *   rather than carried.  Before that, 2026-10-02, after `src/MetroidPrime/ScriptObjects/
  *   Carve801FD7D4.c` retired `stub_230` because that unit now defines `fn_801FD7D4` for the port's
  *   link too - the file's three derived terms moved `grep -cE 'asm\("'` 200 -> 199 and
  *   `^extern "C" void stub_*() asm(` 190 -> 189, with `^extern "C" char stub_data_*` unmoved at
@@ -1506,6 +1514,29 @@ extern "C" void stub_801e515c_0() {}
 // `fn_801FDAE8` (:1181 above), so nothing under a `stub_N` name covered this one after the merge.
 extern "C" void stub_80004438_0() asm("fn_8000447C");
 extern "C" void stub_80004438_0() {}
+
+// `fn_8028B780` - retail `.text:0x8028B780`, 0x7C = 124 bytes, `symbols.txt:11391`: retail's
+// `rstl::construct_impl<T>` for the 0x50-byte element that `src/Collision/Carve8028B728.c`'s
+// `fn_8028B760` forwards to. **This is an empty-body stand-in and it is announced as one.** It does
+// not claim 0x8028B780 is decompiled: no unit claims that range - it is still inside dtk's
+// `auto_03_8028B1F4_text.o`, whose copy of the 0x7C bytes is
+// `build/G2ME01/asm/auto_03_8028B1F4_text.s:433-467` - and this file is not in `configure.py`, so a
+// definition here cannot reach main.dol. What retail's function does, measured from those bytes:
+// return early when the destination is null, otherwise copy the source's byte at +0x00 and +0x01,
+// its words at +0x08 and +0x0C, its `CTransform4f` at +0x10 (through
+// `__ct__12CTransform4fFRC12CTransform4f`) and its three floats at +0x40/+0x44/+0x48. **An empty
+// body does none of that**, so an element constructed through this name is left uninitialised
+// rather than copied. That is the trade every stub in this file makes - an undefined symbol the
+// linker cannot do without - and it is why this one is named after the unit that asks for it
+// instead of being hidden among the numbered stubs.
+//
+// **Why the port asks for it at all.** `src/Collision/Carve8028B728.c:77` declares `fn_8028B780`
+// and its `fn_8028B760` body calls it, that file is the first `files.cmake` unit whose `.text`
+// reaches the name, and no other port source declares or calls it - `fn_8028B728` and
+// `fn_8028B760` themselves are the only retail callers of 0x8028B780 in this range and both are in
+// that same object.
+extern "C" void stub_8028b728_0() asm("fn_8028B780");
+extern "C" void stub_8028b728_0() {}
 
 // `fn_80009224` - retail `.text:0x80009224`, 0x50 = 80 bytes, `symbols.txt:191`: the release of a
 // `CWorldLayerState` payload, which retail leaves unnamed.  **This is an empty-body stand-in and

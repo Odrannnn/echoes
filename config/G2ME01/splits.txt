@@ -2155,6 +2155,9 @@ Collision/CMRay.cpp:
 	.text       start:0x8028AF74 end:0x8028B1F4
 	.sdata2     start:0x8041E248 end:0x8041E250
 
+Collision/Carve8028B728.c:
+	.text       start:0x8028B728 end:0x8028B780
+
 Kyoto/Basics/CStopwatch.cpp:
 	.text       start:0x8028BC64 end:0x8028BD3C
 	.ctors      start:0x803A55D4 end:0x803A55D8
