@@ -1906,6 +1906,9 @@ MetroidPrime/ScriptLoader/AtomicBeta.cpp:
 MetroidPrime/ScriptLoader/Carve8023289C.c:
 	.text       start:0x8023289C end:0x802328A4
 
+MetroidPrime/ScriptLoader/Carve80233A90.cpp:
+	.text       start:0x80233A90 end:0x80233B58
+
 MetroidPrime/ScriptLoader/EyeBall.cpp:
 	.text       start:0x80234900 end:0x8023492C
 	.sbss       start:0x80419650 end:0x80419658
