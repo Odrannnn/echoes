@@ -1684,6 +1684,7 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/CDarkSamusState.cpp
     src/MetroidPrime/ScriptObjects/CScriptCoin.cpp
     src/MetroidPrime/ScriptObjects/CScriptCoinTouchBounds.cpp
+    src/MetroidPrime/ScriptObjects/CScriptCoinRestHead.cpp
     src/MetroidPrime/ScriptObjects/CScriptCoinRest.cpp
     # Upstream (PrimeDecomp/echoes) TUs, listed in the 2026-09-28 merge: upstream's fuller
     # CActor/CPlayer/CPatterned/CPlayerGun bodies reference these, and each one defines symbols

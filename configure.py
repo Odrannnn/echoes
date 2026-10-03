@@ -3075,11 +3075,19 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptCoin.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCoinThink.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptCoinTouchBounds.cpp"),
-            # `.text` 0x1BA4..0x32B8 plus the module's whole `.rodata` and `.data`: `NonMatching`
-            # with no source, which is how a named range keeps retail's bytes. See
-            # `config/G2ME01/rels/ScriptCoin/splits.txt` for why the old single 0x1BA4..0x36A4 claim
-            # became three units.
-            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCoinRestHead.cpp"),
+            # `.text` 0x1BA4..0x1C38, the vtable's `Touch` slot (`fn_58_1BA4`), which the source
+            # reproduces byte for byte under the module's own compiler version - no `mw_version`
+            # override needed, unlike `CScriptCoinRest.cpp` below. **The name is module-qualified**
+            # for the reason that entry documents: the queue's target for this one is
+            # `ScriptCoin/MetroidPrime/ScriptObjects/CScriptCoinRestHead`, and
+            # `tools/goal_check.sh` resolves a `match` target against configure.py, so an
+            # unqualified name leaves the item unjudgeable.
+            Object(Matching, "ScriptCoin/MetroidPrime/ScriptObjects/CScriptCoinRestHead.cpp", source="MetroidPrime/ScriptObjects/CScriptCoinRestHead.cpp"),
+            # `.text` 0x1C38..0x32B8 plus the module's whole `.rodata` and `.data`: `NonMatching`
+            # with no source, which is how a named range keeps retail's bytes. The `.rodata`/`.data`
+            # claims cannot stay on the unit above: a `Matching` unit's claim must be exactly what its
+            # own object reproduces, and `src/…/CScriptCoinRestHead.cpp` emits neither section.
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCoinRestBody.cpp"),
             # `.text` 0x32B8..0x3374, the `rstl::reserved_vector<float, 8>` pair, which the source
             # reproduces byte for byte. **The name is module-qualified** because the queue's target
             # for this unit is `ScriptCoin/MetroidPrime/ScriptObjects/CScriptCoinRest` and

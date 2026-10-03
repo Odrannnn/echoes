@@ -182,6 +182,18 @@ own class and is 7 functions in.
 inherited state. Blocker: `CScriptCoin`'s own layout is not modelled - the class exists here as a
 slot-only vtable in the Metaree/Puffer style, with no data members at all.
 
+## `src/MetroidPrime/ScriptObjects/CScriptCoinRestHead.cpp` (1 site)
+
+`+0x2f9`, bit 0 of the same byte, in `fn_58_1BA4` - `CScriptCoin`'s `Touch` override (module 58,
+`.text 0x1BA4..0x1C38`, `Object(Matching, "ScriptCoin/...", source=...)` in `configure.py`;
+goal item `reclaim-scriptcoin-rest-head-fn`). **The same offset and the same bit as the entry
+above**, which is the cross-check that both are one flag byte: retail's `CScriptDebris::Touch`
+tests `+0x2f9` too, and `CScriptDebris`'s header calls it `mDieOnProjectile`. Blocker: as above -
+`CScriptCoin` is not modelled, so there is no class to put the bit in, and this unit's body must
+be a free `extern "C"` definition anyway because the module's symbol table carries the `fn_58_1BA4`
+placeholder (a member definition would mangle). The read is the whole first condition, and the
+rest of the function reaches `CEntity`'s members through the real class types.
+
 #### Kind A - opaque receivers, kept deliberately
 
 These take a `const void*` because the receiver's class is not modelled, so the offset is the
