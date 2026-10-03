@@ -1878,6 +1878,33 @@ extern "C" void stub_carve800e0efc_0() {}
 extern "C" void stub_carve800e0efc_1() asm("__dt__21CDependencyGroupTokenFv");
 extern "C" void stub_carve800e0efc_1() {}
 
+// `fn_800E131C` - retail `.text:0x800E131C`, 0x8C = 140 bytes, `symbols.txt:3911`, size:
+// unclaimed.  **This is an empty-body stand-in and it is announced as one.**  It does not claim
+// 0x800E131C is decompiled: no unit claims that range.  It is the byte immediately above
+// `src/MetroidPrime/Carve800E122C.cpp`'s own claim (0x800E122C..0x800E131C) and stays in dtk's
+// `auto_03_800E122C_text.o`, which the matching build links, so that carve cannot reach it.
+//
+// **Why the port asks for it at all.** `src/MetroidPrime/Carve800E122C.cpp` declares `fn_800E131C`
+// and its `fn_800E12D4` calls it at retail's own `bl` (0x800E12F8), that file is in `files.cmake`,
+// and no other port source declares or calls it.  Measured with `python3 tools/link_gap.py
+// --rebuild` on the carve's own tree, `gap grew: fn_800E131C is not in port_link_gap_list.md` was
+// the **only** line it printed - the carve's other `bl` (`__dt__6CTokenFv`) resolves on the host
+// too, because that unit instantiates `rstl::vector<TToken<CTexture>>` from
+// `include/rstl/vector.hpp` and so reaches `src/Kyoto/CToken.cpp`'s own `_ZN6CTokenD1Ev`.
+//
+// What retail's function does, measured from `build/G2ME01/asm/auto_03_800E122C_text.s:80-120`:
+// a null-receiver early return, then an `optional_object`-shaped pair - `lbz r0,8(r30)` gating a
+// `CGuiFrame*` at +0x0C released through `__dt__9CGuiFrameFv` with the deleting flag 1, and
+// `lbz r0,0(r30)` gating a `CGuiFrameLoader*` at +0x04 through `__dt__15CGuiFrameLoaderFv` with
+// it - then the signed-halfword deleting-flag test and `Free__7CMemoryFPCv`.  **An empty body does
+// none of that**, so an object destroyed through this name keeps both of its members - the same
+// trade `stub_carve800e0efc_0` makes one carve below, and it is why this one is named after the
+// unit that asks for it: a numbered `stub_NNN` is what another lane's carve takes between the
+// judge and the rebase, and the header paragraph at the top of this file is deliberately left
+// untouched for the same reason.
+extern "C" void stub_800e122c_0() asm("fn_800E131C");
+extern "C" void stub_800e122c_0() {}
+
 // `fn_8016BF4C` - retail `.text:0x8016BF4C`, 0x228 = 552 bytes, `config/G2ME01/symbols.txt:6007`:
 // `rstl::basic_string<char, rstl::case_insensitive_char_traits<char>, rmemory_allocator>::internal_compare`,
 // the one callee of `src/MetroidPrime/Carve8016BEA8.cpp` (`Matching`, 0x8016BEA8..0x8016BF4C) - its

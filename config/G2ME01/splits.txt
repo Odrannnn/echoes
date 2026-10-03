@@ -541,6 +541,9 @@ MetroidPrime/Carve800E0EFC.c:
 MetroidPrime/Carve800E10EC.cpp:
 	.text       start:0x800E10EC end:0x800E122C
 
+MetroidPrime/Carve800E122C.cpp:
+	.text       start:0x800E122C end:0x800E131C
+
 MetroidPrime/Carve800E1548.c:
 	.text       start:0x800E1548 end:0x800E163C
 
