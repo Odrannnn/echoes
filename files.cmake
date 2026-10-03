@@ -466,6 +466,12 @@ src/MetroidPrime/PortLinkStubs.cpp
     # block in configure.py for the range, the dead-strip measurement and why the entry there is
     # named with the module prefix and carries `source=`. Same empty host branch as the entry above.
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian388C.cpp
+    # `fn_30_10B90` (0x10B90, 0x94), the module's copy of a 0x48-byte record, at the member offset
+    # +0xF0 of the 0x3FC-byte structure `fn_30_10694` copies; see the
+    # `Rel("IngBoostBallGuardian", ...)` block in configure.py for the range, why the claim stops
+    # at 0x10C24, and why the spelling is member-by-member rather than `*self = other`. Same empty
+    # host branch as the entries above.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian10B90.cpp
     # Six more ranges out of module 30's unclaimed gaps, twelve functions in all, this time the
     # module's own vtable overrides named by tools/rel_class_map.py (see the
     # `Rel("IngBoostBallGuardian", ...)` block in configure.py for the ranges, the vtable slots and

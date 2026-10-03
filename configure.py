@@ -1904,6 +1904,30 @@ config.libs = [
             # inside a Rel list reads one open paren too many and is looked for under
             # extern/musyx/src, where this source is not. The extra `)` balances it.)
             Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian388C.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian388C.cpp", mw_version="GC/2.7"),
+            # Added 2026-10-03 (lane 6, `progress-rel-ingboostballguardian-10b90`). `.text`
+            # 0x10B90..0x10C24, `fn_30_10B90` (0x94), one leaf: the module's own copy of a
+            # 0x48-byte record, eighteen loads and eighteen stores in MWCC's two-deep schedule.
+            # `fn_30_10694` is the whole-structure copy around it - it copies +0x00..+0xEF inline,
+            # calls this at +0xF0 and `fn_30_108D4` at +0x140 - so this record is a member of a
+            # 0x3FC-byte structure, not something the module loads. The claim is this range and not
+            # the 0x108D4..0x10C24 run around it because `fn_30_108D4` is 0x2BC bytes of the same
+            # kind of copy and `fn_30_10C24` behind it is a different function.
+            # **The spelling is member-by-member, not `*self = other`, and that is measured**: at
+            # eighteen members GC/2.7 stops inlining the implicit assignment operator and emits a
+            # `bl` to an out-of-line `__as__...`, so the object would define two functions where
+            # retail defines one. At ten members (the 388C entry above) the same compiler still
+            # inlines it; the size is the difference, not the spelling.
+            # **mw_version is load-bearing here too**, for the same reason and with the same
+            # per-object override: at the module default GC/1.3.2 the same source gives plain
+            # load/store pairs and 148 bytes that are not retail's; at GC/2.7 it is byte-identical
+            # (checked instruction by instruction against the retail object).
+            # **No dead-strip hazard, measured**: fn_30_10B90 is not in ldscript.lcf's FORCEACTIVE
+            # list, but powerpc-eabi-objdump -r on auto_00_00000000_text.o and
+            # auto_00_0000D2E0_text.o both shows an R_PPC_REL24 naming it (at 0x10898), so dtk's
+            # own object holds the reference. No force_active: entry, no config.yml change, no
+            # symbols.txt rename. The entry is named with the module prefix and carries source= for
+            # the reason the 388C entry above gives.
+            Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian10B90.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian10B90.cpp", mw_version="GC/2.7"),
             # Added 2026-10-02 (lane 11, `progress-vt-rel-ingboostballguardian`, the vtable-name
             # trial). Six more ranges out of module 30's unclaimed gaps, twelve functions, every
             # one a virtual `tools/rel_class_map.py` names off the DOL vtable's matching slot:
