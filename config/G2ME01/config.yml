@@ -221,6 +221,17 @@ modules:
   - object: files/RelProd/IngBoostBallGuardian.rel
     hash: 956265e8ccf3f489e9cb3a70ec22d0357ce17cca
     splits: config/G2ME01/rels/IngBoostBallGuardian/splits.txt
+    # fn_30_3790 (0x3790, 0x50) is the head of the deleting-destructor chain
+    # CIngBoostBallGuardian3790.cpp claims, and nothing in the module calls it: `nm` over every
+    # object dtk writes into build/G2ME01/IngBoostBallGuardian/obj/ finds no `U fn_30_3790`, and
+    # it is not in ldscript.lcf's FORCEACTIVE, which mwldeppc writes from the list here - so
+    # mwldeppc drops it from a Matching unit's `.text` and every function after it shifts.
+    # Measured before this entry was added: the module's `.text` came out 0x50 = 80 bytes short
+    # (0x16698 against retail's 0x166E8) with the claim's other two functions present, and the
+    # byte stream from 0x3790 on was retail's from 0x37E0 on. Same arrangement as FlyerSwarm's
+    # fn_21_1708 and PlantScarabSwarm's fn_49_2C00 above.
+    force_active:
+      - fn_30_3790
     symbols: config/G2ME01/rels/IngBoostBallGuardian/symbols.txt
   # Module ID 31
   - object: files/RelProd/IngBlobSwarm.rel

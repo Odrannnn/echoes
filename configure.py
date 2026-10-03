@@ -1928,6 +1928,27 @@ config.libs = [
             # symbols.txt rename. The entry is named with the module prefix and carries source= for
             # the reason the 388C entry above gives.
             Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian10B90.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian10B90.cpp", mw_version="GC/2.7"),
+            # Added 2026-10-03 (lane 7, `progress-rel-ingboostballguardian-3790`). `.text`
+            # 0x3790..0x388C, 0xFC = 252 bytes, three functions: `fn_30_3790` (0x50), `fn_30_37E0`
+            # (0x58), `fn_30_3838` (0x54). One null-guarded deleting-destructor chain - the shape
+            # `MetroidPrime/Carve8000447C.cpp` and `Cameras/Carve801E7C14.c` reproduce in the DOL:
+            # `if (self) { <teardown>; if (flag > 0) Free__7CMemoryFPCv(self); } return self;`,
+            # with the flag a **short** (retail's `extsh. r0,r31 / ble`; an `int` gives `cmpwi`).
+            # `fn_30_3790` releases the `rstl::string` at +0, `fn_30_37E0` the sub-object at +4 on
+            # `addi r3,r30,4 / li r4,-1`, and `fn_30_3838` the pointer at +0xC. The claim is this
+            # range and not the wider run because `fn_30_388C` behind it is its own unit; the claim
+            # spans no unclaimed gap, because `fn_30_3478` (0x3478, 0x318) ends exactly at 0x3790.
+            # **No `mw_version` override, and that is measured**: the three bodies are branch and
+            # load/store only, and GC/1.3.2 (the module default, which the other fifteen module-30
+            # units build under) and GC/2.7 (the 388C entry's override) produce the same 252 bytes.
+            # **The object is named with the module prefix and carries `source=`**, the same
+            # convention as the 388C entry above, because tools/goal_check.sh resolves a `match`
+            # target by searching configure.py for the queue's spelling and the queue names a REL
+            # unit the way report.json does. The entry sits after the 388C entry on purpose: the
+            # paren count flip_test.sh's unit_info uses starts at the last call of that helper, and
+            # the extra close paren at the end of the comment above is what makes the count come
+            # out even for this entry and for every entry after it.)
+            Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian3790.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian3790.cpp"),
             # Added 2026-10-02 (lane 11, `progress-vt-rel-ingboostballguardian`, the vtable-name
             # trial). Six more ranges out of module 30's unclaimed gaps, twelve functions, every
             # one a virtual `tools/rel_class_map.py` names off the DOL vtable's matching slot:

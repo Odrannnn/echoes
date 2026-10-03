@@ -472,6 +472,13 @@ src/MetroidPrime/PortLinkStubs.cpp
     # at 0x10C24, and why the spelling is member-by-member rather than `*self = other`. Same empty
     # host branch as the entries above.
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian10B90.cpp
+    # The three functions in front of it, `.text` 0x3790..0x388C of module 30: the null-guarded
+    # deleting-destructor chain (see the `Rel("IngBoostBallGuardian", ...)` block in configure.py
+    # for the range, the measurements and why the entry there is named with the module prefix and
+    # carries `source=`). Same empty host branch as the entry above - the bodies and the local
+    # `rstl::basic_string` declaration are inside `#ifdef __MWERKS__`, so listing it adds no
+    # undefined reference.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian3790.cpp
     # Six more ranges out of module 30's unclaimed gaps, twelve functions in all, this time the
     # module's own vtable overrides named by tools/rel_class_map.py (see the
     # `Rel("IngBoostBallGuardian", ...)` block in configure.py for the ranges, the vtable slots and
