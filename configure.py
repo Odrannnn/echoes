@@ -1163,6 +1163,14 @@ config.libs = [
             # must stay unmangled. See the file header.
             Object(Matching, "Kyoto/Math/Carve8033719C.c"),
             Object(Matching, "Kyoto/Math/Carve803371A4.c"),
+            # A carve of `fn_803371EC` (0x803371EC..0x803371F4), the second vtable slot that
+            # returns retail's `.sdata2` word `lbl_8041ED38`, out of dtk's
+            # `auto_03_803371A8_text`. Byte-shape twin of `Carve8033719C.c` 0x50 bytes below.
+            # The pool word stays with dtk's data unit and is only declared - eight other auto
+            # functions still reference it by name, so claiming it would leave the DOL link
+            # with an `undefined: lbl_8041ED38`. `.c` because retail names this function only
+            # by its `fn_<addr>` placeholder, so it must stay unmangled. See the file header.
+            Object(Matching, "Kyoto/Math/Carve803371EC.c"),
             Object(Matching, "Kyoto/Math/Carve803371F4.c"),
             Object(Matching, "Kyoto/Math/Carve80339D1C.c"),
             Object(Matching, "Kyoto/Math/Carve8033F2CC.c"),

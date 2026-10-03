@@ -1190,6 +1190,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     # declared, not claimed, and defined host-only in the file - see its header.
     src/Kyoto/Math/Carve8033719C.c
     src/Kyoto/Math/Carve803371A4.c
+    # A carve of `fn_803371EC` (0x803371EC..0x803371F4), the second vtable slot that returns
+    # retail's `.sdata2` word `lbl_8041ED38`, out of dtk's `auto_03_803371A8_text`. The word
+    # itself is declared, not claimed; `Carve8033719C.c` carries its host-only definition - see
+    # its header.
+    src/Kyoto/Math/Carve803371EC.c
     src/Kyoto/Math/Carve803371F4.c
     src/Kyoto/Math/Carve80339D1C.c
     src/Kyoto/Math/Carve8033BE1C.c
