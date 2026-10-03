@@ -1250,6 +1250,9 @@ MetroidPrime/Carve801C13F4.c:
 MetroidPrime/Carve801C2BA8.cpp:
 	.text       start:0x801C2BA8 end:0x801C2CBC
 
+MetroidPrime/Carve801C2CBC.cpp:
+	.text       start:0x801C2CBC end:0x801C2D74
+
 MetroidPrime/Carve801C2D74.cpp:
 	.text       start:0x801C2D74 end:0x801C2DFC
 

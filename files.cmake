@@ -780,6 +780,16 @@ src/MetroidPrime/PortLinkStubs.cpp
     # rather than one undefined symbol - retail's only caller of either, `fn_801C2CBC`, is itself
     # inside the unclaimed dtk range above.
     src/MetroidPrime/Carve801C2BA8.cpp
+    # Carve801C2CBC.cpp - `fn_801C2CBC` (0x801C2CBC, 0xB8), a
+    # `rstl::vector<CRagDoll::CRagDollParticle, rmemory_allocator>::reserve` - the same 46
+    # instructions as `Carve801C2BA8.cpp`'s with a 0x44 stride and the out-of-line copy callee
+    # `fn_801C2D74`, which retail emitted 0x50 away and which `Carve801C2D74.cpp` below already
+    # claims.  Its host branch is empty by design (the bodies are inside `#ifdef __MWERKS__`),
+    # for the reason `Carve801C2D74.cpp`'s entry gives: `fn_801C2D74` is defined only in that
+    # file's DOL branch, so a host body here would add one undefined symbol to the port's link
+    # for a function no host source calls.  It is listed because check_files_cmake.py requires
+    # every configure.py `Matching` object to be in this list.
+    src/MetroidPrime/Carve801C2CBC.cpp
     # Carve801C2D74.cpp - `fn_801C2D74` (0x801C2D74, 0x68), retail's
     # `rstl::uninitialized_copy<pointer_iterator<CRagDoll::CRagDollParticle,...>,
     # CRagDoll::CRagDollParticle*>` with a 0x44 stride, and `fn_801C2DDC` (0x801C2DDC, 0x20),
