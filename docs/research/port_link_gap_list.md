@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (214)
+## other game methods (213)
 
 - `_ZN10CExplosionC1ERK12TLockedTokenI15CGenDescriptionE9TUniqueIdRK11CEntityInfoRKN4rstl12basic_stringIcNS9_11char_traitsIcEENS9_17rmemory_allocatorEEERK12CTransform4fjRK9CVector3fRK6CColori`
 - `_Z10TCastToPtrI11CScriptDockEPT_P7CEntity`
@@ -150,7 +150,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN25CScriptObjectLoaderHelper17InitScriptObjectsERN4rstl6vectorI9TEditorIdNS0_17rmemory_allocatorEEER13CStateManager`
 - `_ZN25CScriptObjectLoaderHelper17LoadScriptObjectsE7TAreaIdR12CInputStreamRN4rstl6vectorI9TEditorIdNS3_17rmemory_allocatorEEER13CStateManager`
 - `_ZN25CScriptObjectLoaderHelper18RemoveLayerObjectsE7TAreaId8TLayerIdR13CStateManager`
-- `_ZN25CScriptObjectLoaderHelper21RegisterScriptObjectsEN4rstl6vectorIP7CEntityNS0_17rmemory_allocatorEEER13CStateManager`
 - `_ZN25CScriptObjectLoaderHelper26LoadGeneratedScriptObjectsE7TAreaIdR12CInputStream`
 - `_ZN5CMain14ResetGameStateEv`
 - `_ZN5CMain18StreamNewGameStateEb`

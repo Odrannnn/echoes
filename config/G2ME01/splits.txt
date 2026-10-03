@@ -1933,6 +1933,9 @@ MetroidPrime/ScriptLoader/Carve8023289C.c:
 MetroidPrime/ScriptLoader/Carve80233A90.cpp:
 	.text       start:0x80233A90 end:0x80233B58
 
+MetroidPrime/ScriptLoader/Carve80333B58.cpp:
+	.text       start:0x80233B58 end:0x80233C4C
+
 MetroidPrime/ScriptLoader/EyeBall.cpp:
 	.text       start:0x80234900 end:0x8023492C
 	.sbss       start:0x80419650 end:0x80419658
