@@ -736,6 +736,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve8016FD4C.c
     src/MetroidPrime/Carve80171DD4.c
     src/MetroidPrime/Carve80179E08.c
+    src/MetroidPrime/Carve801834C8.cpp
     src/MetroidPrime/Carve8018C4A8.c
     src/MetroidPrime/Carve8018EF50.c
     src/MetroidPrime/Carve80192D74.c

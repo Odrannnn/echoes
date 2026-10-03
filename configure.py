@@ -693,6 +693,7 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptSpawnPoint.cpp"),
             Object(MatchingFor("G2ME01"), "MetroidPrime/CRuleSet.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CPlayer.cpp"),
+            Object(Matching, "MetroidPrime/Carve801834C8.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CPlayerDynamics.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CPlayerOrbit.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CPlayerVisor.cpp"),

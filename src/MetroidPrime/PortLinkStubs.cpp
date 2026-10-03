@@ -5,11 +5,23 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 204 of them: the ones referenced **only by
+ * file supplies 212 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   196 functions, 10 data objects (counted 2026-10-03, after
+ *   202 functions, 10 data objects (counted 2026-10-03, after
+ *   `src/MetroidPrime/Carve801834C8.cpp` needed **one** stand-in,
+ *   `stub_carve801834c8_0` for the `fn_8005F508` its `fn_801834C8` calls - retail's unclaimed
+ *   164-byte `rstl::vector<TEditorId>::reserve(int)` at 0x8005F508, left in dtk's
+ *   `auto_03_8005xxxx_text.o`, and **the same function over a 4-byte element that this carve's own
+ *   `fn_80183574` is over an 8-byte one**.  The file's three derived terms moved
+ *   `grep -cE 'asm\("'` 211 -> 212 and `^extern "C" void stub_[A-Za-z0-9_]*\(\) asm\(` 200 -> 201,
+ *   with `^extern "C" char stub_data_*` unmoved at 10; total supplied 211 -> 212.
+ *   **The 196 / 204 this paragraph carried before it was superseded was already low on the parent
+ *   commit**, which measures 211 / 201 / 10 - re-derived with the same three terms on
+ *   `git show HEAD:src/MetroidPrime/PortLinkStubs.cpp` rather than adjusted, the union-merge drift
+ *   the paragraph two below this one warns about.  The new figure is derived from the tree.
+ *   Before that, 2026-10-03, after
  *   `src/MetroidPrime/Carve800E0EFC.c` needed **two** stand-ins:
  *   `stub_carve800e0efc_0` for the `fn_800E0FAC` its `fn_800E0F54` calls (retail's unclaimed
  *   144-byte destructor one byte above this carve's claim, left in dtk's `auto_03_800E028C_text.o`),
@@ -1927,3 +1939,27 @@ extern "C" void stub_800e122c_0() {}
 // and this body ignores all of them.
 extern "C" int stub_carve8016bea8_0() asm("fn_8016BF4C");
 extern "C" int stub_carve8016bea8_0() { return 0; }
+
+// `fn_8005F508` - retail `.text:0x8005F508`, 0xA4 = 164 bytes,
+// `config/G2ME01/symbols.txt:1886`: the one callee of `src/MetroidPrime/Carve801834C8.cpp`
+// (`Matching`, 0x801834C8..0x80183648), whose `fn_801834C8` reads a count and then `mr r4,r31 /
+// bl` this name.  **This is an empty-body stand-in and it is announced as one.**  It does not
+// claim 0x8005F508 is decompiled: no unit claims that range and this file is not in
+// `configure.py`, so a definition here cannot reach main.dol.  What retail's function is, measured
+// off `build/G2ME01/main.elf` and not guessed: it is the *same* `rstl::vector<T,
+// rmemory_allocator>::reserve(int)` that the carve's own `fn_80183574` is, over a **4-byte**
+// element - `lwz r0,0x8(r3) / cmpw r31,r0 / ble` is the capacity test, `slwi r3,r30,2 /
+// bl allocate__Q24rstl17rmemory_allocatorFi` sizes the allocation at four bytes per element, the
+// four stores at +0x08/+0x0C/+0x10/+0x14 are the by-value `begin()`/`end()` copies the same way
+// `Carve801834C8.cpp`'s own header measures, and `bl Free__7CMemoryFPCv / stw r31,0xc(r29) /
+// stw r30,0x8(r29)` is the swap and the capacity write.  Its copy loop has no `cmplwi dest,0 /
+// beq` because a 4-byte element is copied as one word.  So the empty body loses the growth of a
+// `vector<TEditorId>`, the same trade `stub_carve800e0efc_0` makes for its neighbour's 284-byte
+// element, and it is why this one is named after the unit that asks for it.
+//
+// The name is keyed to the unit that asks for it, following `stub_carve8016bea8_0` above, so
+// another lane's carve cannot take it between the judge and the rebase.  The declaration takes no
+// parameters, as `stub_carve8016bea8_0` does: the host caller passes the vector and the count and
+// this body ignores both.
+extern "C" void stub_carve801834c8_0() asm("fn_8005F508");
+extern "C" void stub_carve801834c8_0() {}
