@@ -1124,6 +1124,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/WorldFormat/Carve80255900.c
     src/WorldFormat/Carve80255A0C.c
     src/WorldFormat/Carve80255C54.c
+    src/WorldFormat/Carve80256250.c
     src/WorldFormat/Carve802563C8.c
     src/WorldFormat/Carve80256D1C.c
     src/WorldFormat/Carve80256F20.cpp

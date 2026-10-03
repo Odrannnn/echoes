@@ -436,6 +436,7 @@ config.libs = [
             Object(Matching, "WorldFormat/Carve80255900.c"),
             Object(Matching, "WorldFormat/Carve80255A0C.c"),
             Object(Matching, "WorldFormat/Carve80255C54.c"),
+            Object(Matching, "WorldFormat/Carve80256250.c"),
             Object(Matching, "WorldFormat/Carve802563C8.c"),
             Object(Matching, "WorldFormat/Carve80256D1C.c"),
             Object(Matching, "WorldFormat/Carve80256F20.cpp"),
