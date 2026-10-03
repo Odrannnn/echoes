@@ -1518,6 +1518,9 @@ MetroidPrime/ScriptLoader/Parasite.cpp:
 	.text       start:0x80200E78 end:0x80200EFC
 	.sbss       start:0x80419368 end:0x80419370
 
+MetroidPrime/ScriptLoader/Carve80200EFC.c:
+	.text       start:0x80200EFC end:0x80200F04
+
 MetroidPrime/ScriptLoader/PillBug.cpp:
 	.text       start:0x80200F04 end:0x80200F30
 	.sbss       start:0x80419370 end:0x80419378
