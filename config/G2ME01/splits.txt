@@ -1232,6 +1232,9 @@ MetroidPrime/Carve801C128C.c:
 MetroidPrime/Carve801C13F4.c:
 	.text       start:0x801C13F4 end:0x801C13F8
 
+MetroidPrime/Carve801C2D74.cpp:
+	.text       start:0x801C2D74 end:0x801C2DFC
+
 MetroidPrime/Player/CGrappleArm.cpp:
 	.text       start:0x801C316C end:0x801C6B20
 	.ctors      start:0x803A5574 end:0x803A5578

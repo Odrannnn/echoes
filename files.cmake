@@ -766,6 +766,17 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve801BC900.c
     src/MetroidPrime/Carve801C128C.c
     src/MetroidPrime/Carve801C13F4.c
+    # Carve801C2D74.cpp - `fn_801C2D74` (0x801C2D74, 0x68), retail's
+    # `rstl::uninitialized_copy<pointer_iterator<CRagDoll::CRagDollParticle,...>,
+    # CRagDoll::CRagDollParticle*>` with a 0x44 stride, and `fn_801C2DDC` (0x801C2DDC, 0x20),
+    # `rstl::construct<T>` for the same element.  Its host branch is empty by design (the bodies
+    # are inside `#ifdef __MWERKS__`), for the reason CMysteryFlyerRelTail2.cpp's entry gives:
+    # `MetroidPrime/CRagDoll.cpp` is excluded from the port build by tools/check_files_cmake.py's
+    # measured reason, so a host body would add one undefined symbol to the port's link for a
+    # function no host source calls - `fn_801C2CBC`, retail's only caller of `fn_801C2D74`, is
+    # itself inside an unclaimed dtk `auto_*` range.  It is listed because check_files_cmake.py
+    # requires every configure.py `Matching` object to be in this list.
+    src/MetroidPrime/Carve801C2D74.cpp
     src/MetroidPrime/Carve801C3670.c
     src/MetroidPrime/Carve801C36A8.c
     src/MetroidPrime/Carve801C3718.c
