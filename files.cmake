@@ -504,6 +504,13 @@ src/MetroidPrime/PortLinkStubs.cpp
     # stride element are spelled out rather than declared as arrays. Same empty host branch as the
     # entries above.
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian1056C.cpp
+    # `fn_30_AD4` (0xAD4, 0x5C), the copy assignment of the 0x30-byte record at member offset
+    # +0x29C, and the entry above's second callee - it is a 21-byte `__copy`, two word copies and
+    # a call to `fn_30_B84`; see the `Rel("IngBoostBallGuardian", ...)` block in configure.py for
+    # the range, the measured member regions, the dead-strip measurement and why the three bytes
+    # between 0x15 and 0x18 are alignment rather than a declared pad member. Same empty host
+    # branch as the entries above.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianAD4.cpp
     # The three functions in front of it, `.text` 0x3790..0x388C of module 30: the null-guarded
     # deleting-destructor chain (see the `Rel("IngBoostBallGuardian", ...)` block in configure.py
     # for the range, the measurements and why the entry there is named with the module prefix and

@@ -2136,6 +2136,44 @@ config.libs = [
             # paren-count reason the 3790 entry gives, and like every entry after it this comment is
             # paren-balanced.
             Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian1056C.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian1056C.cpp", mw_version="GC/2.7"),
+            # Added 2026-10-03 (lane 5, `progress-rel-ingboostballguardian-ad4`). `.text`
+            # 0xAD4..0xB30, `fn_30_AD4` (0x5C = 92 bytes), one function: the copy assignment of
+            # the 0x30-byte record at member offset +0x29C of the 0x321-byte class the entry above
+            # copies, and therefore its second callee (R_PPC_REL24 at object offset 0x28 of
+            # `build/G2ME01/src/IngBoostBallGuardian/MetroidPrime/ScriptObjects/
+            # CIngBoostBallGuardian1056C.o`), which is what makes it claimable now.
+            # **The body is one 21-byte `__copy`, two word copies and one callee, and the three
+            # member regions are what the disassembly shows**: `li r5,0x15` then `bl __copy` with
+            # r3 = r30 and r4 = r31 and no `addi`, so the head sub-record starts at offset 0 and
+            # is 0x15 = 21 bytes; `lwz`/`stw` pairs at +0x18 and +0x1C; then `addi r3,r30,0x20` /
+            # `addi r4,r31,0x20` and `bl fn_30_B84` for the last 0x10 bytes. The three bytes between
+            # 0x15 and 0x18 are padding, not members, and they are made padding the way
+            # `include/MetroidPrime/CDamageVulnerability.hpp` does it - by aligning the 21-byte
+            # array to 4 rather than declaring an explicit pad member, because a declared pad is a
+            # member and the compiler copies it (that entry measured 108 bytes against retail's 92
+            # for the same mistake).
+            # **Both callees stay `extern "C"`**: after the carve dtk starts a new auto unit at
+            # 0xB30 and `fn_30_B84` is defined by `auto_00_00000B30_text.o`, which the module links,
+            # while `__copy` was already an undefined REL symbol before the carve (`nm -u` found it
+            # in `auto_00_00000130_text.o`, an object the module linked), so this unit adds no new
+            # undefined symbol.
+            # **mw_version is load-bearing**, with the same per-object override as the four entries
+            # above: at the module default GC/1.3.2 the same source is still 92 bytes but only
+            # **82 of the 92 are retail's** (the schedule differs from 0x25 on); at GC/2.7 it is
+            # byte-identical (GC/2.0, 2.0p1, 2.5 and 2.6 agree; GC/3.0a5 emits 240 bytes).
+            # **No dead-strip hazard, measured**: `fn_30_AD4` is not in ldscript.lcf's FORCEACTIVE
+            # list, but an R_PPC_REL24 names it in five of the module's own objects -
+            # `auto_00_00000000_text.o` four times, and `auto_00_00000130_text.o`,
+            # `auto_00_0000D2E0_text.o`, `auto_00_00010C24_text.o` and
+            # `auto_00_0001466C_text.o` once each - and this entry's own caller names it too. No
+            # force_active: entry, no config.yml change and no symbols.txt rename: the claim is
+            # `.text` only and `fn_30_*` is the name dtk's objects call it. The claim spans no
+            # unclaimed gap - `fn_30_AAC` is 0x28 bytes and ends exactly at 0xAD4 - and
+            # `total_functions` stays 28465. The entry is named with the module prefix and carries
+            # source= for the reason the 388C entry gives; it sits after the 1056C entry for the
+            # paren-count reason the 3790 entry gives, and like every entry after it this comment
+            # is paren-balanced.
+            Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardianAD4.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardianAD4.cpp", mw_version="GC/2.7"),
             # Added 2026-10-02 (lane 11, `progress-vt-rel-ingboostballguardian`, the vtable-name
             # trial). Six more ranges out of module 30's unclaimed gaps, twelve functions, every
             # one a virtual `tools/rel_class_map.py` names off the DOL vtable's matching slot:

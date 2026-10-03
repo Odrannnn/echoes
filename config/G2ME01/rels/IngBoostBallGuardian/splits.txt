@@ -9,6 +9,9 @@ Sections:
 MetroidPrime/ScriptObjects/CIngBoostBallGuardianRel.cpp:
 	.text       start:0x00000000 end:0x00000130
 
+IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardianAD4.cpp:
+	.text       start:0x00000AD4 end:0x00000B30
+
 MetroidPrime/ScriptObjects/CIngBoostBallGuardian194C.cpp:
 	.text       start:0x0000194C end:0x00001988
 
