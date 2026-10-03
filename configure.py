@@ -888,6 +888,13 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/SplitterMainChassis.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve80218CF0.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/ChozoGhost.cpp"),
+            # Added 2026-10-03 (goal item `carve-80218d24`). The 8 bytes at 0x80218D24, the
+            # ChozoGhost module's loader setter (`stw r3, gLoader_ChozoGhost@sda21(r0); blr`),
+            # carved out of dtk's `auto_03_80218D24_text`. `ChozoGhost.cpp`'s .text ends at
+            # 0x80218D24 and Tryclops.cpp's starts at 0x80218D2C, so this is the whole gap
+            # between two claimed units; .sbss stays with ChozoGhost.cpp, which defines the
+            # slot. `.c` because module 8 imports the plain retail name `fn_80218D24`.
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80218D24.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/Tryclops.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/WispTentacle.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/SpankWeed.cpp"),

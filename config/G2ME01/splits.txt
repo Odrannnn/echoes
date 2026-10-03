@@ -1735,6 +1735,9 @@ MetroidPrime/ScriptLoader/ChozoGhost.cpp:
 	.text       start:0x80218CF8 end:0x80218D24
 	.sbss       start:0x80419448 end:0x80419450
 
+MetroidPrime/ScriptLoader/Carve80218D24.c:
+	.text       start:0x80218D24 end:0x80218D2C
+
 MetroidPrime/ScriptLoader/Tryclops.cpp:
 	.text       start:0x80218D2C end:0x80218D58
 	.sbss       start:0x80419450 end:0x80419458
