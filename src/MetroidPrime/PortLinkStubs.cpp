@@ -5,18 +5,26 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 200 of them: the ones referenced **only by
+ * file supplies 202 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   192 functions, 10 data objects (counted 2026-10-03, after
- *   `src/Collision/Carve8028B8BC.c` needed `stub_8028b8bc_0` for the `fn_8028B914` that its
- *   `fn_8028B8F4` forwards to - the file's two derived terms moved `grep -cE 'asm\("'`
- *   201 -> 202 and `^extern "C" void stub_[A-Za-z0-9_]*\(\) asm\(` 191 -> 192, with
+ *   194 functions, 10 data objects (counted 2026-10-03, after
+ *   `src/MetroidPrime/Carve8001FEDC.c` needed **two** stand-ins: `stub_8001fedc_0` for the
+ *   `fn_800E142C` its `fn_8001FF2C` calls, and `stub_8001fedc_1` for the `__dt__13CStateManagerFv`
+ *   its `fn_8001FEDC` calls - a name the **host** cannot spell, since a host compiler mangles the
+ *   same destructor `_ZN13CStateManagerD1Ev` while the DOL build gets MWCC's spelling from
+ *   `src/MetroidPrime/CStateManager.cpp`.  The file's two derived terms moved `grep -cE 'asm\("'`
+ *   202 -> 204 and `^extern "C" void stub_[A-Za-z0-9_]*\(\) asm\(` 192 -> 194, with
  *   `^extern "C" char stub_data_*` unmoved at 10.  All three re-measured on this tree after the
- *   edit rather than carried; the `_0` suffix the three stubs added this month carry does NOT
- *   defeat the second term, contrary to what the superseded paragraph below claims -
- *   `[A-Za-z0-9_]*` matches it, so all three of `stub_801e515c_0`, `stub_80004438_0` and
+ *   edit rather than carried.  The second stand-in is what took the port's undefined count back
+ *   to 287, its baseline (`tools/link_check.sh`'s STRICT gate measures growth, not the total).
+ *   Before that, 2026-10-03, after `src/Collision/Carve8028B8BC.c` needed `stub_8028b8bc_0` for
+ *   the `fn_8028B914` that its `fn_8028B8F4` forwards to - the file's two derived terms moved
+ *   `grep -cE 'asm\("'` 201 -> 202 and `^extern "C" void stub_[A-Za-z0-9_]*\(\) asm\(` 191 -> 192,
+ *   with `^extern "C" char stub_data_*` unmoved at 10; the `_0` suffix the three stubs added this
+ *   month carry does NOT defeat the second term, contrary to what the superseded paragraph below
+ *   claims - `[A-Za-z0-9_]*` matches it, so all three of `stub_801e515c_0`, `stub_80004438_0` and
  *   `stub_8028b728_0` were already inside its 191.
  *   Before that, 2026-10-03, after `src/Collision/Carve8028B728.c`
  *   needed `stub_8028b728_0` for the `fn_8028B780` its `fn_8028B760` forwards to - the file's
@@ -1566,6 +1574,44 @@ extern "C" void stub_8028b728_0() {}
 // retail caller of 0x8028B914 in this range and it is in that same object.
 extern "C" void stub_8028b8bc_0() asm("fn_8028B914");
 extern "C" void stub_8028b8bc_0() {}
+
+// `fn_800E142C` - retail `.text:0x800E142C`, 0x11C = 284 bytes, `symbols.txt:3913`: the destructor
+// `src/MetroidPrime/Carve8001FEDC.c`'s `fn_8001FF2C` calls for the object its `rc_ptr` holds.
+// **This is an empty-body stand-in and it is announced as one.**  It does not claim 0x800E142C is
+// decompiled: no unit claims that range - it is inside dtk's own `auto_03_800E122C_text.o`,
+// whose copy of the 0x11C bytes is `build/G2ME01/asm/auto_03_800E122C_text.s:163-232` - and this
+// file is not in `configure.py`, so a definition here cannot reach main.dol.  What retail's
+// function does, measured from those bytes: null-receiver early return, then four `CGuiFrameLoader`
+// members at +0x4C/+0x50/+0x54/+0x58 each released through `__dt__15CGuiFrameLoaderFv` behind a
+// null test, a `CToken` at +0x48 through `__dt__6CTokenFv` then `Free__7CMemoryFPCv`, and two
+// sub-objects at +0x5C and +0x80 handed to `fn_800E1548`/`fn_800E163C`.  **An empty body does none
+// of that**, so an object destroyed through this name keeps all of its members rather than
+// releasing them - the same trade `stub_8028b728_0` makes for the neighbour carve's 0x50-byte
+// element, and it is why this one is named after the unit that asks for it.
+//
+// **Why the port asks for it at all.** `src/MetroidPrime/Carve8001FEDC.c` declares
+// `fn_800E142C` and its `fn_8001FF2C` body calls it at retail's own `bl` (0x8001FF5C), that file
+// is in `files.cmake`, and no other port source declares or calls it.
+extern "C" void stub_8001fedc_0() asm("fn_800E142C");
+extern "C" void stub_8001fedc_0() {}
+
+// `__dt__13CStateManagerFv` - retail `.text:0x8004269C`, 0x58C = 1420 bytes, `symbols.txt:1226`,
+// `CStateManager::~CStateManager()` under **MWCC's own mangling**.  **This is an empty-body
+// stand-in and it is announced as one.**  It exists because the *port* cannot spell that name: the
+// DOL build gets it from `src/MetroidPrime/CStateManager.cpp` (`T __dt__13CStateManagerFv` in
+// `build/G2ME01/src/MetroidPrime/CStateManager.o`), but a host compiler mangles the same destructor
+// `_ZN13CStateManagerD1Ev`, and `src/MetroidPrime/CStateManager.cpp:954` writes an **empty** body
+// for it under `#ifndef TARGET_PC` anyway - so this stand-in performs exactly what the port's own
+// object already performs, and nothing more is lost by naming it.
+//
+// **Why the port asks for it at all.** `src/MetroidPrime/Carve8001FEDC.c:95` declares
+// `__dt__13CStateManagerFv` and its `fn_8001FEDC` calls it at retail's own `bl` (0x8001FF0C), which
+// is one of the two `bl` targets that make that function a byte-shape twin of
+// `rstl::rc_ptr<rstl::vector<int> >::ReleaseData()`.  Measured against
+// `build/goal/judge/undef.base.txt`, `Carve8001FEDC.c.o` was the sole new referencer: this was the
+// only symbol the carve added to the port's undefined set, 287 -> 288.
+extern "C" void stub_8001fedc_1() asm("__dt__13CStateManagerFv");
+extern "C" void stub_8001fedc_1() {}
 
 // `fn_80009224` - retail `.text:0x80009224`, 0x50 = 80 bytes, `symbols.txt:191`: the release of a
 // `CWorldLayerState` payload, which retail leaves unnamed.  **This is an empty-body stand-in and

@@ -110,6 +110,9 @@ MetroidPrime/CMainFlow.cpp:
 	.data       start:0x803B1770 end:0x803B17D0
 	.sdata      start:0x80417DE0 end:0x80417DF8
 
+MetroidPrime/Carve8001FEDC.c:
+	.text       start:0x8001FEDC end:0x8001FF7C
+
 MetroidPrime/CCredits.cpp:
 	.text       start:0x8001FF7C end:0x80023FFC
 	.ctors      start:0x803A54B8 end:0x803A54BC
