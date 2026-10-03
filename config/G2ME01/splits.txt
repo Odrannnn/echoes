@@ -1017,6 +1017,9 @@ MetroidPrime/Weapons/CEnergyProjectile.cpp:
 MetroidPrime/CInGameTweakManagerReadFromMemoryCard.cpp:
 	.text       start:0x8016BDE4 end:0x8016BDEC
 
+MetroidPrime/Carve8016BEA8.cpp:
+	.text       start:0x8016BEA8 end:0x8016BF4C
+
 MetroidPrime/CInGameTweakManagerCtor.cpp:
 	.text       start:0x8016C230 end:0x8016C244
 

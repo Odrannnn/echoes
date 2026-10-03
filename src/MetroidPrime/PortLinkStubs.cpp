@@ -1850,3 +1850,26 @@ extern "C" void stub_carve800e0efc_0() {}
 // `build/goal/judge/undef.base.txt`, `Carve800E0EFC.c.o` was the sole new referencer of this name.
 extern "C" void stub_carve800e0efc_1() asm("__dt__21CDependencyGroupTokenFv");
 extern "C" void stub_carve800e0efc_1() {}
+
+// `fn_8016BF4C` - retail `.text:0x8016BF4C`, 0x228 = 552 bytes, `config/G2ME01/symbols.txt:6007`:
+// `rstl::basic_string<char, rstl::case_insensitive_char_traits<char>, rmemory_allocator>::internal_compare`,
+// the one callee of `src/MetroidPrime/Carve8016BEA8.cpp` (`Matching`, 0x8016BEA8..0x8016BF4C) - its
+// `fn_8016BED0` builds four iterators in its frame and `bl`s this name, and `fn_8016BEA8` reaches it
+// through `fn_8016BED0`.  **This is an empty-body stand-in and it is announced as one.**  It does not
+// claim 0x8016BF4C is decompiled: no unit claims that range, `build/G2ME01/asm/auto_03_8016BDEC_text.s`
+// held retail's 138 instructions before the carve, and this file is not in `configure.py`, so a
+// definition here cannot reach main.dol.  What retail's function does, measured from those
+// instructions: it walks two `rstl::const_linear_iterator`s, folds each side of every comparison
+// through `['a','z']` / `[0xE0,0xFE]` / `[0x30A0,0x30FF]` (`extsb` x8, `cmpwi` x12, `subi` x6) and
+// answers -1, 0 or 1 - that is `rstl::case_insensitive_char_traits<char>::compare` =
+// `lower(lhs) - lower(rhs)`, `include/rstl/string.hpp:86-96`, and it is why this is twice the 0x114
+// bytes of the `char_traits` instantiation at 0x800210F0.  Retail names the instantiation nothing
+// beyond the `fn_` placeholder, so nothing here guesses at it.
+//
+// The name is keyed to the unit that asks for it, following `stub_carve801eb30c_0` above: a numbered
+// name is what another lane's carve takes between the judge and the rebase, and the header paragraph
+// at the top of this file is deliberately left untouched for the same reason.  The declaration takes
+// no parameters, as `stub_carve801eb30c_0` does: the host caller passes the four iterators by value
+// and this body ignores all of them.
+extern "C" int stub_carve8016bea8_0() asm("fn_8016BF4C");
+extern "C" int stub_carve8016bea8_0() { return 0; }
