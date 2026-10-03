@@ -1975,6 +1975,9 @@ WorldFormat/CAreaRenderOctTree.cpp:
 	.sdata      start:0x80418960 end:0x80418968
 	.sdata2     start:0x8041DDF0 end:0x8041DDF8
 
+WorldFormat/Carve80255900.c:
+	.text       start:0x80255900 end:0x80255A0C
+
 WorldFormat/Carve80255A0C.c:
 	.text       start:0x80255A0C end:0x80255B28
 
