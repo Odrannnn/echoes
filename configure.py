@@ -1034,6 +1034,16 @@ config.libs = [
             # iterator is what materialises the temporaries. The name stays unmangled.
             Object(Matching, "MetroidPrime/ScriptLoader/Carve802392A4.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/RubiksPuzzle.cpp"),
+            # `fn_802399F4` (0x802399F4..0x802399FC, 0x8 = 8 bytes), the RubiksPuzzle module's
+            # 8-byte loader setter, carved out of dtk's unclaimed `auto_03_802399F4_text` run and
+            # the byte-shape twin of the matched `fn_80235DCC`
+            # (`MetroidPrime/ScriptLoader/Carve80235DCC.c`, same pair with
+            # `gLoader_DarkSamusBattleStage`). `.c` because the module imports that exact retail
+            # name (`strings build/G2ME01/RubiksPuzzle/RubiksPuzzle.plf | grep 802399`), so the
+            # definition has to stay unmangled - see the file header. `RubiksPuzzle.cpp` above
+            # ends its `.text` exactly here and owns the `.sbss` slot, so this unit claims
+            # `.text` only and takes the pointer as `extern`.
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve802399F4.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8023B634.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8023C860.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8023C950.c"),

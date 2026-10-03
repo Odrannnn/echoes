@@ -1046,6 +1046,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     # header.
     src/MetroidPrime/ScriptLoader/Carve80235DCC.c
     src/MetroidPrime/ScriptLoader/Carve802392A4.cpp
+    # A carve of `fn_802399F4` (0x802399F4..0x802399FC), the RubiksPuzzle module's 8-byte
+    # loader setter out of dtk's `auto_03_802399F4_text`. `.c` because the module imports that
+    # exact retail name, so the definition has to be unmangled - see the file header.
+    src/MetroidPrime/ScriptLoader/Carve802399F4.c
     src/MetroidPrime/ScriptLoader/Carve8023B634.c
     src/MetroidPrime/ScriptLoader/Carve8023C860.c
     src/MetroidPrime/ScriptLoader/Carve8023C950.c
