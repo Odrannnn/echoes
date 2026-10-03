@@ -781,6 +781,16 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve801B3B44.c
     src/MetroidPrime/Carve801B5694.c
     src/MetroidPrime/Carve801BC900.c
+    # Carve801C0D14.c - `fn_801C0D14` (0x801C0D14, 0x20), a 0x10 frame and one unconditional
+    # forward to `fn_801C0CB0` - the same eight instructions as `fn_80004438`
+    # (`src/MetroidPrime/Carve80004438.c`) with one word, the `bl`, different.  Its host branch is
+    # empty by design (the body is inside `#ifdef __MWERKS__`), for the reason
+    # `Carve801C2D74.cpp`'s entry gives: `fn_801C0CB0` is defined only in dtk's own
+    # `auto_03_801BEDD0_text.o`, so a host body here would add one undefined symbol to the port's
+    # link for a function no host source calls - both retail callers of `fn_801C0D14` are themselves
+    # inside an unclaimed dtk `auto_*` range.  It is listed because check_files_cmake.py requires
+    # every configure.py `Matching` object to be in this list.
+    src/MetroidPrime/Enemies/Carve801C0D14.c
     src/MetroidPrime/Carve801C128C.c
     src/MetroidPrime/Carve801C13F4.c
     # Carve801C2BA8.cpp - `fn_801C2BA8` (0x801C2BA8, 0xB8), a `rstl::vector<SScanHistoryWidgets,
