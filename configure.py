@@ -867,6 +867,13 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/ElitePirate.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Blogg.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/MetroidAlpha.cpp"),
+            # Added 2026-10-03 (goal item `carve-80218b68`). The 8 bytes at 0x80218B68, the
+            # Metroid module's loader setter (`stw r3, gLoader_MetroidAlpha@sda21(r0); blr`),
+            # carved out of dtk's `auto_03_80218B68_text`. `MetroidAlpha.cpp`'s .text ends at
+            # 0x80218B68 and GunTurretBase.cpp's starts at 0x80218B70, so this is the whole gap
+            # between two claimed units; .sbss stays with MetroidAlpha.cpp, which defines the
+            # slot. `.c` because module 40 imports the plain retail name `fn_80218B68`.
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80218B68.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/GunTurretBase.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Lumite.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Shrieker.cpp"),
