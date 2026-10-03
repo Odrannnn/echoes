@@ -1993,6 +1993,9 @@ MetroidPrime/ScriptLoader/EmperorIngStage3.cpp:
 	.text       start:0x8022EB9C end:0x8022EBC8
 	.sbss       start:0x804195F0 end:0x804195F8
 
+MetroidPrime/ScriptLoader/Carve8022EBC8.c:
+	.text       start:0x8022EBC8 end:0x8022EBD0
+
 MetroidPrime/ScriptLoader/DestructableBarrier.cpp:
 	.text       start:0x8022EBD0 end:0x8022EBFC
 	.sbss       start:0x804195F8 end:0x80419600
