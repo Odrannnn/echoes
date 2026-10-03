@@ -1782,6 +1782,9 @@ MetroidPrime/ScriptLoader/DigitalGuardian.cpp:
 	.text       start:0x8021F958 end:0x8021F9B0
 	.sbss       start:0x80419510 end:0x80419518
 
+MetroidPrime/ScriptLoader/Carve8021F9B0.c:
+	.text       start:0x8021F9B0 end:0x8021F9B8
+
 MetroidPrime/ScriptLoader/Shredder.cpp:
 	.text       start:0x8021F9B8 end:0x8021F9E4
 	.sbss       start:0x80419518 end:0x80419520

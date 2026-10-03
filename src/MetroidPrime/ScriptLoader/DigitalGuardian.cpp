@@ -7,8 +7,10 @@
 //   LoadDigitalGuardianHead      0x8021F958 -> member 1
 //
 // This unit claims .text 0x8021F958..0x8021F9B0 and .sbss 0x80419510..0x80419518. The 8-byte
-// setter at 0x8021F9B0 is deliberately NOT claimed: REL modules import it by its
-// retail name, so it cannot be renamed and must stay in dtk's auto unit.
+// setter at 0x8021F9B0 is its own unit, `Carve8021F9B0.c`: REL modules import it by its
+// retail name, so it stays `fn_8021F9B0` verbatim, and a carve reproduces that name where a
+// C++ `SetLoader_DigitalGuardian` would mangle. It references `gLoader_DigitalGuardian` as
+// `extern` rather than claiming `.sbss` again.
 // docs/research/rel_loaders.md has every loader in this family.
 
 struct SDigitalGuardianLoaders {
