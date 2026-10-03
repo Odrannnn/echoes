@@ -3398,6 +3398,9 @@ Kyoto/Math/Carve80335A14.c:
 Kyoto/Math/Carve80335A3C.c:
 	.text       start:0x80335A3C end:0x80335A44
 
+MetroidPrime/Carve80335A44.c:
+	.text       start:0x80335A44 end:0x80335A5C
+
 Kyoto/Math/Carve80335A5C.c:
 	.text       start:0x80335A5C end:0x80335A8C
 

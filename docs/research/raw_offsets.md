@@ -45,6 +45,8 @@ re-derived 2026-10-03 for the `carve-80335b30` item, which added
 that edit** - the headings already summed to 204 in 88 while the text above still read 203 in 87 -
 which is the drift this section warns about, so the number here is the tool's own output and
 nothing else. Re-derive it; do not append to it.)
+`.c` carve, and the twelfth file to carry one - and re-derived the total, which the prose before
+it had left at 203 in 87).
 
 **This line has been wrong before, five times over, and the failure was always the same one.**
 `tools/check_raw_offsets.py` compares the *per-file* counts in the headings and never this
@@ -1169,3 +1171,18 @@ file; this section read 165 in 69 when it was written (2026-10-01, with
   bytes, the same call `Carve8010EE5C.c` above declines. Blocker, the mild kind again: it goes when
   that `CInstruction` subclass is modelled, which needs the vtable read to learn the members
   between +0x00 and +0x18 first.
+  (`+0x54`).  Three of those are the same situation in a
+## `src/MetroidPrime/Carve80335A44.c` (1 site)
+  reads one word of its receiver and returns 2 when bit 8 of it is set, 0 otherwise. The receiver
+  has no header anywhere in this tree - the function is a slot in a long run of unnamed accessors at
+  0x803359F4..0x80335B58 that four identical `.data` function-pointer tables point into (measured:
+  each table holds `0x80335A34, 0x80335A3C, 0x80335A44, 0x803385D0, ...` at the same offset; file
+  offsets 0x3B85BC, 0x3B8974, 0x3B8C8C, 0x3B8EBC) - so, as with `Carve8010EE5C.c` above, this is a
+  `.c` unit over a `void*` and there is no class to write a member through. The bit is **8**, not 23:
+  `rlwinm`'s MB/ME count from the MSB, so retail's `rlwinm. r0, r0, 0, 23, 23` masks `0x100`, and the
+  source has to say `0x100` - every spelling with `0x800000` compiles to some other rotate. Blocker,
+  and the mild kind: this goes when the class is modelled, which is the same per-class layout repair
+  as Kind C above and not a one-line header edit - the run of accessors around it has to be read
+  first. Note the neighbours of this address are already carved and carry no offset at all
+  (`Kyoto/Math/Carve80335A14.c`, `Carve80335A3C.c`, `Carve80335A5C.c`), so this file is the only
+  one of the four that reaches into its receiver.

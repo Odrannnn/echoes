@@ -1162,6 +1162,12 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/Kyoto/Math/Carve80335A0C.c
     src/Kyoto/Math/Carve80335A14.c
     src/Kyoto/Math/Carve80335A3C.c
+    # A carve of `fn_80335A44` (0x80335A44..0x80335A5C), an unclaimed 24-byte gap between
+    # `Kyoto/Math/Carve80335A3C.c` and `Kyoto/Math/Carve80335A5C.c`, out of dtk's
+    # `auto_03_80335A44_text`: a vtable slot that returns 2 when bit 8 of the word at +0x44
+    # is set. `.c`, like its neighbours, because `symbols.txt` gives it the placeholder name
+    # `fn_80335A44` and only an unmangled C definition reproduces it - see the file header.
+    src/MetroidPrime/Carve80335A44.c
     src/Kyoto/Math/Carve80335A5C.c
     src/Kyoto/Math/Carve80335A8C.c
     src/Kyoto/Math/Carve80335AB0.c
