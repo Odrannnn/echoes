@@ -956,6 +956,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptLoader/Carve802201F8.cpp
     src/MetroidPrime/ScriptLoader/Carve80220294.c
     src/MetroidPrime/ScriptLoader/Carve80220394.c
+    # A carve of `fn_8021FA18` (0x8021FA18..0x8021FA20), the FrontEndDataNetwork module's
+    # 8-byte loader setter out of dtk's `auto_03_8021FA18_text`. `.c` because the module
+    # imports that exact retail name, so the definition has to be unmangled - see the file
+    # header.
+    src/MetroidPrime/ScriptLoader/Carve8021FA18.c
     src/MetroidPrime/ScriptLoader/Carve802274F4.c
     src/MetroidPrime/ScriptLoader/Carve80227530.c
     src/MetroidPrime/ScriptLoader/Carve8022756C.c

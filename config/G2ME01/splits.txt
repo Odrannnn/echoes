@@ -1790,6 +1790,9 @@ MetroidPrime/ScriptLoader/FrontEndDataNetwork.cpp:
 	.text       start:0x8021F9EC end:0x8021FA18
 	.sbss       start:0x80419520 end:0x80419528
 
+MetroidPrime/ScriptLoader/Carve8021FA18.c:
+	.text       start:0x8021FA18 end:0x8021FA20
+
 MetroidPrime/ScriptLoader/StoneToad.cpp:
 	.text       start:0x8021FA20 end:0x8021FA4C
 	.sbss       start:0x80419528 end:0x80419530
