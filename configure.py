@@ -807,6 +807,14 @@ config.libs = [
             Object(Matching, "MetroidPrime/Carve801F3690.c"),
             Object(Matching, "MetroidPrime/Carve801F36DC.c"),
             Object(Matching, "MetroidPrime/Carve801F7AC8.c"),
+            # `fn_801F8818` (0x801F8818..0x801F8828, 0x10 = 16 bytes), the store of its parameter
+            # at +0 and the clear of the word at +4, carved out of dtk's unclaimed
+            # `auto_03_801F7AD0_text` run and the byte-shape twin of the matched
+            # `CPASAnimInfo::CPASAnimInfo(int)` (`Kyoto/Animation/CPASAnimInfo.cpp:3`). `.c`
+            # because `symbols.txt:8163` carries only the `fn_<addr>` placeholder, so the
+            # definition has to stay unmangled - see the file header. No callees, no data,
+            # `.text` only.
+            Object(Matching, "MetroidPrime/Carve801F8818.c"),
             # `fn_801F8A54` (0x801F8A54..0x801F8A60, 0xC = 12 bytes), the 12-byte `vec[1] = 0`
             # cleared by the destructor of `fn_801F89E0`'s object, carved out of dtk's unclaimed
             # `auto_03_801F7AD0_text` run and the byte-shape twin of the matched `fn_80004010`
