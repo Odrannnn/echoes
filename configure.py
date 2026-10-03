@@ -925,6 +925,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/FrontEndDataNetwork.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8021FA18.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/StoneToad.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve8021FA4C.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/Coin.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/CoinLoaderSet.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/CannonBall.cpp"),
