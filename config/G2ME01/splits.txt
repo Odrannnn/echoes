@@ -1641,6 +1641,9 @@ MetroidPrime/ScriptLoader/SandBoss.cpp:
 	.text       start:0x802189A4 end:0x802189D0
 	.sbss       start:0x804193E0 end:0x804193E8
 
+MetroidPrime/ScriptLoader/Carve802189D0.c:
+	.text       start:0x802189D0 end:0x802189D8
+
 MetroidPrime/ScriptLoader/FlyingPirate.cpp:
 	.text       start:0x802189D8 end:0x80218A04
 	.sbss       start:0x804193E8 end:0x804193F0
