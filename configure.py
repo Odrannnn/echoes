@@ -778,6 +778,7 @@ config.libs = [
             # See the file header.
             Object(Matching, "MetroidPrime/Carve801708C4.c"),
             Object(Matching, "MetroidPrime/Carve80179E08.c"),
+            Object(Matching, "MetroidPrime/Carve801832E8.c"),
             Object(Matching, "MetroidPrime/Carve80193C30.c"),
             Object(Matching, "MetroidPrime/Carve80193C54.c"),
             Object(Matching, "MetroidPrime/Carve80193C7C.c"),

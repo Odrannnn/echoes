@@ -1092,6 +1092,9 @@ MetroidPrime/CErrorOutputWindow.cpp:
 MetroidPrime/CRainSplashGenerator.cpp:
 	.text       start:0x80181750 end:0x80182830
 
+MetroidPrime/Carve801832E8.c:
+	.text       start:0x801832E8 end:0x80183308
+
 MetroidPrime/Carve801834C8.cpp:
 	.text       start:0x801834C8 end:0x80183648
 

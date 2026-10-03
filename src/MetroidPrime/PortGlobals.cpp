@@ -2061,3 +2061,33 @@ extern "C" void fn_8012862C(const void* list, void* out) {
     printf("port stand-in reached: fn_8012862C - the real body is not written\n");
   }
 }
+
+// Retail 0x80178AD0, `config/G2ME01/symbols.txt:6211`, 0x7C = 124 bytes, inside
+// `MetroidPrime/CMemoryCard.cpp`'s claimed 0x801767BC..0x8017904C range.  **This is an empty-body
+// stand-in and it is announced as one.**  It does not claim 0x80178AD0 is decompiled: it is not.
+// `src/MetroidPrime/CMemoryCard.cpp:32` lists it among that unit's unmatched functions and says it
+// has no body there, so the DOL's bytes for it come from elsewhere and this file is not in
+// `configure.py`, so a definition here cannot reach `main.dol`.
+//
+// **What retail's bytes are** (`build/G2ME01/asm/MetroidPrime/CMemoryCard.s:2636-2669`): save
+// `r30`/`r31`, build an `rstl::basic_string<char, ...>::basic_string(CInputStream&)` into an
+// `0x8(r1)` frame temporary from `r31`, then three times advance `r31`'s cursor at `+0x8` by 4 and
+// store the word it pointed at into `r30+0x10`, `r30+0x14`, `r30+0x18`.  **An empty body does none
+// of that**, so a save-world loaded through this name silently leaves its name string empty and its
+// three `uint`s at whatever was already in the object.
+//
+// **Why the port asks for it at all.**  `src/MetroidPrime/Carve801832E8.c` declares `fn_80178AD0`
+// and its `bl` at 0x801832F4 is retail's own, and listing that carve in `files.cmake` puts
+// `fn_80178AD0` in the port's undefined set, which `tools/link_check.sh --strict` and
+// `tools/gate.sh`'s `link-gap` step both reject.  The other declaration, none: nothing else in the
+// port build names it.  So this announces itself once and returns - the same rule as
+// `fn_8012862C` above: **a stand-in that says so is safe where a plausible-looking one is not**.
+// Writing the real body is not this file's job either: it would need the `CInputStream` cursor
+// layout and the string constructor, and `CMemoryCard.cpp` is the unit that owns both.
+extern "C" void fn_80178AD0(void*, void*, void*) {
+  static bool reported = false;
+  if (!reported) {
+    reported = true;
+    printf("port stand-in reached: fn_80178AD0 - the real body is not written\n");
+  }
+}
