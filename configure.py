@@ -1000,6 +1000,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8022EC64.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/IngBoostBallGuardian.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/PlantScarabSwarm.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve8022FFF8.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/SkyRipple.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/SkyRippleLoaderSet.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/FogOverlay.cpp"),

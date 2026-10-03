@@ -1018,6 +1018,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     # loader setter out of dtk's `auto_03_8022EC64_text`. `.c` because the module imports that
     # exact retail name, so the definition has to be unmangled - see the file header.
     src/MetroidPrime/ScriptLoader/Carve8022EC64.c
+    # A carve of `fn_8022FFF8` (0x8022FFF8..0x80230000), the PlantScarabSwarm module's 8-byte
+    # loader setter out of dtk's `auto_03_8022FFF8_text`. `.c` because module 49 imports that
+    # exact retail name, so the definition has to be unmangled - see the file header.
+    src/MetroidPrime/ScriptLoader/Carve8022FFF8.c
     src/MetroidPrime/ScriptLoader/Carve80232834.c
     src/MetroidPrime/ScriptLoader/Carve80232868.c
     src/MetroidPrime/ScriptLoader/Carve8023289C.c

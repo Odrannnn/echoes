@@ -2022,6 +2022,9 @@ MetroidPrime/ScriptLoader/PlantScarabSwarm.cpp:
 	.text       start:0x8022FFCC end:0x8022FFF8
 	.sbss       start:0x80419618 end:0x80419620
 
+MetroidPrime/ScriptLoader/Carve8022FFF8.c:
+	.text       start:0x8022FFF8 end:0x80230000
+
 MetroidPrime/ScriptLoader/SkyRipple.cpp:
 	.text       start:0x80232308 end:0x80232334
 	.sbss       start:0x80419630 end:0x80419638
