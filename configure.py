@@ -2094,6 +2094,48 @@ config.libs = [
             # entry for the paren-count reason the 3790 entry gives, and like every entry after it
             # this comment is paren-balanced.
             Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian10694.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian10694.cpp", mw_version="GC/2.7"),
+            # Added 2026-10-03 (lane 5, `progress-rel-ingboostballguardian-1056c`). `.text`
+            # 0x1056C..0x10694, `fn_30_1056C` (0x128 = 296 bytes), one function: the whole-class copy
+            # assignment, and the caller of the entry above (R_PPC_REL24 to `fn_30_10694` at object
+            # offset 0x32A8 of `build/G2ME01/IngBoostBallGuardian/obj/auto_00_0000D2E0_text.o`),
+            # which is what makes it claimable now. It calls `fn_30_AD4` at +0x29C (object offset
+            # 0x32B4; `.text:0xAD4 size 0x5C` per rels/IngBoostBallGuardian/symbols.txt:27, undefined
+            # in the module's own objects and therefore a plain `extern "C"` declaration that dtk's
+            # objects still resolve) and then copies its own tail from +0x2CC to +0x320. Its
+            # epilogue's `mr r3,r30` at 0x32BC is what fixes the return type as the pointer.
+            # **The tail is a 0x1C stride plus one byte, and the stride is what the body is spelled
+            # from.** The 28 inline members' type sequence is
+            # `W F F F F H H H B | W F F F F H H H B | W F F F F H H H B B` at
+            # 0x2CC, 0x2D0, ... , 0x320: three elements of one 0x1C element (`int`, four `float`s,
+            # three `unsigned short`s, one `unsigned char`, 27 bytes padded to 4-byte alignment) and a
+            # trailing byte where the fourth element's `int` would be. So the body is
+            # `self->tail.t[i] = other.tail.t[i]` three times and the byte, per the 108D4 entry's
+            # lesson. **The nine members inside an element must not be array members**: `float f[4]`
+            # and `unsigned short h[3]` compile to a block copy of the member (four `lwz`/`stw` and
+            # a word plus a halfword) and the object comes out 272 bytes against retail's 296. The
+            # flat 28-member spelling also works here (measured, byte-exact) but needs an explicit
+            # pad between the two adjacent bytes at +0x31E and +0x320, which the stride supplies for
+            # free; `docs/goal-notes/progress-rel-ingboostballguardian-1056c.md` has the table.
+            # **`fn_30_10694` is called with `&self->base`**, which is at offset 0, so it compiles to
+            # the bare `bl` retail emits with no `addi`; `fn_30_AD4` is at +0x29C and retail does
+            # emit the two `addi`s for it.
+            # **mw_version is load-bearing**, with the same per-object override as the three entries
+            # above: at the module default GC/1.3.2 the same source is still 296 bytes and 74
+            # instructions with **54 of the instructions not retail's** - plain pairs, one live
+            # register, source order. At GC/2.7 it is byte-identical (GC/2.0, 2.5 and 2.6 agree;
+            # GC/3.0a5 differs in 69). Setting the version on the `Rel` block instead would
+            # recompile the other module-30 units.
+            # **No dead-strip hazard, measured**: `fn_30_1056C` is not in ldscript.lcf's FORCEACTIVE
+            # list, but an R_PPC_REL24 names it at module 0xECEC, inside `fn_30_EC6C`, in both
+            # auto_00_00000000_text.o and auto_00_0000D2E0_text.o - one instruction named twice,
+            # because dtk's auto units overlap, so two records are one call site. No force_active:
+            # entry, no config.yml change and no symbols.txt rename: the claim is `.text` only. It
+            # spans no unclaimed gap - `fn_30_10530` is 0x3C bytes and ends exactly at 0x1056C - and
+            # `total_functions` stays 28465. The entry is named with the module prefix and carries
+            # source= for the reason the 388C entry gives; it sits after that entry for the
+            # paren-count reason the 3790 entry gives, and like every entry after it this comment is
+            # paren-balanced.
+            Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian1056C.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian1056C.cpp", mw_version="GC/2.7"),
             # Added 2026-10-02 (lane 11, `progress-vt-rel-ingboostballguardian`, the vtable-name
             # trial). Six more ranges out of module 30's unclaimed gaps, twelve functions, every
             # one a virtual `tools/rel_class_map.py` names off the DOL vtable's matching slot:

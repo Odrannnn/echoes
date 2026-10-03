@@ -497,6 +497,13 @@ src/MetroidPrime/PortLinkStubs.cpp
     # the entry there carries a per-object `mw_version="GC/2.7"` (the module default gives the same
     # 92 bytes but only 31 of them are retail's). Same empty host branch as the entries above.
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian33B0.cpp
+    # `fn_30_1056C` (0x1056C, 0x128), the whole-class copy assignment and the caller of the entry
+    # above - it calls `fn_30_10694` at +0 and `fn_30_AD4` at +0x29C and copies a 0x55-byte tail
+    # from +0x2CC; see the `Rel("IngBoostBallGuardian", ...)` block in configure.py for the range,
+    # the measured 0x1C stride, the dead-strip measurement and why the nine members inside a
+    # stride element are spelled out rather than declared as arrays. Same empty host branch as the
+    # entries above.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian1056C.cpp
     # The three functions in front of it, `.text` 0x3790..0x388C of module 30: the null-guarded
     # deleting-destructor chain (see the `Rel("IngBoostBallGuardian", ...)` block in configure.py
     # for the range, the measurements and why the entry there is named with the module prefix and

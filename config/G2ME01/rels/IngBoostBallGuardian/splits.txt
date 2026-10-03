@@ -39,6 +39,9 @@ MetroidPrime/ScriptObjects/CIngBoostBallGuardianC6AC.cpp:
 MetroidPrime/ScriptObjects/CIngBoostBallGuardianD2xx.cpp:
 	.text       start:0x0000D230 end:0x0000D2E0
 
+IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian1056C.cpp:
+	.text       start:0x0001056C end:0x00010694
+
 IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian10694.cpp:
 	.text       start:0x00010694 end:0x000108D4
 
