@@ -849,6 +849,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptLoader/Carve80201418.c
     src/MetroidPrime/ScriptObjects/Carve80210978.c
     src/MetroidPrime/ScriptObjects/Carve80210980.c
+    src/MetroidPrime/ScriptObjects/Carve802119C8.c
     src/MetroidPrime/ScriptObjects/Carve80212278.c
     src/MetroidPrime/ScriptObjects/Carve802126B0.c
     src/MetroidPrime/ScriptObjects/Carve80212944.c

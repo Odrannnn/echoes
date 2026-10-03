@@ -1546,6 +1546,9 @@ MetroidPrime/ScriptObjects/Carve80210978.c:
 MetroidPrime/ScriptObjects/Carve80210980.c:
 	.text       start:0x80210980 end:0x80210990
 
+MetroidPrime/ScriptObjects/Carve802119C8.c:
+	.text       start:0x802119C8 end:0x802119D0
+
 MetroidPrime/ScriptObjects/Carve80212278.c:
 	.text       start:0x80212278 end:0x80212280
 
