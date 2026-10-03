@@ -2345,6 +2345,9 @@ GuiSys/CAuiImagePane.cpp:
 	.data       start:0x803B90C0 end:0x803B9100
 	.sdata2     start:0x8041E118 end:0x8041E140
 
+GuiSys/Carve8028032C.c:
+	.text       start:0x8028032C end:0x80280338
+
 MetroidPrime/Carve80280338.c:
 	.text       start:0x80280338 end:0x80280340
 

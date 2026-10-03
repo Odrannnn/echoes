@@ -1112,6 +1112,13 @@ config.libs = [
             Object(Matching, "MetroidPrime/Carve80278C74.c"),
             Object(Matching, "MetroidPrime/Carve80279244.c"),
             Object(Matching, "MetroidPrime/Carve80279250.c"),
+            # Carve of `fn_8028032C` (0x8028032C..0x80280338, 0xC = 12 bytes) out of the
+            # unclaimed dtk range `auto_03_802802B8_text` (0x802802B8..0x80280338), which keeps
+            # `fn_802802B8` (0x68 bytes) unclaimed. Report unit name:
+            # `main/GuiSys/Carve8028032C`. One `Object(...)` per line, and the claim does not
+            # touch a unit boundary (`GuiSys/CAuiImagePane.cpp` ends 0x74 bytes below), so there
+            # is no link-order cycle. `total_functions` stays 28465.
+            Object(Matching, "GuiSys/Carve8028032C.c"),
             Object(Matching, "MetroidPrime/Carve80280338.c"),
             Object(Matching, "MetroidPrime/Carve80281310.c"),
             Object(Matching, "Kyoto/Animation/Carve802B2088.c"),
