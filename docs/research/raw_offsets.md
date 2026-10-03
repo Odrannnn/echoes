@@ -38,11 +38,13 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **203 sites in 87 files** (`python3 tools/check_raw_offsets.py --list`
-prints `total: 203 raw-offset sites in 87 file(s)`, and the 87 `##` headings below sum to 203;
-measured 2026-10-03 by the `carve-8010ee5c` item, which added
-`src/MetroidPrime/Carve8010EE5C.c` with its single `+0x54` - the twelfth site of that shape in a
-`.c` carve, and the eleventh file to carry one).
+the count here fails the gate. **205 sites in 89 files** (`python3 tools/check_raw_offsets.py --list`
+prints `total: 205 raw-offset sites in 89 file(s)`, and the 89 `##` headings below sum to 205;
+re-derived 2026-10-03 for the `carve-80335b30` item, which added
+`src/Kyoto/Math/Carve80335B30.c` with its single `+0x18`. **This paragraph was one behind before
+that edit** - the headings already summed to 204 in 88 while the text above still read 203 in 87 -
+which is the drift this section warns about, so the number here is the tool's own output and
+nothing else. Re-derive it; do not append to it.)
 
 **This line has been wrong before, five times over, and the failure was always the same one.**
 `tools/check_raw_offsets.py` compares the *per-file* counts in the headings and never this
@@ -1139,9 +1141,31 @@ file; this section read 165 in 69 when it was written (2026-10-01, with
   modelled, which is the same per-class layout repair as Kind C above and not a one-line header
   edit - the vtable has to be read first, to learn the members between +0x00 and +0x54.
 
-  It is the **third** raw offset in a `.c` unit and the third file to carry one, 1 site each -
-  `python3 tools/check_raw_offsets.py --list | grep -E "\.c\s+[0-9]+$"` prints exactly those three,
-  summing to 3 of the 203 - after `src/MetroidPrime/Carve800E9C14.c` (`+0x2C8`) and
-  `src/MetroidPrime/Cameras/Carve801E7C14.c` (`+12`).  Both of those are the same situation in a
-  different guise: a carved out-of-line accessor over a receiver whose class *is* modelled but whose
-  member is not, so neither is removable without a header change either.
+  It is the **third** raw offset in a `.c` unit and the third file to carry one, 1 site each - at the
+  time it was written, `python3 tools/check_raw_offsets.py --list | grep -E "\.c\s+[0-9]+$"` printed
+  exactly those three (`src/MetroidPrime/Carve800E9C14.c` `+0x2C8`,
+  `src/MetroidPrime/Cameras/Carve801E7C14.c` `+12`, and this one), summing to 3 of the then-203;
+  `src/Kyoto/Math/Carve80335B30.c` below is the **fourth**, so the pattern is now 4 `.c` files and
+  4 sites - re-run the grep rather than trusting this sentence. Both of the first two are the same
+  situation in a different guise: a carved out-of-line accessor over a receiver whose class *is*
+  modelled but whose member is not, so neither is removable without a header change either.
+
+## `src/Kyoto/Math/Carve80335B30.c` (1 site)
+
+- `+0x18`, in `fn_80335B30` (retail `.text:0x80335B30..0x80335B38`, 0x8 = 8 bytes, 1 function,
+  100.00% matched, `Object(Matching)` in `configure.py`; `carve-80335b30`). **Kind A, opaque
+  receiver**, so kept rather than fixed. The whole body is retail's
+  `lwz r3, 0x18(r3)` + `blr` (`build/G2ME01/asm/auto_03_80335B30_text.s`), and it is byte-identical
+  to the already matched `CDummyWorld::IGetSaveWorldAssetId() const`
+  (`IGetSaveWorldAssetId__11CDummyWorldCFv`, 0x8004F968, `build/G2ME01/asm/MetroidPrime/CWorld.s`),
+  which is `return mSavwId;` - `mSavwId` is the sixth member of
+  `include/MetroidPrime/CDummyWorld.hpp` (line 42) and `CAssetId` is `typedef uint`
+  (`include/Kyoto/SObjectTag.hpp:10`), which is why a 4-byte load is right. It is retail's own
+  shape, not a guess: the same two instructions are at slot +0x28 of the `CInstruction`-derived
+  vtable `lbl_803BBB68` (`build/G2ME01/asm/auto_07_803BBB68_data.s`, the 11th `.4byte`), so retail
+  is using this as a virtual accessor returning a 4-byte id member and nothing else. The *class*
+  behind that vtable is unmodelled here, which is the whole reason the file takes `void* self` and
+  why Rule 1 says leave it: naming a `CWhatever::mSavwId` would be inventing a class for retail
+  bytes, the same call `Carve8010EE5C.c` above declines. Blocker, the mild kind again: it goes when
+  that `CInstruction` subclass is modelled, which needs the vtable read to learn the members
+  between +0x00 and +0x18 first.

@@ -3380,6 +3380,9 @@ Kyoto/Math/Carve80335AE0.c:
 Kyoto/Math/Carve80335B10.c:
 	.text       start:0x80335B10 end:0x80335B30
 
+Kyoto/Math/Carve80335B30.c:
+	.text       start:0x80335B30 end:0x80335B38
+
 Kyoto/Math/Carve80335B38.c:
 	.text       start:0x80335B38 end:0x80335B48
 

@@ -1103,6 +1103,7 @@ config.libs = [
             Object(Matching, "Kyoto/Math/Carve80335AB0.c"),
             Object(Matching, "Kyoto/Math/Carve80335AE0.c"),
             Object(Matching, "Kyoto/Math/Carve80335B10.c"),
+            Object(Matching, "Kyoto/Math/Carve80335B30.c"),
             Object(Matching, "Kyoto/Math/Carve80335B38.c"),
             Object(Matching, "Kyoto/Math/Carve80335B48.c"),
             Object(Matching, "Kyoto/Math/Carve80335B58.c"),
