@@ -982,6 +982,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/EyeBall.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8023492C.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/DarkSamusBattleStage.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80235DCC.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/DarkCommando.cpp"),
             # Carved out of dtk's unclaimed `auto_03_80235E00_text`: `fn_802392A4` (0x802392A4,
             # 0xB8) and `fn_8023935C` (0x8023935C, 0x4C), the byte-shape twins of the 0x24-element

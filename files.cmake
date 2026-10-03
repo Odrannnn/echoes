@@ -975,6 +975,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptLoader/Carve80233A90.cpp
     src/MetroidPrime/ScriptLoader/Carve80333B58.cpp
     src/MetroidPrime/ScriptLoader/Carve8023492C.c
+    # A carve of `fn_80235DCC` (0x80235DCC..0x80235DD4), the DarkSamusBattleStage module's
+    # 8-byte loader setter out of dtk's `auto_03_80235DCC_text`. `.c` because the module
+    # imports that exact retail name, so the definition has to be unmangled - see the file
+    # header.
+    src/MetroidPrime/ScriptLoader/Carve80235DCC.c
     src/MetroidPrime/ScriptLoader/Carve802392A4.cpp
     src/MetroidPrime/ScriptLoader/Carve8023B634.c
     src/MetroidPrime/ScriptLoader/Carve8023C860.c

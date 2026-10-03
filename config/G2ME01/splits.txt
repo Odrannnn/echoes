@@ -2022,6 +2022,9 @@ MetroidPrime/ScriptLoader/DarkSamusBattleStage.cpp:
 	.text       start:0x80235DA0 end:0x80235DCC
 	.sbss       start:0x80419658 end:0x80419660
 
+MetroidPrime/ScriptLoader/Carve80235DCC.c:
+	.text       start:0x80235DCC end:0x80235DD4
+
 MetroidPrime/ScriptLoader/DarkCommando.cpp:
 	.text       start:0x80235DD4 end:0x80235E00
 	.sbss       start:0x80419660 end:0x80419668
