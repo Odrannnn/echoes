@@ -1876,6 +1876,9 @@ MetroidPrime/ScriptLoader/Rezbit.cpp:
 	.text       start:0x80227ACC end:0x80227AF8
 	.sbss       start:0x80419580 end:0x80419588
 
+MetroidPrime/ScriptLoader/Carve80227AF8.c:
+	.text       start:0x80227AF8 end:0x80227B00
+
 MetroidPrime/ScriptLoader/RsfAudio.cpp:
 	.text       start:0x80227B00 end:0x80227B2C
 	.sbss       start:0x80419588 end:0x80419590

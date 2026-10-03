@@ -943,6 +943,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/OctopedeSegment.cpp"),
             Object(Matching, "MetroidPrime/Player/CGameOptionsDefaults.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Rezbit.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80227AF8.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/RsfAudio.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/RsfAudioLoaderSet.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve80229410.c"),
