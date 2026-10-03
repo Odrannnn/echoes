@@ -1048,6 +1048,9 @@ MetroidPrime/Carve8016F69C.c:
 MetroidPrime/Carve8016FD4C.c:
 	.text       start:0x8016FD4C end:0x8016FD94
 
+MetroidPrime/Carve801708C4.c:
+	.text       start:0x801708C4 end:0x801708E4
+
 MetroidPrime/CWorldLayerState.cpp:
 	.text       start:0x80171DC4 end:0x801724CC
 	.ctors      start:0x803A5550 end:0x803A5554

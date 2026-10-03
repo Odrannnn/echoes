@@ -21,7 +21,9 @@
 #include "Kyoto/CToken.hpp"
 #include "Kyoto/Text/CFontImageDef.hpp"
 #include "Kyoto/Text/CTextRenderBuffer.hpp"
+#include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CHealthInfo.hpp"
+#include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/CDamageVulnerability.hpp"
 
 extern "C" void* __nw__FUlPCcPCc(unsigned long size, const char* /*fileAndLine*/,
@@ -130,6 +132,26 @@ extern "C" void __ct__11CHealthInfoFRC11CHealthInfo(void* self, const void* src)
 // Nothing here is a stub.
 extern "C" void __ct__20CDamageVulnerabilityFRC20CDamageVulnerability(void* self, const void* src) {
   new (self) CDamageVulnerability(*static_cast< const CDamageVulnerability* >(src));
+}
+
+// Retail's own mangled name for `CActor::AddToRenderer(const CStateManager&) const`, reached the
+// same way, and the only retail name of a *non*-constructor or destructor in this file.
+// `src/MetroidPrime/Carve801708C4.c` (retail 0x801708C4..0x801708E4) is the unit that needs it:
+// `fn_801708C4` is vtable slot 8 of the DOL's `lbl_803B5500` - the slot
+// `include/MetroidPrime/CActor.hpp:81` declares `AddToRenderer` in - and its whole body is a frame
+// and one `bl` to this name, both argument registers forwarded, so the call cannot be dropped
+// without losing the match. Retail's bytes are at 0x8004CB7C (`symbols.txt:1485`, 0x184 bytes),
+// inside `MetroidPrime/CActor.cpp`'s claim (0x80049ED8..0x8004E84C), which is `NonMatching`, so
+// dtk's object supplies them in the DOL link and this is only what a host link binds to. Nothing
+// here is a stub: the body is the host's own `CActor::AddToRenderer`
+// (`src/MetroidPrime/CActor.cpp:352`), called **qualified** so it is the base implementation the
+// carve's `bl` names rather than a re-dispatch through whatever vtable `self` happens to carry -
+// the retail symbol is the base one. Without the qualifier the host compiler would emit the same
+// work under `_ZNK6CActor13AddToRendererERKN13CStateManagerE` and leave this name undefined
+// anyway, since `CActor.cpp`'s own object is the only host definition of that method.
+extern "C" void AddToRenderer__6CActorCFRC13CStateManager(const void* self, const void* mgr) {
+  static_cast< const CActor* >(self)->CActor::AddToRenderer(
+      *static_cast< const CStateManager* >(mgr));
 }
 
 // The other half of the same split. Retail's `operator delete` is `CMemory::Free`, and `Matching`

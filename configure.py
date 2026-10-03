@@ -768,6 +768,15 @@ config.libs = [
             Object(Matching, "MetroidPrime/CInGameTweakManagerCtor.cpp"),
             Object(Matching, "MetroidPrime/Carve8016F69C.c"),
             Object(Matching, "MetroidPrime/Carve8016FD4C.c"),
+            # A carve of `fn_801708C4` (0x801708C4..0x801708E4), vtable slot 8 of
+            # `lbl_803B5500` - `AddToRenderer(const CStateManager&) const`, the slot
+            # `include/MetroidPrime/CActor.hpp:81` declares - out of dtk's
+            # `main/auto_03_8016FD94_text`. Its whole body is one `bl` to the base
+            # `AddToRenderer__6CActorCFRC13CStateManager`, which is inside `CActor.cpp`'s own
+            # claim and is only declared here, never claimed. `.c` because retail names this
+            # function only by its `fn_<addr>` placeholder, so it must stay unmangled.
+            # See the file header.
+            Object(Matching, "MetroidPrime/Carve801708C4.c"),
             Object(Matching, "MetroidPrime/Carve80179E08.c"),
             Object(Matching, "MetroidPrime/Carve80193C30.c"),
             Object(Matching, "MetroidPrime/Carve80193C54.c"),

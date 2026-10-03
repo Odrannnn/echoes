@@ -740,6 +740,12 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve8016BEA8.cpp
     src/MetroidPrime/Carve8016F69C.c
     src/MetroidPrime/Carve8016FD4C.c
+    # A carve of `fn_801708C4` (0x801708C4..0x801708E4), vtable slot 8 of `lbl_803B5500` -
+    # `AddToRenderer(const CStateManager&) const` - out of dtk's `main/auto_03_8016FD94_text`.
+    # Its whole body is one `bl` to the base `AddToRenderer__6CActorCFRC13CStateManager`, which is
+    # inside `CActor.cpp`'s own claim and is only declared here; the host link binds that name in
+    # `src/Kyoto/Alloc/PortMwccNew.cpp`. See the file header.
+    src/MetroidPrime/Carve801708C4.c
     src/MetroidPrime/Carve80171DD4.c
     src/MetroidPrime/Carve80179E08.c
     src/MetroidPrime/Carve801834C8.cpp
