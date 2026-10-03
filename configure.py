@@ -896,6 +896,13 @@ config.libs = [
             # slot. `.c` because module 8 imports the plain retail name `fn_80218D24`.
             Object(Matching, "MetroidPrime/ScriptLoader/Carve80218D24.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/Tryclops.cpp"),
+            # Added 2026-10-03 (goal item `carve-80218d58`). The 8 bytes at 0x80218D58, the
+            # Tryclops module's loader setter (`stw r3, gLoader_Tryclops@sda21(r0); blr`), carved
+            # out of dtk's `auto_03_80218D58_text`. `Tryclops.cpp`'s .text ends at 0x80218D58 and
+            # WispTentacle.cpp's starts at 0x80218D60, so this is the whole gap between two
+            # claimed units; .sbss stays with Tryclops.cpp, which defines the slot. `.c` because
+            # module 81 imports the plain retail name `fn_80218D58`.
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80218D58.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/WispTentacle.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/SpankWeed.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/DarkTrooper.cpp"),

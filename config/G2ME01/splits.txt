@@ -1742,6 +1742,9 @@ MetroidPrime/ScriptLoader/Tryclops.cpp:
 	.text       start:0x80218D2C end:0x80218D58
 	.sbss       start:0x80419450 end:0x80419458
 
+MetroidPrime/ScriptLoader/Carve80218D58.c:
+	.text       start:0x80218D58 end:0x80218D60
+
 MetroidPrime/ScriptLoader/WispTentacle.cpp:
 	.text       start:0x80218D60 end:0x80218D8C
 	.sbss       start:0x80419458 end:0x80419460
