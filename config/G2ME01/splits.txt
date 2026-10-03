@@ -1682,6 +1682,9 @@ MetroidPrime/ScriptLoader/ElitePirate.cpp:
 	.text       start:0x80218AA8 end:0x80218AD4
 	.sbss       start:0x80419408 end:0x80419410
 
+MetroidPrime/ScriptLoader/Carve80218AD4.c:
+	.text       start:0x80218AD4 end:0x80218ADC
+
 MetroidPrime/ScriptLoader/Blogg.cpp:
 	.text       start:0x80218ADC end:0x80218B08
 	.sbss       start:0x80419410 end:0x80419418
