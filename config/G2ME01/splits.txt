@@ -1331,6 +1331,9 @@ MetroidPrime/Cameras/Carve801E8028.c:
 MetroidPrime/ScriptObjects/Carve801E8AEC.c:
 	.text       start:0x801E8AEC end:0x801E8AF4
 
+MetroidPrime/ScriptObjects/Carve801EB30C.c:
+	.text       start:0x801EB30C end:0x801EB374
+
 MetroidPrime/CActorField25.cpp:
 	.text       start:0x801ECD8C end:0x801ECDCC
 
