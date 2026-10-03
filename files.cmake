@@ -1123,6 +1123,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/WorldFormat/Carve80256F20.cpp
     src/Weapons/Carve8025D8C8.cpp
     src/Weapons/Carve8025DBA4.cpp
+    # A carve of `fn_8025FE8C` (0x8025FE8C..0x8025FEAC), the 0x20-byte forwarder to
+    # `fn_8025FE00`, out of dtk's `auto_03_8025F468_text`. `.c` so the symbol stays retail's
+    # unmangled `fn_8025FE8C` placeholder - see the file header.
+    src/Weapons/Carve8025FE8C.c
     src/Weapons/Carve8026023C.cpp
     src/MetroidPrime/Carve8026040C.c
     src/MetroidPrime/Carve8026F624.c
