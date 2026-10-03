@@ -2203,6 +2203,9 @@ WorldFormat/CAreaRenderOctTree.cpp:
 	.sdata      start:0x80418960 end:0x80418968
 	.sdata2     start:0x8041DDF0 end:0x8041DDF8
 
+WorldFormat/Carve802554BC.c:
+	.text       start:0x802554BC end:0x802554D0
+
 WorldFormat/Carve80255900.c:
 	.text       start:0x80255900 end:0x80255A0C
 

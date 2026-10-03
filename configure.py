@@ -430,6 +430,7 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "WorldFormat/CAreaBspTree.cpp"),
             Object(NonMatching, "WorldFormat/CPVSAreaSet.cpp"),
             Object(NonMatching, "WorldFormat/CAreaRenderOctTree.cpp"),
+            Object(Matching, "WorldFormat/Carve802554BC.c"),
             Object(Matching, "WorldFormat/Carve80255900.c"),
             Object(Matching, "WorldFormat/Carve80255A0C.c"),
             Object(Matching, "WorldFormat/Carve80255C54.c"),
