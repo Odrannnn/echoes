@@ -40,10 +40,10 @@ Measured on `G2ME01` (the DOL and all 86 RELs) by `./tools/decomp_build.sh`; ref
 <!-- BEGIN progress-table (tools/update_readme_progress.py) -->
 | Part | Code | Data | Functions | Fully linked code |
 |------|------|------|-----------|-------------------|
-| Everything | 31.12% | 41.80% | 13577 / 28465 (47.70%) | 13.99% |
-| DOL (main.dol) | 48.21% | 56.51% | 11639 / 16726 (69.59%) | 22.09% |
+| Everything | 31.12% | 41.80% | 13587 / 28465 (47.73%) | 13.99% |
+| DOL (main.dol) | 48.21% | 56.51% | 11649 / 16726 (69.65%) | 22.09% |
 | RELs (86 modules) | 7.24% | 2.38% | 1938 / 11739 (16.51%) | 2.66% |
-| Game code | 54.14% | 60.21% | 12278 / 14964 (82.05%) | 17.73% |
+| Game code | 54.14% | 60.21% | 12288 / 14974 (82.06%) | 17.73% |
 | SDK | 98.79% | 96.25% | 1299 / 1308 (99.31%) | 94.78% |
 <!-- END progress-table -->
 
