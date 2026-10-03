@@ -817,6 +817,13 @@ config.libs = [
             Object(Matching, "MetroidPrime/CActorField25.cpp"),
             Object(Matching, "MetroidPrime/Carve801EF730.cpp"),
             Object(Matching, "MetroidPrime/Carve801EF84C.cpp"),
+            # `fn_801F14F0` (0x801F14F0..0x801F1510, 0x20 = 32 bytes), a frame and one `bl`,
+            # carved out of dtk's unclaimed `auto_03_801F0D24_text` run and the byte-shape twin
+            # of the matched `fn_80004438` (`MetroidPrime/Carve80004438.c:95-97`, same eight
+            # instructions). `.c` because `symbols.txt:8020` carries only the `fn_<addr>`
+            # placeholder, so the definition has to stay unmangled - see the file header. Its
+            # callee `fn_801F1510` is above the claim and left to dtk's object.
+            Object(Matching, "MetroidPrime/Carve801F14F0.c"),
             Object(Matching, "MetroidPrime/Carve801F3690.c"),
             Object(Matching, "MetroidPrime/Carve801F36DC.c"),
             Object(Matching, "MetroidPrime/Carve801F7AC8.c"),

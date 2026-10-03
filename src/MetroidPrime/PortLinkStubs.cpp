@@ -1983,3 +1983,31 @@ extern "C" void stub_carve801834c8_0() {}
 extern "C" void stub_carve8016f69c_0(const void*, void*, void*)
     asm("Touch__6CActorFR6CActorR13CStateManager");
 extern "C" void stub_carve8016f69c_0(const void*, void*, void*) {}
+
+// `fn_801F1510` - retail `.text:0x801F1510`, 0x44 = 68 bytes, `config/G2ME01/symbols.txt:8021`: the
+// one callee of `src/MetroidPrime/Carve801F14F0.c` (`Matching`, 0x801F14F0..0x801F1510), whose
+// `fn_801F14F0` is a frame and one `bl` to this name and nothing else - the byte-for-byte twin
+// `fn_80004438` (`src/MetroidPrime/Carve80004438.c`) forwards to its own `fn_80004458` the same way.
+// **This is an empty-body stand-in and it is announced as one.**  It does not claim 0x801F1510 is
+// decompiled: no unit claims that range - it sits one function above this carve's claim, still in
+// dtk's `auto_03_801F0D24_text.o`, and this file is not in `configure.py`, so a definition here
+// cannot reach main.dol.  What retail's function does, measured from its 17 instructions in
+// `build/G2ME01/asm/auto_03_801F0D24_text.s`: `cmplwi r3,0 / beqlr` - so it does nothing at all
+// when its destination is null - then a member-wise copy from `r4` to `r3` of a 0x19 = 25-byte
+// aggregate, the loads and stores interleaved: two `short`s at +0x00/+0x04, four `float`s at
+// +0x08/+0x0C/+0x10/+0x14 and a `char` at +0x18, ending in `blr` with no frame of its own.  That
+// is an assignment operator's body, so **an empty body copies nothing** and a caller that relies
+// on the assignment silently reads back whatever was already there.  Retail names the class
+// nothing, so nothing here guesses at it.
+//
+// **Why the port asks for it.**  `grep -rn 'fn_801F1510' src/ include/` returns only this carve's
+// declaration and this stub.  Measured with `python3 tools/link_gap.py --rebuild`: without this
+// block `gap grew: fn_801F1510 is not in port_link_gap_list.md` at 279 MISSING; with it, 279 again,
+// the count `docs/research/port_link_gap_list.md` already accounts for.
+//
+// The name is keyed to the unit that asks for it, following `stub_carve8016f69c_0` above, so another
+// lane's carve cannot take it between the judge and the rebase.  The declaration takes the two
+// pointers the caller forwards - `this`, the source - and the body ignores both, which is what
+// retail's own `blr`-terminated copy does only when `this` is null.
+extern "C" void stub_carve801f14f0_0(void*, const void*) asm("fn_801F1510");
+extern "C" void stub_carve801f14f0_0(void*, const void*) {}

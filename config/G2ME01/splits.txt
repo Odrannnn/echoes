@@ -1425,6 +1425,9 @@ MetroidPrime/CRELFileManager.cpp:
 	.rodata     start:0x803AC440 end:0x803AC448
 	.sdata      start:0x80418738 end:0x80418740
 
+MetroidPrime/Carve801F14F0.c:
+	.text       start:0x801F14F0 end:0x801F1510
+
 MetroidPrime/Carve801F3690.c:
 	.text       start:0x801F3690 end:0x801F3694
 

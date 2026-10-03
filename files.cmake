@@ -844,6 +844,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptObjects/Carve801EB30C.c
     src/MetroidPrime/Carve801EF730.cpp
     src/MetroidPrime/Carve801EF84C.cpp
+    # A carve of `fn_801F14F0` (0x801F14F0..0x801F1510, 0x20 = 32 bytes), a frame and one `bl`,
+    # out of dtk's unclaimed `auto_03_801F0D24_text` run. `.c` because retail names it only
+    # `fn_<addr>`, so the definition has to be unmangled - see the file header.
+    src/MetroidPrime/Carve801F14F0.c
     src/MetroidPrime/Carve801F3690.c
     src/MetroidPrime/Carve801F36DC.c
     src/MetroidPrime/Carve801F7AC8.c
