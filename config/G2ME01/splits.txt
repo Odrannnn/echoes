@@ -1512,6 +1512,9 @@ MetroidPrime/ScriptObjects/Carve801FDAE8.cpp:
 MetroidPrime/ScriptObjects/Carve801FDB5C.c:
 	.text       start:0x801FDBE0 end:0x801FDC88
 
+MetroidPrime/ScriptObjects/Carve801FDC88.c:
+	.text       start:0x801FDC88 end:0x801FDCAC
+
 MetroidPrime/ScriptObjects/Carve801FEA98.c:
 	.text       start:0x801FEA98 end:0x801FEAE0
 

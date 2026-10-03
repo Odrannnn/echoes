@@ -855,27 +855,40 @@ extern "C" void stub_175() {}
 extern "C" void stub_176() asm("_Z15sum_fn_80255128RKN4rstl6vectorI14SLdrConnectionNS_17rmemory_allocatorEEE");
 extern "C" void stub_176() {}
 
-// fn_801FDC88 - retail 0x801FDC88, 0x24 bytes, `destroy_impl<T*>` for this chain: it
-// materialises `li r4,-1` and calls fn_801FDCAC (retail 0x801FDCAC). Asked for by the port
-// because `src/MetroidPrime/ScriptObjects/Carve801FDB5C.c` (Matching, 0x801FDBE0..0x801FDC88)
-// matches `fn_801FDC68` byte for byte and that body is exactly one `bl fn_801FDC88` - the call
-// is in the bytes, so the carve cannot drop it. For the DOL nothing is needed: dtk's own
-// `auto_03_801FDC88_text.o` defines it and `configure.py` does not mention this file, so the
-// stub cannot reach main.dol. The port link does not have that object, which is why the gap
-// grew 291 -> 292 (measured, `build/gate-probe.log`).
+// fn_801FDCAC - retail 0x801FDCAC, `symbols.txt:8293`, 0x94 bytes, the 0x30-byte element's
+// deleting destructor: the vtable `lbl_803B7BD8` into +0x0, `__dt__6CTokenFv` at +0x24 behind a
+// `lbz 0x2c(r30)`, `fn_801FD6F0` at +0x14 with the same `li r4,-1`, a `rstl::basic_string` at
+// +0x4 through `internal_dereference__Q24rstl66basic_string<...>`, and `Free__7CMemoryFPCv(self)`
+// only when the caller's flag is positive (`extsh. r0,r31 / ble`) - the last of those is what
+// makes it deleting. Asked for by the port because
+// `src/MetroidPrime/ScriptObjects/Carve801FDC88.c` (Matching, 0x801FDC88..0x801FDCAC) matches
+// `fn_801FDC88` byte for byte and that body is exactly `li r4,-1` and one `bl fn_801FDCAC` - the
+// call is in the bytes, so the carve cannot drop it.
 //
-// This is a stand-in with an empty body, like every other stub in this file, and like them it
-// is **not** a claim that fn_801FDC88 is decompiled - it is not, and
-// `docs/research/port_link_gap.md` keeps the symbol listed as still missing. The alternative is
-// carving 0x801FDC88..0x801FDCAC as well, which only moves the same gap one function along:
-// that body calls fn_801FDCAC, and the chain continues. The call is unavoidable to begin with -
-// the carve's `fn_801FDC68` is retail's byte for byte, and retail's is one `bl fn_801FDC88`.
-extern "C" void stub_178() asm("fn_801FDC88");
-extern "C" void stub_178() {}
+// **This is `stub_178`, one function further along the same chain.**  `stub_178` stood in for
+// `fn_801FDC88` because `Carve801FDB5C.c` put that symbol in the gap the same way, and its comment
+// predicted exactly this: carving 0x801FDC88..0x801FDCAC "only moves the same gap one function
+// along: that body calls fn_801FDCAC, and the chain continues."  That carve has now landed, so
+// `stub_178` is **deleted** in this change - `fn_801FDC88` has a real definition, and two
+// definitions of one symbol in the port's flat link is a duplicate that `tools/gate.sh`'s
+// `port link dups` step fails. This block replaces it one-for-one, so the file's own function count
+// and its breakdown are unchanged (one unmangled `asm("fn_...")` out, one in).
+//
+// For the DOL nothing is needed: dtk's own `auto_03_801FDC88_text.o` defines 0x801FDCAC and
+// `configure.py` does not mention this file, so the stub cannot reach main.dol. The port link does
+// not have that object, and the call is unavoidable - retail's own `fn_801FDC88` is one
+// `bl fn_801FDCAC`. So this is a stand-in with an empty body, like every other stub here, and it
+// is **not** a claim that fn_801FDCAC is decompiled - it is not, and no unit claims that range.
+// The alternative is carving it, which is not free: its 148 bytes need the `basic_string` release
+// and `fn_801FD6F0` as well as the vtable. The name is keyed to the carve that asks for it,
+// following `stub_carve801f14f0_0` below, so another lane cannot take it.
+extern "C" void stub_carve801fdc88_0(void*, int) asm("fn_801FDCAC");
+extern "C" void stub_carve801fdc88_0(void*, int) {}
 
 // The three callees of `src/MetroidPrime/ScriptObjects/Carve801FF5A0.cpp` (Matching,
-// 0x801FF5A0..0x801FF720), added by hand on 2026-10-02 for the same reason `stub_178` above
-// exists: the carve's bytes *are* those `bl`s, so the calls cannot be dropped without losing
+// 0x801FF5A0..0x801FF720), added by hand on 2026-10-02 for the same reason
+// `stub_carve801fdc88_0` above exists: the carve's bytes *are* those `bl`s, so the calls cannot
+// be dropped without losing
 // the match, and the port's link does not have the dtk `auto_*` objects that define them in
 // the DOL. Measured: the gap went 291 -> 294 with the carve listed (`build/gate-link.log`).
 //
@@ -888,7 +901,8 @@ extern "C" void stub_178() {}
 //   fn_801FF66C (retail 0x801FF66C) calls `fn_801FD638` at 0x801FF690 - the 0x20-byte element
 //     destructor, itself one `bl fn_801FD658`.
 //
-// Same trade as `stub_178`: empty bodies, no claim that any of the three is decompiled (none is),
+// Same trade as `stub_carve801fdc88_0`: empty bodies, no claim that any of the three is
+// decompiled (none is),
 // and carving them instead only moves the gap one function along because each is a forwarder.
 // `docs/research/port_link_gap.md` keeps all three listed as still missing. `fn_801FD638`, the
 // third of them, was a stub here from 2026-10-02 until
@@ -923,9 +937,10 @@ extern "C" void stub_182() asm("fn_80008D68");
 extern "C" void stub_182() {}
 
 // The two element callees of `src/MetroidPrime/ScriptObjects/Carve801FF720.cpp` (Matching,
-// 0x801FF720..0x801FF8A0), added by hand for the same reason `stub_178` above exists: the carve's
-// bytes *are* those `bl`s, so the calls cannot be dropped without losing the match, and the port's
-// link does not have the dtk `auto_*` objects that define them in the DOL. Measured: the probe
+// 0x801FF720..0x801FF8A0), added by hand for the same reason `stub_carve801fdc88_0` above
+// exists: the carve's bytes *are* those `bl`s, so the calls cannot be dropped without losing the
+// match, and the port's link does not have the dtk `auto_*` objects that define them in the DOL.
+// Measured: the probe
 // went LINKED -> NOT LINKED (293 undefined) with the carve listed and these two undefined
 // (`build/probe-logs/link_check.log`, `NEW  fn_801FD8E0` / `NEW  fn_801FEA98`).
 //
@@ -1012,7 +1027,8 @@ extern "C" void stub_232() {}
 // port_link_gap_list.md` (`build/gate-link.log`), with 287 MISSING.
 //
 // This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
-// claim that fn_801F9848 is decompiled - it is not. Unlike `stub_178` and the callees above, the
+// claim that fn_801F9848 is decompiled - it is not. Unlike `stub_carve801fdc88_0` and the
+// callees above, the
 // alternative is not "carve one more forwarder": this body has no `bl` at all, and matching its 34
 // instructions is a spelling job of its own, which is why the claim stops at 0x801F9848.
 extern "C" void stub_185() asm("fn_801F9848");
