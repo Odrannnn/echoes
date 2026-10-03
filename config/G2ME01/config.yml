@@ -5,6 +5,15 @@ splits: config/G2ME01/splits.txt
 symbols: config/G2ME01/symbols.txt
 quick_analysis: true # Faster reruns after full analysis
 mw_comment_version: 11 # GC 2.7 linker
+force_active:
+  # fn_80218C6C (0x80218C6C, 0x2C bytes, `addi r12, r4, 0x8 / bl __ptmf_scall` on the record
+  # module 75 registers) is not in retail's own FORCEACTIVE list - nothing in the DOL branches to
+  # it and nothing stores its address, measured - so retail kept it only because dtk's auto units
+  # are raw bytes and are not dead-stripped. `Carve80218C64.cpp` makes it a real object, and
+  # mwldeppc then strips it: measured, `main.dol` came out 0x2C bytes short in `.text` with
+  # `LoadSplitterCommandModule` sliding down into 0x80218C6C and every later address moving. This
+  # is the same trap `ForgottenObject` and `AtomicAlpha` hit; see RUNNING_THE_DECOMP.md.
+  - fn_80218C6C
 extract:
   - symbol: sDefaultFontData
     binary: MetroidPrime/DefaultFontData.bin

@@ -1724,6 +1724,9 @@ MetroidPrime/ScriptLoader/Splinter.cpp:
 	.text       start:0x80218C38 end:0x80218C64
 	.sbss       start:0x80419438 end:0x80419440
 
+MetroidPrime/ScriptLoader/Carve80218C64.cpp:
+	.text       start:0x80218C64 end:0x80218C98
+
 MetroidPrime/ScriptLoader/SplitterMainChassis.cpp:
 	.text       start:0x80218C98 end:0x80218CF0
 	.sbss       start:0x80419440 end:0x80419448

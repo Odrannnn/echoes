@@ -936,6 +936,12 @@ src/MetroidPrime/PortLinkStubs.cpp
     # setter out of dtk's `auto_03_80218C30_text`. `.c` because the module imports that exact
     # retail name, so the definition has to be unmangled - see the file header.
     src/MetroidPrime/ScriptLoader/Carve80218C30.c
+    # A carve of `fn_80218C64` (0x80218C64..0x80218C98), the Splinter module's 8-byte loader
+    # setter plus `fn_80218C6C`, the pmf dispatch on the record module 75 registers, out of dtk's
+    # `auto_03_80218C64_text`. `.cpp` with `extern "C"` because the module imports the plain
+    # retail name `fn_80218C64`, so that definition has to be unmangled, and because
+    # `fn_80218C6C` is a pointer-to-member-function call - see the file header.
+    src/MetroidPrime/ScriptLoader/Carve80218C64.cpp
     # A carve of `fn_80218CF0` (0x80218CF0..0x80218CF8), the SplitterMainChassis module's 8-byte
     # loader setter out of dtk's `auto_03_80218CF0_text`. `.c` because the module imports that
     # exact retail name, so the definition has to be unmangled - see the file header.
