@@ -3170,6 +3170,9 @@ Kyoto/Math/Carve8032C144.c:
 Kyoto/Math/Carve8032E444.c:
 	.text       start:0x8032E444 end:0x8032E44C
 
+Kyoto/Math/Carve8032F140.cpp:
+	.text       start:0x8032F140 end:0x8032F21C
+
 Kyoto/Math/Carve8032F2B8.c:
 	.text       start:0x8032F2B8 end:0x8032F31C
 
