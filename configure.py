@@ -821,6 +821,15 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801E5458.c"),
             Object(Matching, "MetroidPrime/Cameras/Carve801E7C14.c"),
             Object(Matching, "MetroidPrime/Cameras/Carve801E8028.c"),
+            # Carve of `fn_801E8ACC` (0x801E8ACC..0x801E8AEC, 0x20 = 32 bytes, 8 instructions)
+            # out of the unclaimed dtk range `auto_03_801E8070_text` (0x801E8070..0x801E8AEC).
+            # The carve takes that range's *tail*, so it merely shortens - it is not split in
+            # two, which is the shape that produced the `CFrustumPlanes.cpp` link-order cycle
+            # recorded in docs/RUNNING_THE_DECOMP.md. Report unit name:
+            # `main/MetroidPrime/Cameras/Carve801E8ACC`. One `Object(...)` per line.
+            # `total_functions` stays 28465 - the function moved from an unclaimed range into
+            # its own unit, so nothing was added or lost.
+            Object(Matching, "MetroidPrime/Cameras/Carve801E8ACC.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801E8AEC.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801EB30C.c"),
             Object(Matching, "MetroidPrime/CActorField25.cpp"),
