@@ -768,6 +768,15 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve801BC900.c
     src/MetroidPrime/Carve801C128C.c
     src/MetroidPrime/Carve801C13F4.c
+    # Carve801C2BA8.cpp - `fn_801C2BA8` (0x801C2BA8, 0xB8), a `rstl::vector<SScanHistoryWidgets,
+    # rmemory_allocator>::reserve`, and `fn_801C2C60` (0x801C2C60, 0x5C), the
+    # `rstl::uninitialized_copy` it calls.  Both are byte-exact and the unit flips.  Not guarded by
+    # `#ifdef __MWERKS__` like `Carve801C2D74.cpp` above: its two callees resolve on the host
+    # (`Free__7CMemoryFPCv` is defined there and the allocator is `stub_179`, see
+    # `src/MetroidPrime/PortLinkStubs.cpp:864-888`), so the host build gets two real definitions
+    # rather than one undefined symbol - retail's only caller of either, `fn_801C2CBC`, is itself
+    # inside the unclaimed dtk range above.
+    src/MetroidPrime/Carve801C2BA8.cpp
     # Carve801C2D74.cpp - `fn_801C2D74` (0x801C2D74, 0x68), retail's
     # `rstl::uninitialized_copy<pointer_iterator<CRagDoll::CRagDollParticle,...>,
     # CRagDoll::CRagDollParticle*>` with a 0x44 stride, and `fn_801C2DDC` (0x801C2DDC, 0x20),
