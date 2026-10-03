@@ -1525,6 +1525,9 @@ MetroidPrime/ScriptLoader/PillBug.cpp:
 	.text       start:0x80200F04 end:0x80200F30
 	.sbss       start:0x80419370 end:0x80419378
 
+MetroidPrime/ScriptLoader/Carve80200F30.c:
+	.text       start:0x80200F30 end:0x80200F38
+
 MetroidPrime/ScriptLoader/Carve80201418.c:
 	.text       start:0x80201418 end:0x8020141C
 
