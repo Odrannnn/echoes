@@ -2266,6 +2266,9 @@ Collision/Carve8028B728.c:
 Collision/Carve8028B8BC.c:
 	.text       start:0x8028B8BC end:0x8028B914
 
+Collision/Carve8028B960.c:
+	.text       start:0x8028BA18 end:0x8028BA80
+
 Kyoto/Basics/CStopwatch.cpp:
 	.text       start:0x8028BC64 end:0x8028BD3C
 	.ctors      start:0x803A55D4 end:0x803A55D8
