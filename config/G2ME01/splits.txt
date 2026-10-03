@@ -1717,6 +1717,9 @@ MetroidPrime/ScriptLoader/Shrieker.cpp:
 	.text       start:0x80218C04 end:0x80218C30
 	.sbss       start:0x80419430 end:0x80419438
 
+MetroidPrime/ScriptLoader/Carve80218C30.c:
+	.text       start:0x80218C30 end:0x80218C38
+
 MetroidPrime/ScriptLoader/Splinter.cpp:
 	.text       start:0x80218C38 end:0x80218C64
 	.sbss       start:0x80419438 end:0x80419440
