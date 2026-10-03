@@ -2065,6 +2065,9 @@ Weapons/CProjectileWeapon.cpp:
 Weapons/Carve8025D8C8.cpp:
 	.text       start:0x8025D8C8 end:0x8025D9D0
 
+Weapons/Carve8025DBA4.cpp:
+	.text       start:0x8025DBA4 end:0x8025DC80
+
 Weapons/CCollisionResponseData.cpp:
 	.text       start:0x8025DD1C end:0x8025F41C
 	.rodata     start:0x803AD940 end:0x803ADD68

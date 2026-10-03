@@ -905,6 +905,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/WorldFormat/Carve80256D1C.c
     src/WorldFormat/Carve80256F20.cpp
     src/Weapons/Carve8025D8C8.cpp
+    src/Weapons/Carve8025DBA4.cpp
     src/MetroidPrime/Carve8026040C.c
     src/MetroidPrime/Carve8026F624.c
     src/MetroidPrime/Carve802740B0.c
