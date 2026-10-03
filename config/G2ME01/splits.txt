@@ -1728,6 +1728,9 @@ MetroidPrime/ScriptLoader/SplitterMainChassis.cpp:
 	.text       start:0x80218C98 end:0x80218CF0
 	.sbss       start:0x80419440 end:0x80419448
 
+MetroidPrime/ScriptLoader/Carve80218CF0.c:
+	.text       start:0x80218CF0 end:0x80218CF8
+
 MetroidPrime/ScriptLoader/ChozoGhost.cpp:
 	.text       start:0x80218CF8 end:0x80218D24
 	.sbss       start:0x80419448 end:0x80419450
