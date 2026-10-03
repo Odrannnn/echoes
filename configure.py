@@ -1184,6 +1184,15 @@ config.libs = [
             Object(Matching, "MetroidPrime/Carve80280F38.cpp"),
             Object(Matching, "MetroidPrime/Carve80281310.c"),
             Object(Matching, "Kyoto/Animation/Carve802B2088.c"),
+            # `fn_802B229C` (0x802B229C..0x802B22C0, 0x24 = 36 bytes), the `this + 4` forwarder to
+            # `fn_802B22C0`, carved out of the unclaimed dtk range `auto_03_802B2090_text`
+            # (0x802B2090..0x802B2568).  The byte-shape twin of the matched
+            # `GetResourceIdByName__11CResFactoryCFPCc` (`include/Kyoto/CResFactory.hpp:64-65`),
+            # the same nine words 8 of 9 identical.  `.c` because `symbols.txt:12306` carries only
+            # the `fn_<addr>` placeholder, so the definition has to stay unmangled - see the file
+            # header.  The claim is in the middle of the run, not on a unit boundary, so there is
+            # no link-order cycle; its callee `fn_802B22C0` is above the claim and left to dtk.
+            Object(Matching, "Kyoto/Animation/Carve802B229C.c"),
             Object(Matching, "Kyoto/Animation/Carve802B2568.c"),
             Object(Matching, "Kyoto/Math/Carve8032B648.cpp"),
             Object(Matching, "Kyoto/Math/Carve8032C144.c"),

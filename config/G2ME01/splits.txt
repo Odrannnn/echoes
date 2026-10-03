@@ -2724,6 +2724,9 @@ Kyoto/Animation/CSegId.cpp:
 Kyoto/Animation/Carve802B2088.c:
 	.text       start:0x802B2088 end:0x802B2090
 
+Kyoto/Animation/Carve802B229C.c:
+	.text       start:0x802B229C end:0x802B22C0
+
 Kyoto/Animation/Carve802B2568.c:
 	.text       start:0x802B2568 end:0x802B2570
 
