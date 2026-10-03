@@ -456,6 +456,13 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianA91C.cpp
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianPredicates.cpp
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianC6AC.cpp
+    # `fn_30_C568` (0xC568, 0x3C) and `fn_30_C510` (0xC510, 0x58) - the halfword at +0x1088 handed
+    # to `GetObjectById__13CStateManagerCF9TUniqueId` and that result ANDed with the halfword at
+    # +0x108A differing from it; see the `Rel("IngBoostBallGuardian", ...)` block in
+    # configure.py for the range, the dead-strip measurement and why the entry there carries no
+    # `mw_version`. Same empty host branch as the entries above - the bodies are inside
+    # `#ifdef __MWERKS__`.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianC510.cpp
     # Blogg's (module 7) deleting destructor at 0x1B30..0x1B78, the first REL unit in this tree
     # whose body stores a module-local vtable. Its host branch is empty by design (the class and
     # the body are inside `#ifdef __MWERKS__`), for the reason the entries above give.

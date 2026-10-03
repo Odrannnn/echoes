@@ -1914,6 +1914,30 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardianBits.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardianPredicates.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardianC6AC.cpp"),
+            # Added 2026-10-03 (lane 1). `.text` 0xC510..0xC5A4, two contiguous functions,
+            # 0x94 = 148 bytes: `fn_30_C568` (0x3C) hands the receiver's halfword at +0x1088 to
+            # `GetObjectById__13CStateManagerCF9TUniqueId` through a frame slot, and `fn_30_C510`
+            # (0x58) is that result ANDed with the halfword at +0x108A differing from it. The
+            # claim starts where `fn_30_C4E0` (0xC4E0, 0x30) ends and stops where `fn_30_C5A4`
+            # (0xC5A4, 0xE8) begins, so it spans no gap and both neighbours stay retail's.
+            # `CIngBoostBallGuardianC5A4.cpp` claims the second of those in another lane, and the
+            # ranges are disjoint.
+            # **No dead-strip hazard, measured twice over**: both functions are in
+            # `build/G2ME01/IngBoostBallGuardian/ldscript.lcf`'s FORCEACTIVE list (lines 124-125)
+            # *and* `nm -u` over every object dtk writes into
+            # `build/G2ME01/IngBoostBallGuardian/obj/` finds both named as undefined by
+            # `auto_04_00000000_data.o`, the module's vtable store. No `force_active:` entry, no
+            # `config/G2ME01/config.yml` change and no `symbols.txt` rename.
+            # **No per-object `mw_version` override, unlike the record-copy entries above**: this
+            # source is byte-identical to retail at the module default `GC/1.3.2` and also at
+            # `GC/2.0`, `GC/2.0p1`, `GC/2.5`, `GC/2.6` and `GC/2.7`; `GC/3.0a5` rejects this tree's
+            # flags outright, so nothing is claimed for it. An override would be a second thing to
+            # keep true. The entry is named with the module prefix and
+            # carries `source=` because `tools/goal_check.sh` resolves a `match` target by
+            # searching configure.py for the queue's spelling, and the queue names a REL unit the
+            # way report.json does; `tools/flip_test.sh` finds the source through the same entry
+            # and `claimed_in_splits` needs the prefixed name in the module's splits.txt.
+            Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardianC510.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardianC510.cpp"),
             # Added 2026-10-02 (lane 4). `.text` 0x388C..0x38E0, `fn_30_388C` (0x54), one leaf: the
             # module's own copy of the 0x20-byte CHealthInfo record - its ten loads and ten stores,
             # MWCC's two-deep schedule. The claim is this range and not the 0x3790..0x38E0 run
