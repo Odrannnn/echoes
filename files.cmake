@@ -1039,6 +1039,12 @@ src/MetroidPrime/PortLinkStubs.cpp
     # host spells as the port's `CActor::~CActor`. `.c` because the symbol is retail's
     # unmangled `fn_8022A060` placeholder - see the file header.
     src/MetroidPrime/ScriptLoader/Carve8022A060.c
+    # A carve of `fn_8022A0C0` (0x8022A0C0..0x8022A2CC), the 0x20C-byte loader that builds the
+    # object whose vtable is the unclaimed `lbl_803B86B8`, out of dtk's
+    # `auto_03_8022A0C0_text` - the head of the run `Carve8022A060.c` above splits off. It calls
+    # retail's own unnamed constructor `fn_8022A408` as a free function, so the definition is
+    # `extern "C"` like the thirteen other `Carve*.cpp` units - see the file header.
+    src/MetroidPrime/ScriptLoader/Carve8022A0C0.cpp
     src/MetroidPrime/ScriptLoader/Carve8022A3F4.c
     src/MetroidPrime/ScriptLoader/Carve8022D5A8.c
     src/MetroidPrime/ScriptLoader/Carve8022D758.c

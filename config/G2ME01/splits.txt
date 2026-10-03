@@ -1972,6 +1972,9 @@ MetroidPrime/ScriptLoader/Carve8022A058.c:
 MetroidPrime/ScriptLoader/Carve8022A060.c:
 	.text       start:0x8022A060 end:0x8022A0C0
 
+MetroidPrime/ScriptLoader/Carve8022A0C0.cpp:
+	.text       start:0x8022A0C0 end:0x8022A2CC
+
 MetroidPrime/ScriptLoader/Carve8022A3F4.c:
 	.text       start:0x8022A3F4 end:0x8022A3FC
 
