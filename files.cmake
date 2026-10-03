@@ -477,6 +477,13 @@ src/MetroidPrime/PortLinkStubs.cpp
     # at 0x10C24, and why the spelling is member-by-member rather than `*self = other`. Same empty
     # host branch as the entries above.
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian10B90.cpp
+    # `fn_30_108D4` (0x108D4, 0x2BC), the module's copy of the 0x15C-byte record at member offset
+    # +0x140 of the same 0x3FC-byte structure, the twin of the entry above at fifteen times the
+    # size; see the `Rel("IngBoostBallGuardian", ...)` block in configure.py for the range, the
+    # measured layout, the dead-strip measurement and why the body is one assignment per 12-byte
+    # triple rather than `*self = other` or 87 member-by-member lines. Same empty host branch as
+    # the entries above.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian108D4.cpp
     # The three functions in front of it, `.text` 0x3790..0x388C of module 30: the null-guarded
     # deleting-destructor chain (see the `Rel("IngBoostBallGuardian", ...)` block in configure.py
     # for the range, the measurements and why the entry there is named with the module prefix and

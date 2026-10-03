@@ -1967,6 +1967,51 @@ config.libs = [
             # the extra close paren at the end of the comment above is what makes the count come
             # out even for this entry and for every entry after it.)
             Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian3790.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian3790.cpp"),
+            # Added 2026-10-03 (lane 7, `progress-rel-ingboostballguardian-108d4`). `.text`
+            # 0x108D4..0x10B90, `fn_30_108D4` (0x2BC = 700 bytes), one leaf: the module's copy of a
+            # 0x15C-byte record, 87 loads and 87 stores in MWCC's schedule and one `blr`, with no
+            # relocation in `.rela.text` anywhere in the range (measured on
+            # `build/G2ME01/IngBoostBallGuardian/obj/auto_00_0000D2E0_text.o` at object offset
+            # 0x35F4), so the bytes are the whole of the claim and there is no callee to declare.
+            # It is the same shape as the 10B90 entry above, at fifteen times the size: that one is
+            # eighteen four-byte members, this one is 29 `float, int, unsigned char` triples at
+            # stride 12 (the per-member load type repeats `lfs, lwz, lbz` exactly 29 times, at
+            # 0x00/0x04/0x08 ... 0x150/0x154/0x158), read straight off the disassembly.
+            # `fn_30_10694` is the whole-structure copy around both: it copies +0x00..+0xEF inline,
+            # sets r3 = r30+0xF0 / r4 = r31+0xF0 and calls `fn_30_10B90`, copies +0x138..+0x13F
+            # inline, then sets r3 = r30+0x140 / r4 = r31+0x140 and calls this function - measured
+            # on the relocations of the same object: `R_PPC_REL24 fn_30_10B90` at 0x35B8 and
+            # `R_PPC_REL24 fn_30_108D4` at 0x35D4. So this record is a member of a 0x3FC-byte
+            # structure, reached through r3/r4 as a copy assignment on an lvalue, which is why the
+            # parameters are spelled `self`/`other` and the local type is named for its size.
+            # **mw_version is load-bearing**, with the same per-object override as the 10B90 entry
+            # above and for the same reason: at the module default GC/1.3.2 this source gives
+            # plain load/store pairs and 512 of its 700 bytes are wrong; at GC/2.7 it is
+            # byte-identical (GC/2.0, 2.0p1, 2.5 and 2.6 agree; GC/3.0a5 gives 844 bytes). Setting
+            # the version on the Rel block instead would recompile the other module-30 units.
+            # **No dead-strip hazard, measured**: `fn_30_108D4` is not in ldscript.lcf's FORCEACTIVE
+            # list, but the R_PPC_REL24 at object offset 0x35D4 in auto_00_0000D2E0_text.o holds the
+            # reference, so dtk's own object keeps this unit's .text in the link. No force_active:
+            # entry, no config.yml change, no symbols.txt rename. The claim is 0x108D4..0x10B90 and
+            # not the 0x10694..0x10B90 run around it because `fn_30_10694` calls both this function
+            # and `fn_30_10B90`, so it becomes claimable only once both are units of their own; the
+            # 0x10B90 entry above is the other one.
+            # **The body is one assignment per 12-byte triple, and the reason is measured here, not
+            # inherited**: with the 87 members spelled out one by one the object is also 700 bytes
+            # and 175 instructions, but five of them are wrong - the allocator puts the 15th triple's word
+            # (offset 0xAC) in r0 instead of r5 and reorders the two instructions after it, and the
+            # 17th triple's byte (offset 0xC8) swaps with the load before it. That is 13 bytes of
+            # 700, which objdiff's fuzzy score would round away.
+            # `self->t[i] = other.t[i];` for 29 elements is byte-identical to retail,
+            # because the three-member implicit assignment operator is inlined per element and that
+            # is what fixes the register choice. `*self = other` is not usable at this size: the
+            # compiler emits an out-of-line `__as__...` (measured, 732 bytes, two functions). The
+            # 10B90 entry above inlines a whole-object assignment at 18 members, so the inlining
+            # threshold is between 18 and 87 here: the size, not the spelling, moves it.
+            # The entry is named with the module prefix and
+            # carries source= for the reason the 388C entry gives, and it inherits that entry's
+            # closing paren for the same reason the 3790 entry above does.)
+            Object(Matching, "IngBoostBallGuardian/MetroidPrime/ScriptObjects/CIngBoostBallGuardian108D4.cpp", source="MetroidPrime/ScriptObjects/CIngBoostBallGuardian108D4.cpp", mw_version="GC/2.7"),
             # Added 2026-10-02 (lane 11, `progress-vt-rel-ingboostballguardian`, the vtable-name
             # trial). Six more ranges out of module 30's unclaimed gaps, twelve functions, every
             # one a virtual `tools/rel_class_map.py` names off the DOL vtable's matching slot:
