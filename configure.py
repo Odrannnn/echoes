@@ -906,6 +906,10 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/WispTentacle.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/SpankWeed.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/DarkTrooper.cpp"),
+            # Carve of `fn_80218DF4` (0x80218DF4..0x80218DFC), the DarkTrooper module's 8-byte
+            # loader setter out of dtk's `auto_03_80218DF4_text`. `.c` because module 12 imports
+            # that exact retail name, so the definition has to be unmangled - see the file header.
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80218DF4.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/GlowBug.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/IngSpaceJumpGuardian.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/DigitalGuardian.cpp"),

@@ -1757,6 +1757,9 @@ MetroidPrime/ScriptLoader/DarkTrooper.cpp:
 	.text       start:0x80218DC8 end:0x80218DF4
 	.sbss       start:0x80419468 end:0x80419470
 
+MetroidPrime/ScriptLoader/Carve80218DF4.c:
+	.text       start:0x80218DF4 end:0x80218DFC
+
 MetroidPrime/ScriptLoader/GlowBug.cpp:
 	.text       start:0x80218DFC end:0x80218E28
 	.sbss       start:0x80419470 end:0x80419478
