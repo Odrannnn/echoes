@@ -1014,6 +1014,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     # imports that exact retail name, so the definition has to be unmangled - see the file
     # header.
     src/MetroidPrime/ScriptLoader/Carve8022EBFC.c
+    # A carve of `fn_8022EC64` (0x8022EC64..0x8022EC6C), the SwampBossStage1 module's 8-byte
+    # loader setter out of dtk's `auto_03_8022EC64_text`. `.c` because the module imports that
+    # exact retail name, so the definition has to be unmangled - see the file header.
+    src/MetroidPrime/ScriptLoader/Carve8022EC64.c
     src/MetroidPrime/ScriptLoader/Carve80232834.c
     src/MetroidPrime/ScriptLoader/Carve80232868.c
     src/MetroidPrime/ScriptLoader/Carve8023289C.c

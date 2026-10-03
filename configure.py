@@ -993,6 +993,11 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8022EBFC.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/SwampBossStage2.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/SwampBossStage1.cpp"),
+            # A carve of `fn_8022EC64` (0x8022EC64..0x8022EC6C), SwampBossStage1's 8-byte
+            # loader setter, out of dtk's `auto_03_8022EC64_text`. `.c` because module 78
+            # imports the plain retail name `fn_8022EC64`, so the definition has to be
+            # unmangled - see the file header. .sbss stays with SwampBossStage1.cpp.
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve8022EC64.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/IngBoostBallGuardian.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/PlantScarabSwarm.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/SkyRipple.cpp"),
