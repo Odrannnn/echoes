@@ -875,6 +875,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptLoader/Carve8023E5A8.c
     src/MetroidPrime/ScriptLoader/Carve8024143C.c
     src/MetroidPrime/ScriptLoader/SLdrActorParameters.cpp
+    src/MetroidPrime/ScriptLoader/SLdrActorParametersCtor.cpp
     src/MetroidPrime/ScriptLoader/Carve80241C90.c
     src/MetroidPrime/ScriptLoader/Carve802420F8.c
     # A carve of `fn_8024492C` and `fn_80244990` (0x8024492C..0x802449D4), a second instantiation

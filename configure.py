@@ -938,6 +938,20 @@ config.libs = [
             # gate's per-function diff scores that as a split, not a loss, and `total_functions`
             # stays 28465. Nothing else claims those 112 bytes and no claim spans a gap.
             Object(Matching, "main/MetroidPrime/ScriptLoader/SLdrActorParameters.cpp", source="MetroidPrime/ScriptLoader/SLdrActorParameters.cpp"),
+            # `__ct__19SLdrActorParametersFv`, DOL .text 0x8023F534..0x8023F5E8 (0xB4 = 180
+            # bytes, 45 instructions), the constructor immediately after the destructor above, so
+            # the two claims are contiguous and nothing between them is unclaimed.
+            # **Same naming arrangement and the same reason as the line above**, which is spelled
+            # out at length there: the goal item's target is the objdiff *report* unit name
+            # `main/MetroidPrime/ScriptLoader/SLdrActorParametersCtor`, and `tools/goal_check.sh`
+            # resolves a `match` item's target by searching configure.py for
+            # `Object(..., "<target>.cpp")` verbatim, so the `main/` prefix has to be in the
+            # `Object` name; `source=` keeps the file where the rest of `ScriptLoader/` keeps it.
+            # Report unit name: `main/main/MetroidPrime/ScriptLoader/SLdrActorParametersCtor`.
+            # The claim splits `auto_03_8023F534_text` (0x8023F534..0x80241C90) into itself
+            # (0x8023F5E8..0x80241C90) and this one, which the gate's per-function diff scores as a
+            # split and not a loss; `total_functions` stays 28465.
+            Object(Matching, "main/MetroidPrime/ScriptLoader/SLdrActorParametersCtor.cpp", source="MetroidPrime/ScriptLoader/SLdrActorParametersCtor.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve80241C90.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve802420F8.c"),
             Object(Matching, "MetroidPrime/Carve80277090.c"),

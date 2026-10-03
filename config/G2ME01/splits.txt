@@ -1940,6 +1940,9 @@ MetroidPrime/ScriptLoader/Carve8023E5A8.c:
 main/MetroidPrime/ScriptLoader/SLdrActorParameters.cpp:
 	.text       start:0x8023F4C4 end:0x8023F534
 
+main/MetroidPrime/ScriptLoader/SLdrActorParametersCtor.cpp:
+	.text       start:0x8023F534 end:0x8023F5E8
+
 MetroidPrime/ScriptLoader/Carve8024143C.c:
 	.text       start:0x8024143C end:0x80241488
 
