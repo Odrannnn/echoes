@@ -1045,6 +1045,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     # imports that exact retail name, so the definition has to be unmangled - see the file
     # header.
     src/MetroidPrime/ScriptLoader/Carve80235DCC.c
+    # A carve of `fn_80235E00` (0x80235E00..0x80235E08), the DarkCommando module's 8-byte
+    # loader setter out of the same dtk `auto_03_80235E00_text` one address along.
+    # `.c` because the module imports that exact retail name, so the definition has to be
+    # unmangled - see the file header.
+    src/MetroidPrime/ScriptLoader/Carve80235E00.c
     src/MetroidPrime/ScriptLoader/Carve802392A4.cpp
     # A carve of `fn_802399F4` (0x802399F4..0x802399FC), the RubiksPuzzle module's 8-byte
     # loader setter out of dtk's `auto_03_802399F4_text`. `.c` because the module imports that

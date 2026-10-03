@@ -1025,6 +1025,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/DarkSamusBattleStage.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve80235DCC.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/DarkCommando.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80235E00.c"),
             # Carved out of dtk's unclaimed `auto_03_80235E00_text`: `fn_802392A4` (0x802392A4,
             # 0xB8) and `fn_8023935C` (0x8023935C, 0x4C), the byte-shape twins of the 0x24-element
             # pair `fn_71_3B08` / `fn_71_3BC0` in `ScriptObjects/CSnakeWeedSwarmVecTail.cpp` with a
