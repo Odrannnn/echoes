@@ -1372,6 +1372,9 @@ MetroidPrime/ScriptObjects/CScriptTriggerEllipsoid.cpp:
 MetroidPrime/ScriptObjects/Carve801E3334.cpp:
 	.text       start:0x801E3334 end:0x801E3414
 
+MetroidPrime/ScriptObjects/Carve801E3684.c:
+	.text       start:0x801E3684 end:0x801E36AC
+
 MetroidPrime/ScriptObjects/Carve801E3864.c:
 	.text       start:0x801E3864 end:0x801E3A34
 

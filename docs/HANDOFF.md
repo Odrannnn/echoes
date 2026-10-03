@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    13641 / 28465 functions        (37.71% fuzzy, 31.14% of code, 14.01% fully linked)
-linked     6689 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  11703 / 16726 functions        (main/*, including the SDK's)
+matched    13642 / 28465 functions        (37.71% fuzzy, 31.14% of code, 14.01% fully linked)
+linked     6690 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  11704 / 16726 functions        (main/*, including the SDK's)
 port link  287 undefined, 0 duplicates   (287 since the ninth upstream sync, 2026-10-02: 26 upstream
                                    units joined files.cmake, five listed names were renamed and three
                                    opened - docs/research/port_link_gap.md, "The ninth upstream sync".
