@@ -386,6 +386,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     # reference; it is listed because check_files_cmake.py requires every config.py `Matching`
     # object to be in this list, and only a RELMain/RELExit unit is exempt.
     src/MetroidPrime/ScriptObjects/CLumiteRelTail.cpp
+    # MysteryFlyer's (module 45) out-of-line `rstl::optional_object<CAABox>` converting constructor,
+    # .text 0x2BBC..0x2BF8 - one function. Its host branch is empty by design (the body is inside
+    # `#ifdef __MWERKS__`) and it calls nothing, so listing it adds no undefined reference; its
+    # sibling `CMysteryFlyerRel.cpp`, the module's head, stays out because it defines RELMain.
+    src/MetroidPrime/ScriptObjects/CMysteryFlyerRelTail2.cpp
     # FlyerSwarm's (module 21) rstl support block, `.text 0x1708..0x198C` - eight functions: the
     # count+array vector's copy constructor and deleting destructor, `construct`/`construct_impl`/
     # `uninitialized_copy_n` for the 0x24-byte element, that element's out-of-line copy

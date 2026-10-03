@@ -1717,10 +1717,28 @@ config.libs = [
     # retail (fn_45_2BBC), so it is one call, not a template instance; see the source's header.
     # Everything from fn_45_170 (0x170) up is the module's own entity loader and members, left
     # unclaimed so dtk fills it from retail and the module's sha1 still holds.
+    #
+    # A second unit, `.text 0x2BBC..0x2BF8` out of that unclaimed middle: `fn_45_2BBC`, the
+    # out-of-line `rstl::optional_object<CAABox>` converting constructor `fn_45_10` calls. The
+    # claim is a whole function and ends on the boundary at 0x2BF8, so nothing is spanned and the
+    # 0x170..0x2BBC bytes before it and everything from 0x2BF8 up stay unclaimed; see the source's
+    # header. Added 2026-10-03 (lane 3, item `fn_45_2BBC`). GC/2.7 is a per-object override, the
+    # one `CLumiteRelTail.cpp` uses: 1.3.2 puts the valid-flag store in the wrong slot, and no
+    # spelling of the two statements reaches it there. The unit's name carries the `MysteryFlyer/`
+    # prefix and `source=` keeps the file where every other REL unit keeps it - the arrangement
+    # `CIngBoostBallGuardian3790.cpp`, `-388C.cpp` and `-10B90.cpp` use.
+    # The Object entry is named with the module prefix and carries source= because
+    # tools/goal_check.sh resolves a `match` target by searching configure.py for the queue's
+    # spelling, and the queue names a REL unit the way report.json does.
+    # This comment ends with a stray close paren on purpose: flip_test.sh's unit_info counts
+    # parentheses from the last MusyX call up to the entry it is looking for, so an entry inside a
+    # Rel list reads one open paren too many and is looked for under extern/musyx/src, where this
+    # source is not. The extra `)` balances it.)
     Rel(
         "MysteryFlyer",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CMysteryFlyerRel.cpp"),
+            Object(Matching, "MysteryFlyer/MetroidPrime/ScriptObjects/CMysteryFlyerRelTail2.cpp", source="MetroidPrime/ScriptObjects/CMysteryFlyerRelTail2.cpp", mw_version="GC/2.7"),
         ],
     ),
     # SnakeWeedSwarm's head, .text 0x0..0xDC: fn_71_0, RELExit, RELMain and the loader
