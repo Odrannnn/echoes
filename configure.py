@@ -830,6 +830,7 @@ config.libs = [
             # placeholder, so the definition has to stay unmangled - see the file header. Its
             # callee `fn_801F1510` is above the claim and left to dtk's object.
             Object(Matching, "MetroidPrime/Carve801F14F0.c"),
+            Object(Matching, "MetroidPrime/Carve801F21E4.c"),
             Object(Matching, "MetroidPrime/Carve801F3690.c"),
             Object(Matching, "MetroidPrime/Carve801F36DC.c"),
             Object(Matching, "MetroidPrime/Carve801F7AC8.c"),

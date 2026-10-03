@@ -848,6 +848,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     # out of dtk's unclaimed `auto_03_801F0D24_text` run. `.c` because retail names it only
     # `fn_<addr>`, so the definition has to be unmangled - see the file header.
     src/MetroidPrime/Carve801F14F0.c
+    src/MetroidPrime/Carve801F21E4.c
     src/MetroidPrime/Carve801F3690.c
     src/MetroidPrime/Carve801F36DC.c
     src/MetroidPrime/Carve801F7AC8.c

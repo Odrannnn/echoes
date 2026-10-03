@@ -1431,6 +1431,9 @@ MetroidPrime/CRELFileManager.cpp:
 MetroidPrime/Carve801F14F0.c:
 	.text       start:0x801F14F0 end:0x801F1510
 
+MetroidPrime/Carve801F21E4.c:
+	.text       start:0x801F21E4 end:0x801F2204
+
 MetroidPrime/Carve801F3690.c:
 	.text       start:0x801F3690 end:0x801F3694
 

@@ -2041,3 +2041,28 @@ extern "C" void stub_carve801d7e9c_0(const void*, float, void*) {}
 // retail's own `blr`-terminated copy does only when `this` is null.
 extern "C" void stub_carve801f14f0_0(void*, const void*) asm("fn_801F1510");
 extern "C" void stub_carve801f14f0_0(void*, const void*) {}
+
+// `Touch__15CGameProjectileFR6CActorR13CStateManager` - retail `.text:0x80035AD8`, 0x60 = 96 bytes,
+// `config/G2ME01/symbols.txt:1011`: the one callee of `src/MetroidPrime/Carve801F21E4.c` (`Matching`,
+// 0x801F21E4..0x801F2204), whose `fn_801F21E4` - `CEnergyProjectile::Touch`, the `Touch` slot
+// (base + 0x4C) of the vtable at 0x803B78F0 - is a frame and one `bl` to this name.  **This is an
+// empty-body stand-in and it is announced as one; unlike the stub above it does lose real work,
+// and the reason is that the port does not have the class.**  Measured: `CGameProjectile.cpp` is not
+// in `files.cmake` at all (`grep -n 'Weapons/CGameProjectile' files.cmake` is empty; the port reaches
+// `CAuxWeapon::GetBeamAttribType`, which lives there, through the undefined symbol
+// `CGameProjectile::GetBeamAttribType(EWeaponType)`), and `nm` over all 1663 objects of
+// `build-port-link` names `CGameProjectile::Touch` in **none** of them.  So there is no host
+// implementation to forward to - a wrapper that called one would only move the undefined reference
+// to the mangled name - and retail's 0x60 bytes are a frame, `bl Touch__6CActorFR6CActorR13CStateManager`,
+// a `TCastToPtr< 11CScriptDock >` on the touched actor and a store at `self` +0x400.  Nothing here
+// claims 0x80035AD8 is decompiled: the range belongs to `MetroidPrime/Weapons/CGameProjectile.cpp`'s
+// existing claim (0x80032C3C..0x80036200), so dtk's object for that unit supplies the bytes in the
+// DOL link and the symbol is nothing this carve can or should claim; and this file is not in
+// `configure.py`, so a definition here cannot reach main.dol.
+//
+// The name is keyed to the unit that asks for it, following `stub_carve801834c8_0` above, so another
+// lane's carve cannot take it between the judge and the rebase.  The declaration takes the three
+// pointers the caller passes - `this`, the actor, the state manager - and the body ignores all three.
+extern "C" void stub_carve801f21e4_0(const void*, void*, void*)
+    asm("Touch__15CGameProjectileFR6CActorR13CStateManager");
+extern "C" void stub_carve801f21e4_0(const void*, void*, void*) {}
