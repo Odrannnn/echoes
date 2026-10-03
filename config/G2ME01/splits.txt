@@ -1922,6 +1922,9 @@ MetroidPrime/ScriptLoader/StreamedMovie.cpp:
 	.text       start:0x80229FC4 end:0x80229FF0
 	.sbss       start:0x804195A8 end:0x804195B0
 
+MetroidPrime/ScriptLoader/Carve80229FF0.c:
+	.text       start:0x80229FF0 end:0x80229FF8
+
 MetroidPrime/ScriptLoader/IngSpiderBallGuardian.cpp:
 	.text       start:0x80229FF8 end:0x8022A024
 	.sbss       start:0x804195B0 end:0x804195B8

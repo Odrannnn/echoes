@@ -963,6 +963,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/FlyerSwarm.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/FlyerSwarmLoaderSet.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/StreamedMovie.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80229FF0.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/IngSpiderBallGuardian.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/PuddleSpore.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8022A3F4.c"),
