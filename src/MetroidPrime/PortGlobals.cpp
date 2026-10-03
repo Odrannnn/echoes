@@ -1990,3 +1990,61 @@ extern "C" void fn_8028139C(void* self, const void* src) {
     new (static_cast< void* >(self)) SVector(*static_cast< const SVector* >(src));
   }
 }
+
+// Retail 0x802860BC: `CollisionUtil::AddAverageToFront(const CCollisionInfoList&,
+// CCollisionInfoList&)` - declared `include/Collision/CollisionUtil.hpp:14`, implemented by retail's
+// own object, and named by `config/G2ME01/symbols.txt`.  Its decompiled body is
+// `src/Collision/CollisionUtil.cpp:871`, which is a `NonMatching` unit of `configure.py:445` and
+// **not in `files.cmake`**, so the port has no such function at all.
+//
+// `src/MetroidPrime/Carve801285DC.c` claims `.text 0x801285DC..0x8012862C` as a `Matching` unit,
+// and its first function's whole body is `mr r3,r4 / mr r4,r5 / bl <this name>`, so the `bl` has to
+// carry retail's symbol.  mwcceppc is given the name verbatim - MWCC's old mangling is
+// `[A-Za-z0-9_]` only, so a C declaration can spell it, the same trick
+// `src/MetroidPrime/Carve800E1548.c:77` uses on `Free__7CMemoryFPCv` - which is right for the DOL
+// and binds to nothing on a host link.  Listing that carve in `files.cmake` therefore put
+// `AddAverageToFront__13CollisionUtilFRC18CCollisionInfoListR18CCollisionInfoList` in the port's
+// undefined set, which `tools/link_check.sh --strict` fails on.
+//
+// **This definition does no work, and says so.**  Forwarding to `CollisionUtil::AddAverageToFront`
+// was the first thing tried and it is not available: that body is not in the port build, so the
+// forwarder would only trade this undefined symbol for
+// `_ZN13CollisionUtil17AddAverageToFrontERK18CCollisionInfoListRS0_` being undefined instead, which
+// `tools/gate.sh`'s `link-gap` step rejects as a grown gap.  So this announces itself once and
+// returns, like `fn_8012862C` below and `ReportedCameraManagerStandIn` above: **a stand-in that says
+// so is safe where a plausible-looking one is not.**
+extern "C" void AddAverageToFront__13CollisionUtilFRC18CCollisionInfoListR18CCollisionInfoList(
+    const void*, void*) {
+  static bool reported = false;
+  if (!reported) {
+    reported = true;
+    printf("port stand-in reached: AddAverageToFront__13CollisionUtilFRC18CCollisionInfoList"
+           "RS18CCollisionInfoList - Collision/CollisionUtil.cpp is not in the port build\n");
+  }
+}
+
+// Retail 0x8012862C, `config/G2ME01/symbols.txt:5010`, 0x160 = 352 bytes: in
+// `main/auto_03_801285DC_text` and **unclaimed by any unit**, so dtk's own object supplies the bytes
+// in the DOL link.  It is the second function `Carve801285DC.c` reaches -
+// `src/MetroidPrime/Carve801285DC.c` declares it because `fn_80128604`'s `bl 0x8012862C` has to
+// resolve - and listing that carve in `files.cmake` put `fn_8012862C` in the port's undefined set,
+// which `tools/link_check.sh --strict` fails on.
+//
+// **This definition does no work, and says so.**  Unlike `fn_8028139C` above, retail's body is not
+// short enough to transliterate without first naming a layout nothing here has:
+// `build/G2ME01/asm/auto_03_801285DC_text.s:37-133` is a two-pass filter over an array of 0x60-byte
+// entries - pass one keeps a running minimum of the `+0x8` float over the entries whose `+0x34`
+// word masks off 0x40000000, pass two copies every entry whose `+0x34` word masks off 0x80000000
+// **or** whose `+0x8` float beats that minimum, up to 0x20 of them, and then hands the result to
+// `AddAverageToFront`.  0x60 is `CCollisionInfo`'s size and 0x20 its list capacity
+// (`include/Collision/CCollisionInfoList.hpp`), so the shape is readable, but the entry layout is
+// a claim's job and not this file's.  So this announces itself once and returns, which is the
+// contract for a stand-in: **a stub that says so is safe where a plausible-looking one is not** -
+// see `ReportedCameraManagerStandIn` above for the same rule in the same file.
+extern "C" void fn_8012862C(const void* list, void* out) {
+  static bool reported = false;
+  if (!reported) {
+    reported = true;
+    printf("port stand-in reached: fn_8012862C - the real body is not written\n");
+  }
+}
