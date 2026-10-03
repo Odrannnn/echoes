@@ -1000,6 +1000,13 @@ src/MetroidPrime/PortLinkStubs.cpp
     # loader setter out of dtk's `auto_03_8022A024_text`. `.c` because the module imports that
     # exact retail name, so the definition has to be unmangled - see the file header.
     src/MetroidPrime/ScriptLoader/Carve8022A024.c
+    # A carve of `fn_8022A060` (0x8022A060..0x8022A0C0), the 0x60-byte deleting destructor out
+    # of dtk's `auto_03_8022A058_text` - entry 0x8 of the unclaimed vtable `lbl_803B86B8`. It
+    # takes that vtable `extern`, which is why the host build needs the `#ifndef __MWERKS__`
+    # definition at the end of the file, and it calls retail's own `__dt__6CActorFv`, which the
+    # host spells as the port's `CActor::~CActor`. `.c` because the symbol is retail's
+    # unmangled `fn_8022A060` placeholder - see the file header.
+    src/MetroidPrime/ScriptLoader/Carve8022A060.c
     src/MetroidPrime/ScriptLoader/Carve8022A3F4.c
     src/MetroidPrime/ScriptLoader/Carve8022D5A8.c
     src/MetroidPrime/ScriptLoader/Carve8022D758.c
