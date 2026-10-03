@@ -793,6 +793,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptObjects/Carve801E3E34.c
     src/MetroidPrime/ScriptObjects/Carve801E515C.c
     src/MetroidPrime/ScriptObjects/Carve801E5230.c
+    src/MetroidPrime/ScriptObjects/Carve801E5458.c
     src/MetroidPrime/Cameras/Carve801E7C14.c
     src/MetroidPrime/Cameras/Carve801E8028.c
     src/MetroidPrime/ScriptObjects/Carve801E8AEC.c
