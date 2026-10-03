@@ -1749,6 +1749,9 @@ MetroidPrime/ScriptLoader/WispTentacle.cpp:
 	.text       start:0x80218D60 end:0x80218D8C
 	.sbss       start:0x80419458 end:0x80419460
 
+MetroidPrime/ScriptLoader/Carve80218D8C.c:
+	.text       start:0x80218D8C end:0x80218D94
+
 MetroidPrime/ScriptLoader/SpankWeed.cpp:
 	.text       start:0x80218D94 end:0x80218DC0
 	.sbss       start:0x80419460 end:0x80419468

@@ -948,6 +948,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     # setter out of dtk's `auto_03_80218D58_text`. `.c` because the module imports that exact
     # retail name, so the definition has to be unmangled - see the file header.
     src/MetroidPrime/ScriptLoader/Carve80218D58.c
+    # A carve of `fn_80218D8C` (0x80218D8C..0x80218D94), the WispTentacle module's 8-byte loader
+    # setter out of dtk's `auto_03_80218D8C_text`. `.c` because the module imports that exact
+    # retail name, so the definition has to be unmangled - see the file header.
+    src/MetroidPrime/ScriptLoader/Carve80218D8C.c
     # A carve of `fn_80218DF4` (0x80218DF4..0x80218DFC), the DarkTrooper module's 8-byte loader
     # setter out of dtk's `auto_03_80218DF4_text`. `.c` because module 12 imports that exact
     # retail name, so the definition has to be unmangled - see the file header.

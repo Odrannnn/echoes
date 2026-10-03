@@ -904,6 +904,13 @@ config.libs = [
             # module 81 imports the plain retail name `fn_80218D58`.
             Object(Matching, "MetroidPrime/ScriptLoader/Carve80218D58.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/WispTentacle.cpp"),
+            # Carve of `fn_80218D8C` (0x80218D8C..0x80218D94), the WispTentacle module's 8-byte
+            # loader setter out of dtk's `auto_03_80218D8C_text`. `WispTentacle.cpp`'s .text
+            # ends at 0x80218D8C and SpankWeed.cpp's starts at 0x80218D94, so this is the
+            # whole gap between two claimed units; .sbss stays with WispTentacle.cpp, which
+            # defines the slot. `.c` because module 86 imports that exact retail name, so the
+            # definition has to be unmangled - see the file header.
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80218D8C.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/SpankWeed.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/DarkTrooper.cpp"),
             # Carve of `fn_80218DF4` (0x80218DF4..0x80218DFC), the DarkTrooper module's 8-byte
