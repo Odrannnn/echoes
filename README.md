@@ -5,9 +5,9 @@ Metroid Prime 2: Echoes
 [Build Status]: https://github.com/PrimeDecomp/echoes/actions/workflows/build.yml/badge.svg
 [actions]: https://github.com/PrimeDecomp/echoes/actions/workflows/build.yml
 <!-- BEGIN progress (tools/update_readme_progress.py) -->
-[Code Progress]: https://img.shields.io/badge/Code-31.05%25-blue
+[Code Progress]: https://img.shields.io/badge/Code-31.09%25-blue
 [Data Progress]: https://img.shields.io/badge/Data-41.80%25-blue
-[DOL Progress]: https://img.shields.io/badge/DOL-48.09%25-blue
+[DOL Progress]: https://img.shields.io/badge/DOL-48.15%25-blue
 [RELs Progress]: https://img.shields.io/badge/RELs-7.24%25-blue
 [progress]: #progress
 <!-- END progress -->
@@ -40,10 +40,10 @@ Measured on `G2ME01` (the DOL and all 86 RELs) by `./tools/decomp_build.sh`; ref
 <!-- BEGIN progress-table (tools/update_readme_progress.py) -->
 | Part | Code | Data | Functions | Fully linked code |
 |------|------|------|-----------|-------------------|
-| Everything | 31.05% | 41.80% | 13534 / 28465 (47.55%) | 13.92% |
-| DOL (main.dol) | 48.09% | 56.51% | 11596 / 16726 (69.33%) | 21.98% |
+| Everything | 31.09% | 41.80% | 13553 / 28465 (47.61%) | 13.96% |
+| DOL (main.dol) | 48.15% | 56.51% | 11615 / 16726 (69.44%) | 22.04% |
 | RELs (86 modules) | 7.24% | 2.38% | 1938 / 11739 (16.51%) | 2.66% |
-| Game code | 54.07% | 60.21% | 12235 / 14921 (82.00%) | 17.61% |
+| Game code | 54.11% | 60.21% | 12254 / 14940 (82.02%) | 17.67% |
 | SDK | 98.79% | 96.25% | 1299 / 1308 (99.31%) | 94.78% |
 <!-- END progress-table -->
 
