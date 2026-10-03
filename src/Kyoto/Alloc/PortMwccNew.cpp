@@ -51,6 +51,22 @@ extern "C" void __dt__6CTokenFv(void* self, short) {
   static_cast< CToken* >(self)->~CToken();
 }
 
+// Retail's own mangled name for `CToken::CToken(const CToken&)`, reached the same way, and the
+// copy side of the pair above.  `src/MetroidPrime/Carve80046C0C.c` (retail
+// 0x80046C0C..0x80046D44) is the unit that needs it: that is
+// `rstl::uninitialized_copy<rstl::pointer_iterator<TCachedToken<CStringTable>,...>,
+// TCachedToken<CStringTable>*>` whose per-element body is `include/rstl/construct.hpp:53-56`'s
+// placement-new copy, and retail's bytes are a `bl __ct__6CTokenFRC6CToken` with the argument
+// registers copied straight through, so the call cannot be dropped without losing the match.
+// Retail defines it (`symbols.txt:13923`, 0x803015B4, 0x5C bytes, claimed by `Kyoto/CToken.cpp`),
+// so the DOL link resolves it and this is only what a host link binds to.  Nothing here is a stub:
+// the body is `CToken`'s own copy constructor, which on `TARGET_PC` the host compiler would
+// otherwise inline into the caller under `_ZN6CTokenC1ERKS_` and never export under the name the
+// carve's `bl` asks for.
+extern "C" void __ct__6CTokenFRC6CToken(void* self, const void* src) {
+  new (self) CToken(*static_cast< const CToken* >(src));
+}
+
 // Retail's own mangled name for `CFontImageDef::~CFontImageDef()`, reached the same way.
 // `src/MetroidPrime/Carve80024D24.c` (retail 0x80024D24..0x80024D68) is the unit that needs it:
 // that is `rstl::destroy_impl< CFontImageDef >`, whose whole body is `bl __dt__13CFontImageDefFv`
