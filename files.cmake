@@ -1772,6 +1772,7 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptLoader/EmperorIngStage2Tentacle.cpp
     src/MetroidPrime/ScriptLoader/Carve8022A570.c
     src/MetroidPrime/ScriptLoader/BacteriaSwarm.cpp
+    src/MetroidPrime/ScriptLoader/Carve8022A5AC.c
     src/MetroidPrime/ScriptLoader/MetareeSwarm.cpp
     src/MetroidPrime/ScriptLoader/IngBlobSwarm.cpp
     src/MetroidPrime/ScriptLoader/EmperorIngStage3.cpp
