@@ -1505,6 +1505,9 @@ MetroidPrime/ScriptLoader/Kralee.cpp:
 	.text       start:0x80200E44 end:0x80200E70
 	.sbss       start:0x80419360 end:0x80419368
 
+MetroidPrime/ScriptLoader/Carve80200E70.c:
+	.text       start:0x80200E70 end:0x80200E78
+
 MetroidPrime/ScriptLoader/Parasite.cpp:
 	.text       start:0x80200E78 end:0x80200EFC
 	.sbss       start:0x80419368 end:0x80419370
