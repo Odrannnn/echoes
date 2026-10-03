@@ -965,6 +965,13 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/StreamedMovie.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve80229FF0.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/IngSpiderBallGuardian.cpp"),
+            # Carve of `fn_8022A024` (0x8022A024..0x8022A02C), the IngSpiderballGuardian module's
+            # 8-byte loader setter out of dtk's `auto_03_8022A024_text`.
+            # `IngSpiderBallGuardian.cpp`'s .text ends at 0x8022A024 and `PuddleSpore.cpp`'s starts
+            # at 0x8022A02C, so those 8 bytes are that whole dtk unit and the whole gap between two
+            # claimed units; .sbss stays with IngSpiderBallGuardian.cpp, which defines the slot.
+            # `.c` because module 35 imports the plain retail name `fn_8022A024`.
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve8022A024.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/PuddleSpore.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve8022A3F4.c"),
             Object(Matching, "MetroidPrime/ScriptLoader/EmperorIngStage2Tentacle.cpp"),

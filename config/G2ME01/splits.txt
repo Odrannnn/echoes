@@ -1929,6 +1929,9 @@ MetroidPrime/ScriptLoader/IngSpiderBallGuardian.cpp:
 	.text       start:0x80229FF8 end:0x8022A024
 	.sbss       start:0x804195B0 end:0x804195B8
 
+MetroidPrime/ScriptLoader/Carve8022A024.c:
+	.text       start:0x8022A024 end:0x8022A02C
+
 MetroidPrime/ScriptLoader/PuddleSpore.cpp:
 	.text       start:0x8022A02C end:0x8022A058
 	.sbss       start:0x804195B8 end:0x804195C0
