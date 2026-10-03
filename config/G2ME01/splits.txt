@@ -1340,6 +1340,9 @@ MetroidPrime/ScriptObjects/Carve801EB30C.c:
 MetroidPrime/CActorField25.cpp:
 	.text       start:0x801ECD8C end:0x801ECDCC
 
+MetroidPrime/Carve801EF730.cpp:
+	.text       start:0x801EF730 end:0x801EF7B0
+
 MetroidPrime/Carve801EF84C.cpp:
 	.text       start:0x801EF84C end:0x801EFA00
 

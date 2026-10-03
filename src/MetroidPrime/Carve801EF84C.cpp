@@ -78,7 +78,8 @@
  * Its own unit, and no gap is spanned: `fn_801EF7B0` (0x801EF7B0, 0x9C) below ends exactly at
  * 0x801EF84C, and 0x801EFA00 above is where the `Matching` `MetroidPrime/CStaticGeometryMap.cpp`
  * claim begins.  What is left of the run below is `auto_03_801EF598_text`, which now runs
- * 0x801EF598..0x801EF84C; `fn_801EF730` at 0x801EF730 stays inside it and is retail's.
+ * 0x801EF598..0x801EF84C, with `fn_801EF730` and `fn_801EF784` carved out of the bottom of it
+ * (0x801EF730..0x801EF7B0) into `Matching` `MetroidPrime/Carve801EF730.cpp`.
  *
  * Source order is **descending by address** and that is load-bearing: mwcceppc emits function
  * definitions in *reverse* source order and mwldeppc keeps the object `.text` verbatim, so an
@@ -100,9 +101,9 @@ extern "C" {
 
 /** 0x801EF730, `symbols.txt:7976`, 0x54 = 84 bytes: the deleting destructor of whatever
  *  `fn_801EF84C`'s +4 member holds - `mr. r30,r3 / beq`, `li r4,-1`, `bl fn_80004744`, then the
- *  `extsh.` flag test and `Free__7CMemoryFPCv`.  It sits inside the unclaimed `auto_03_801EF598_text`
- *  below this claim, so nothing in the DOL defines it.  Declared, never defined here for the
- *  matching build; the port-only stand-in is at the end of this file. */
+ *  `extsh.` flag test and `Free__7CMemoryFPCv`.  Claimed and matched by
+ *  `MetroidPrime/Carve801EF730.cpp` (`.text` 0x801EF730..0x801EF7B0), which carves it out of the
+ *  `auto_03_801EF598_text` run this claim sits inside; declared, never defined here. */
 void fn_801EF730(void* self, int flag);
 
 /** 0x802CE388, `symbols.txt:12992`, 0x64: `CMemory::Free(void const*)`.  Claimed by
@@ -165,21 +166,5 @@ void* fn_801EF84C(SHasItem* self, short flag) {
   }
   return self;
 }
-
-#ifndef __MWERKS__
-// Port-only stand-in, empty body, and it **is** one: `fn_801EF730`'s own 84 bytes are a spelling job
-// of their own and nothing in this tree has claimed them.  It exists so the host link resolves the
-// `bl` above, and it is the same trade `src/MetroidPrime/Cameras/Carve801E7C14.c:119-140` makes
-// for `__dt__17CCameraShakerDataFv`: an announced stand-in, kept beside the one reference that
-// asks for it.  Before this carve nothing in the port referenced the symbol - only dtk's `auto_*`
-// objects did - so it is new to the port's link, and `tools/link_gap.py` fails the gate on a
-// missing symbol that is not accounted for in `docs/research/port_link_gap.md`.  The guard is
-// `__MWERKS__`, not `TARGET_PC`, to match that file: the matching build must take the symbol from
-// dtk's own object of the surrounding run, and a second definition there would be a duplicate.
-void fn_801EF730(void* self, int flag) {
-  (void)self;
-  (void)flag;
-}
-#endif
 
 } // extern "C"
